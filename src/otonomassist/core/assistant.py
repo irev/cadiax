@@ -133,8 +133,18 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 
         if loop:
             import concurrent.futures
+            import asyncio
+
+            def run_in_new_loop():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    return new_loop.run_until_complete(coro)
+                finally:
+                    new_loop.close()
+
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, coro)
+                future = executor.submit(run_in_new_loop)
                 return future.result()
         else:
             return asyncio.run(coro)
