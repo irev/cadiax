@@ -1,30 +1,21 @@
-# AI Chat
+"""AI Chat skill handler."""
 
-## Metadata
-- name: ai
-- description: Chat dengan AI (mendukung OpenAI, Ollama, LM Studio)
-- aliases: [chat, ask, gpt]
-- category: ai
+import asyncio
+from typing import Any
 
-## Triggers
-- ai 
-- chat 
-- ask 
-- gpt 
+from otonomassist.ai.factory import AIProviderFactory
 
-## Handler
-```python
+
 async def handle(args: str) -> str:
-    from otonomassist.ai.factory import AIProviderFactory
-    
+    """Handle AI chat requests."""
     if not args:
         return "Usage: ai <pertanyaan>\nContoh: ai Apa itu Python?"
-    
+
     try:
         provider = AIProviderFactory.auto_detect()
         if not provider:
             return "Error: Tidak ada AI provider yang tersedia. Pastikan .env dikonfigurasi dengan benar."
-        
+
         response = await provider.chat_completion(
             prompt=args,
             system_prompt="Anda adalah asisten yang membantu. Jawab dalam bahasa Indonesia kecuali diminta sebaliknya."
@@ -32,4 +23,8 @@ async def handle(args: str) -> str:
         return response
     except Exception as e:
         return f"Error: {str(e)}"
-```
+
+
+def handle_sync(args: str) -> str:
+    """Synchronous wrapper for the async handler."""
+    return asyncio.run(handle(args))

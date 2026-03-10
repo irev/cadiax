@@ -15,6 +15,7 @@ class SkillDefinition:
     triggers: list[str] = field(default_factory=list)
     handler_code: str = ""
     response_template: str = "{result}"
+    ai_instructions: str = ""
 
     def match_command(self, command: str) -> tuple[bool, str]:
         """Check if command matches this skill."""
@@ -42,7 +43,7 @@ class Skill:
     """Runtime skill with executable handler."""
 
     definition: SkillDefinition
-    handler: Callable[[str], str]
+    handler: Callable[..., Any]
     is_async: bool = False
 
     @property
@@ -58,6 +59,7 @@ class Skill:
         try:
             if self.is_async:
                 import asyncio
+
                 result = asyncio.run(self.handler(args))
             else:
                 result = self.handler(args)
