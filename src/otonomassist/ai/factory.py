@@ -59,8 +59,8 @@ class AIProviderFactory:
             info["config"] = {"base_url": base_url, "model": model}
             if not api_key:
                 info["issues"].append("OPENAI_API_KEY tidak ditemukan di .env")
-            if "sk-svcacct-" in (api_key or ""):
-                info["issues"].append("OPENAI_API_KEY tampak tidak valid (memulai dengan 'sk-svcacct-')")
+            elif len(api_key) < 20:
+                info["issues"].append("OPENAI_API_KEY tampak tidak valid (terlalu pendek)")
 
         elif provider == "claude":
             api_key = os.getenv("ANTHROPIC_API_KEY")
