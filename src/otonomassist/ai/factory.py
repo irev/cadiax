@@ -7,6 +7,7 @@ from otonomassist.ai.base import AIProvider
 from otonomassist.ai.lmstudio import LMStudioProvider
 from otonomassist.ai.ollama import OllamaProvider
 from otonomassist.ai.openai import OpenAIProvider
+from otonomassist.ai.claude import ClaudeProvider
 
 
 class AIProviderFactory:
@@ -16,6 +17,7 @@ class AIProviderFactory:
         "openai": OpenAIProvider,
         "ollama": OllamaProvider,
         "lmstudio": LMStudioProvider,
+        "claude": ClaudeProvider,
     }
 
     @classmethod
