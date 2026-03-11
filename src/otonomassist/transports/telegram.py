@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import threading
 import time
 from typing import Any
 from datetime import datetime, timezone
 import secrets
+from contextlib import contextmanager
 
 import httpx
 
@@ -22,6 +24,8 @@ TELEGRAM_AUTH_FILE = DATA_DIR / "telegram_auth.json"
 
 class TelegramPollingTransport:
     """Telegram long-polling adapter with fail-closed authorization."""
+
+    CHAT_ACTION_INTERVAL_SECONDS = 4.0
 
     def __init__(
         self,
@@ -110,10 +114,11 @@ class TelegramPollingTransport:
             return
 
         roles = self._resolve_roles(chat_id, user_id)
-        result = assistant.handle_message(
-            normalized,
-            TransportContext(source="telegram", user_id=user_id, chat_id=chat_id, roles=roles),
-        )
+        with self._chat_action_session(chat_id, action="typing"):
+            result = assistant.handle_message(
+                normalized,
+                TransportContext(source="telegram", user_id=user_id, chat_id=chat_id, roles=roles),
+            )
         self._send_message(chat_id, result)
 
     def _handle_control_command(
@@ -473,6 +478,43 @@ class TelegramPollingTransport:
                 },
             )
             response.raise_for_status()
+
+    def _send_chat_action(self, chat_id: str, action: str = "typing") -> None:
+        """Send a Telegram chat action like typing for better UX."""
+        response = self._client.post(
+            f"{self.base_url}/sendChatAction",
+            json={
+                "chat_id": chat_id,
+                "action": action,
+            },
+        )
+        response.raise_for_status()
+
+    @contextmanager
+    def _chat_action_session(self, chat_id: str, action: str = "typing"):
+        """Keep Telegram chat action alive while a long task is running."""
+        stop_event = threading.Event()
+        worker = threading.Thread(
+            target=self._chat_action_pulse_loop,
+            args=(chat_id, action, stop_event),
+            daemon=True,
+        )
+        worker.start()
+        try:
+            yield
+        finally:
+            stop_event.set()
+            worker.join(timeout=self.CHAT_ACTION_INTERVAL_SECONDS + 1.0)
+
+    def _chat_action_pulse_loop(self, chat_id: str, action: str, stop_event: threading.Event) -> None:
+        """Send chat action immediately, then refresh it until stopped."""
+        while not stop_event.is_set():
+            try:
+                self._send_chat_action(chat_id, action=action)
+            except Exception:
+                return
+            if stop_event.wait(self.CHAT_ACTION_INTERVAL_SECONDS):
+                return
 
     def _load_offset(self) -> int:
         if not TELEGRAM_STATE_FILE.exists():

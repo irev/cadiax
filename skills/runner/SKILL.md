@@ -5,6 +5,11 @@
 - description: Menjalankan loop otomatis berbasis planner, executor, dan agent-loop untuk beberapa langkah atau sampai idle
 - aliases: [run-loop, daemon, autopilot]
 - category: core
+- autonomy_category: execution
+- risk_level: high
+- side_effects: [planner_write, memory_write, lesson_write]
+- requires: []
+- idempotency: non_idempotent
 
 ## Description
 Skill ini menjalankan loop eksekusi semi-otonom.

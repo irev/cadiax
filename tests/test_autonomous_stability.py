@@ -5,6 +5,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+import time
 from types import SimpleNamespace
 
 
@@ -14,6 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from otonomassist.core import agent_context  # noqa: E402
+from otonomassist.core.execution_history import load_execution_events  # noqa: E402
 from otonomassist.core import workspace_guard  # noqa: E402
 from otonomassist.ai.factory import AIProviderFactory  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
@@ -31,12 +33,24 @@ def _load_module(path: Path, name: str):
 
 def _configure_temp_agent_state(tmp_path, monkeypatch):
     data_dir = tmp_path / ".otonomassist"
+    for name in (
+        "TELEGRAM_OWNER_IDS",
+        "TELEGRAM_ALLOW_FROM",
+        "TELEGRAM_GROUPS",
+        "TELEGRAM_GROUP_ALLOW_FROM",
+        "TELEGRAM_DM_POLICY",
+        "TELEGRAM_GROUP_POLICY",
+        "TELEGRAM_REQUIRE_MENTION",
+    ):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(agent_context, "DATA_DIR", data_dir)
     monkeypatch.setattr(agent_context, "MEMORY_FILE", data_dir / "memory.jsonl")
     monkeypatch.setattr(agent_context, "PLANNER_FILE", data_dir / "planner.json")
     monkeypatch.setattr(agent_context, "LESSONS_FILE", data_dir / "lessons.md")
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
+    monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
+    monkeypatch.setattr(agent_context, "JOB_QUEUE_FILE", data_dir / "job_queue.json")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
     agent_context.ensure_agent_storage()
@@ -57,6 +71,11 @@ class _ResolveProvider:
         return "research siapa presiden saat ini"
 
 
+class _BrokenProvider:
+    async def chat_completion(self, prompt, system_prompt=None, **kwargs):
+        raise RuntimeError("provider boom")
+
+
 def test_append_lesson_deduplicates_recent_entry(tmp_path, monkeypatch):
     lessons_file = tmp_path / "lessons.md"
     lessons_file.write_text("# Learned Lessons\n", encoding="utf-8")
@@ -72,6 +91,30 @@ def test_append_lesson_deduplicates_recent_entry(tmp_path, monkeypatch):
     lines = lessons_file.read_text(encoding="utf-8").splitlines()
     lesson_lines = [line for line in lines if line.startswith("- ")]
     assert len(lesson_lines) == 1
+
+
+def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypatch):
+    secrets_file = tmp_path / "secrets.json"
+    secrets_file.write_text(
+        json.dumps(
+            {
+                "secrets": {
+                    "OPENAI_API_KEY": {
+                        "value": "sk-upper-alias-1234567890",
+                    }
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(agent_context, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(agent_context, "SECRETS_FILE", secrets_file)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
+
+    assert agent_context.get_secret_value("openai_api_key") == "sk-upper-alias-1234567890"
 
 
 def test_executor_blocks_mutating_autonomous_commands():
@@ -187,12 +230,97 @@ def test_runner_until_idle_processes_multiple_tasks_with_reflection(tmp_path, mo
     assert len(reflections) >= 2
 
 
+def test_planner_next_respects_priority_and_dependencies(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    planner_module = _load_module(ROOT / "skills" / "planner" / "script" / "handler.py", "planner_handler_priority_test")
+
+    planner_module.handle("add --priority 1 task rendah")
+    planner_module.handle("add --priority 5 task tinggi")
+    planner_module.handle("add --priority 9 --depends-on 2 task tergantung")
+
+    before = planner_module.handle("next")
+    agent_context.update_planner_task_status(2, "done")
+    after = planner_module.handle("next")
+
+    assert before["data"]["next_task"]["text"] == "task tinggi"
+    assert after["data"]["next_task"]["text"] == "task tergantung"
+
+
+def test_worker_processes_job_queue_from_ready_planner_task(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: _FakeProvider()))
+
+    planner_module = _load_module(ROOT / "skills" / "planner" / "script" / "handler.py", "planner_handler_worker_test")
+    worker_module = _load_module(ROOT / "skills" / "worker" / "script" / "handler.py", "worker_handler_test")
+
+    planner_module.handle("add --priority 4 memory add dari worker")
+    output = worker_module.handle("once --enqueue")
+    planner_state = agent_context.load_planner_state()
+    job_state = agent_context.load_job_queue_state()
+
+    assert "Worker processing 1 job(s):" in output
+    assert "processed: 1" in output
+    assert planner_state["tasks"][0]["status"] == "done"
+    assert any(job["status"] == "done" for job in job_state["jobs"])
+
+
 def test_executor_resolves_natural_language_to_known_prefix(monkeypatch):
     module = _load_module(ROOT / "skills" / "executor" / "script" / "handler.py", "executor_handler_resolve_test")
     monkeypatch.setattr(module.AIProviderFactory, "auto_detect", staticmethod(lambda: _ResolveProvider()))
 
     resolved = module._resolve_command("cari presiden saat ini")
     assert resolved == "research siapa presiden saat ini"
+
+
+def test_executor_retries_transient_task_failure_before_blocking(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    module = _load_module(ROOT / "skills" / "executor" / "script" / "handler.py", "executor_handler_retry_test")
+
+    planner_file = agent_context.PLANNER_FILE
+    planner_file.write_text(
+        json.dumps(
+            {
+                "goal": "",
+                "tasks": [
+                    {
+                        "id": 1,
+                        "text": "workspace read README.md",
+                        "status": "todo",
+                        "notes": [],
+                        "retry_count": 0,
+                        "max_retries": 1,
+                        "last_error": "",
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeAssistant:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def initialize(self):
+            return None
+
+        def execute(self, command):
+            return "[ERROR] TIMEOUT\nSkill `workspace` melebihi batas waktu 0.05 detik."
+
+    monkeypatch.setattr(module, "Assistant", FakeAssistant)
+
+    first = module.handle("next")
+    first_task = agent_context.get_planner_task(1)
+    second = module.handle("next")
+    second_task = agent_context.get_planner_task(1)
+
+    assert "dijadwalkan ulang" in first
+    assert first_task is not None and first_task["status"] == "todo"
+    assert first_task["retry_count"] == 1
+    assert "gagal dieksekusi" in second
+    assert second_task is not None and second_task["status"] == "blocked"
 
 
 def test_assistant_applies_formatter_from_user_intent(tmp_path, monkeypatch):
@@ -208,14 +336,81 @@ def test_assistant_applies_formatter_from_user_intent(tmp_path, monkeypatch):
     assert "README.md" in result
 
 
+def test_assistant_writes_execution_history_with_trace_id(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "README.md").write_text("README contoh untuk execution history\n", encoding="utf-8")
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.handle_message("workspace read README.md")
+    events = load_execution_events(limit=10)
+
+    assert "workspace_read" in result
+    event_types = [event["event_type"] for event in events]
+    assert "command_received" in event_types
+    assert "skill_started" in event_types
+    assert "skill_completed" in event_types
+    assert "command_completed" in event_types
+    trace_ids = {event["trace_id"] for event in events if event.get("trace_id")}
+    assert len(trace_ids) == 1
+    assert any(event.get("skill_name") == "workspace" for event in events)
+
+
+def test_assistant_times_out_slow_skill_and_records_timeout_status(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("OTONOMASSIST_SKILL_TIMEOUT_SECONDS", "0.05")
+
+    skills_dir = tmp_path / "skills"
+    slow_dir = skills_dir / "slowpoke"
+    (slow_dir / "script").mkdir(parents=True, exist_ok=True)
+    (slow_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "# Slowpoke",
+                "",
+                "## Metadata",
+                "- name: slowpoke",
+                "- description: Skill lambat untuk test timeout",
+                "- aliases: [slowpoke]",
+                "- category: utility",
+                "",
+                "## Triggers",
+                "- slowpoke",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (slow_dir / "script" / "handler.py").write_text(
+        "import time\n"
+        "def handle(args: str) -> str:\n"
+        "    time.sleep(0.2)\n"
+        "    return 'selesai lambat'\n",
+        encoding="utf-8",
+    )
+
+    assistant = Assistant(skills_dir=skills_dir)
+    assistant.initialize()
+
+    result = assistant.handle_message("slowpoke jalan")
+    events = load_execution_events(limit=10)
+
+    assert "[ERROR] TIMEOUT" in result
+    assert "slowpoke" in result
+    assert any(event["event_type"] == "skill_completed" and event["status"] == "timeout" for event in events)
+    assert any(event["event_type"] == "command_completed" and event["status"] == "timeout" for event in events)
+
+
 def test_telegram_transport_handles_message_without_network(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setattr(telegram_module, "TELEGRAM_AUTH_FILE", tmp_path / ".otonomassist" / "telegram_auth.json")
     monkeypatch.setattr(telegram_module, "TELEGRAM_STATE_FILE", tmp_path / ".otonomassist" / "telegram_state.json")
 
     sent_messages: list[tuple[str, str]] = []
+    chat_actions: list[tuple[str, str]] = []
     transport = TelegramPollingTransport(token="dummy-token", poll_timeout=1)
     monkeypatch.setattr(transport, "_send_message", lambda chat_id, text: sent_messages.append((chat_id, text)))
+    monkeypatch.setattr(transport, "_send_chat_action", lambda chat_id, action="typing": chat_actions.append((chat_id, action)))
     monkeypatch.setattr(transport, "_is_authorized", lambda *args, **kwargs: True)
     monkeypatch.setattr(transport, "_resolve_roles", lambda *args, **kwargs: ("telegram", "owner"))
 
@@ -241,4 +436,168 @@ def test_telegram_transport_handles_message_without_network(tmp_path, monkeypatc
 
     assert captured["message"] == "memory list"
     assert getattr(captured["context"], "source", None) == "telegram"
+    assert chat_actions == [("12345", "typing")]
     assert sent_messages == [("12345", "handled-ok")]
+
+
+def test_telegram_transport_refreshes_typing_for_long_running_message(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(telegram_module, "TELEGRAM_AUTH_FILE", tmp_path / ".otonomassist" / "telegram_auth.json")
+    monkeypatch.setattr(telegram_module, "TELEGRAM_STATE_FILE", tmp_path / ".otonomassist" / "telegram_state.json")
+
+    sent_messages: list[tuple[str, str]] = []
+    chat_actions: list[tuple[str, str]] = []
+    transport = TelegramPollingTransport(token="dummy-token", poll_timeout=1)
+    monkeypatch.setattr(transport, "CHAT_ACTION_INTERVAL_SECONDS", 0.01)
+    monkeypatch.setattr(transport, "_send_message", lambda chat_id, text: sent_messages.append((chat_id, text)))
+    monkeypatch.setattr(transport, "_send_chat_action", lambda chat_id, action="typing": chat_actions.append((chat_id, action)))
+    monkeypatch.setattr(transport, "_is_authorized", lambda *args, **kwargs: True)
+    monkeypatch.setattr(transport, "_resolve_roles", lambda *args, **kwargs: ("telegram", "owner"))
+
+    class SlowAssistant:
+        def handle_message(self, message, context=None):
+            time.sleep(0.035)
+            return "handled-slow"
+
+    update = {
+        "update_id": 4,
+        "message": {
+            "message_id": 1,
+            "text": "test pesan pertama",
+            "chat": {"id": 55555, "type": "private"},
+            "from": {"id": 1001, "username": "slow-user"},
+        },
+    }
+
+    transport._handle_update(SlowAssistant(), update)
+
+    assert len(chat_actions) >= 2
+    assert all(item == ("55555", "typing") for item in chat_actions)
+    assert sent_messages == [("55555", "handled-slow")]
+
+
+def test_assistant_returns_no_provider_error_for_unmatched_natural_language(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: None))
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("tolong kerjakan sesuatu yang tidak cocok dengan prefix skill")
+
+    assert "[ERROR] NO_PROVIDER" in result
+    assert "Tidak ada AI provider tersedia" in result
+
+
+def test_assistant_returns_api_error_when_provider_fails(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: _BrokenProvider()))
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("tolong rute-kan command ini lewat AI")
+
+    assert "[ERROR] API_ERROR" in result
+    assert "provider boom" in result
+
+
+def test_assistant_blocks_unapproved_telegram_user(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.handle_message(
+        "memory list",
+        context=telegram_module.TransportContext(
+            source="telegram",
+            user_id="200",
+            chat_id="300",
+            roles=("telegram",),
+        ),
+    )
+
+    assert result == "Akses Telegram belum diotorisasi untuk operasi ini."
+
+
+def test_assistant_blocks_owner_only_executor_for_approved_telegram_user(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.handle_message(
+        "executor next",
+        context=telegram_module.TransportContext(
+            source="telegram",
+            user_id="200",
+            chat_id="300",
+            roles=("telegram", "approved"),
+        ),
+    )
+
+    assert "dibatasi untuk owner Telegram" in result
+    assert "`executor`" in result
+
+
+def test_telegram_transport_prompts_pairing_for_unapproved_dm(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(telegram_module, "TELEGRAM_AUTH_FILE", tmp_path / ".otonomassist" / "telegram_auth.json")
+    monkeypatch.setattr(telegram_module, "TELEGRAM_STATE_FILE", tmp_path / ".otonomassist" / "telegram_state.json")
+
+    sent_messages: list[tuple[str, str]] = []
+    transport = TelegramPollingTransport(token="dummy-token", poll_timeout=1)
+    monkeypatch.setattr(transport, "_send_message", lambda chat_id, text: sent_messages.append((chat_id, text)))
+
+    class FakeAssistant:
+        def handle_message(self, message, context=None):
+            raise AssertionError("assistant.handle_message should not be called for unapproved DM")
+
+    update = {
+        "update_id": 2,
+        "message": {
+            "message_id": 1,
+            "text": "memory list",
+            "chat": {"id": 54321, "type": "private"},
+            "from": {"id": 777, "username": "pending-user"},
+        },
+    }
+
+    transport._handle_update(FakeAssistant(), update)
+
+    assert sent_messages == [
+        (
+            "54321",
+            "Anda belum diizinkan menggunakan bot ini. "
+            "Kirim `/pair` dari DM untuk membuat request akses.",
+        )
+    ]
+
+
+def test_telegram_transport_rejects_auth_command_for_non_owner(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(telegram_module, "TELEGRAM_AUTH_FILE", tmp_path / ".otonomassist" / "telegram_auth.json")
+    monkeypatch.setattr(telegram_module, "TELEGRAM_STATE_FILE", tmp_path / ".otonomassist" / "telegram_state.json")
+
+    sent_messages: list[tuple[str, str]] = []
+    transport = TelegramPollingTransport(token="dummy-token", poll_timeout=1)
+    monkeypatch.setattr(transport, "_send_message", lambda chat_id, text: sent_messages.append((chat_id, text)))
+
+    class FakeAssistant:
+        def handle_message(self, message, context=None):
+            raise AssertionError("assistant.handle_message should not be called for /auth")
+
+    update = {
+        "update_id": 3,
+        "message": {
+            "message_id": 1,
+            "text": "/auth status",
+            "chat": {"id": 12345, "type": "private"},
+            "from": {"id": 222, "username": "not-owner"},
+        },
+    }
+
+    transport._handle_update(FakeAssistant(), update)
+
+    assert sent_messages == [("12345", "Command `/auth` hanya untuk owner bot.")]

@@ -10,14 +10,7 @@ from otonomassist.core import Assistant
 from otonomassist.transports import TelegramPollingTransport
 
 
-@click.command()
-@click.option(
-    "--skills-dir",
-    type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default="skills",
-    help="Directory containing skill markdown files",
-)
-def main(skills_dir: Path) -> None:
+def run_telegram_transport(skills_dir: Path) -> None:
     """Run Telegram long polling for OtonomAssist."""
     assistant = Assistant(skills_dir=skills_dir)
     assistant.initialize()
@@ -31,6 +24,18 @@ def main(skills_dir: Path) -> None:
 
     click.echo("Starting Telegram polling...")
     transport.run(assistant)
+
+
+@click.command()
+@click.option(
+    "--skills-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default="skills",
+    help="Directory containing skill markdown files",
+)
+def main(skills_dir: Path) -> None:
+    """Run Telegram long polling for OtonomAssist."""
+    run_telegram_transport(skills_dir)
 
 
 if __name__ == "__main__":

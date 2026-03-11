@@ -5,6 +5,11 @@
 - description: Mengelola profil personalisasi markdown untuk private AI, termasuk purpose, preferences, constraints, dan konteks jangka panjang
 - aliases: [persona, personalize, identity]
 - category: core
+- autonomy_category: memory
+- risk_level: high
+- side_effects: [profile_write]
+- requires: []
+- idempotency: non_idempotent
 
 ## Description
 Skill ini mengelola file markdown personalisasi agent.

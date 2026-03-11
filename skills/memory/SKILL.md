@@ -5,6 +5,11 @@
 - description: Menyimpan, mencari, merangkum, dan mengambil memori kerja lokal untuk agent private AI
 - aliases: [remember, mem, ingat]
 - category: core
+- autonomy_category: memory
+- risk_level: medium
+- side_effects: [memory_write, lessons_write]
+- requires: []
+- idempotency: mixed
 
 ## Description
 Skill ini mengelola memori kerja lokal agent.

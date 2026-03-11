@@ -5,6 +5,11 @@
 - description: Menjalankan next task dari planner atau mengeksekusi command agent internal lalu menyimpan hasilnya ke memory dan planner
 - aliases: [execute, run-task, act]
 - category: core
+- autonomy_category: execution
+- risk_level: high
+- side_effects: [planner_write, memory_write, lesson_write]
+- requires: []
+- idempotency: non_idempotent
 
 ## Description
 Skill ini adalah jembatan dari planner ke eksekusi semi-otonom.

@@ -84,6 +84,11 @@ class SkillLoader:
         description = ""
         aliases: list[str] = []
         category = "general"
+        autonomy_category = "general"
+        risk_level = "medium"
+        side_effects: list[str] = []
+        requires: list[str] = []
+        idempotency = "unknown"
         triggers: list[str] = []
         ai_instructions = ""
 
@@ -127,6 +132,16 @@ class SkillLoader:
                         aliases = self._parse_list(value)
                     elif key == "category":
                         category = value.strip()
+                    elif key == "autonomy_category":
+                        autonomy_category = value.strip()
+                    elif key == "risk_level":
+                        risk_level = value.strip()
+                    elif key == "side_effects":
+                        side_effects = self._parse_list(value)
+                    elif key == "requires":
+                        requires = self._parse_list(value)
+                    elif key == "idempotency":
+                        idempotency = value.strip()
 
             elif in_ai_instructions:
                 ai_instructions += line + "\n"
@@ -148,6 +163,11 @@ class SkillLoader:
             description=description,
             aliases=aliases,
             category=category,
+            autonomy_category=autonomy_category,
+            risk_level=risk_level,
+            side_effects=side_effects,
+            requires=requires,
+            idempotency=idempotency,
             triggers=triggers,
             handler_code="",
             response_template="{result}",
@@ -207,6 +227,11 @@ class SkillLoader:
         description = ""
         aliases: list[str] = []
         category = "general"
+        autonomy_category = "general"
+        risk_level = "medium"
+        side_effects: list[str] = []
+        requires: list[str] = []
+        idempotency = "unknown"
         triggers: list[str] = []
         handler_code = ""
         response_template = "{result}"
@@ -240,6 +265,16 @@ class SkillLoader:
                         aliases = self._parse_list(value)
                     elif key == "category":
                         category = value.strip()
+                    elif key == "autonomy_category":
+                        autonomy_category = value.strip()
+                    elif key == "risk_level":
+                        risk_level = value.strip()
+                    elif key == "side_effects":
+                        side_effects = self._parse_list(value)
+                    elif key == "requires":
+                        requires = self._parse_list(value)
+                    elif key == "idempotency":
+                        idempotency = value.strip()
 
             if in_handlers:
                 match = self.TRIGGER_PATTERN.match(line)
@@ -259,6 +294,11 @@ class SkillLoader:
             description=description,
             aliases=aliases,
             category=category,
+            autonomy_category=autonomy_category,
+            risk_level=risk_level,
+            side_effects=side_effects,
+            requires=requires,
+            idempotency=idempotency,
             triggers=triggers,
             handler_code=handler_code,
             response_template=response_template,

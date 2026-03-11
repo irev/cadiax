@@ -13,3 +13,4 @@ class TransportContext:
     user_id: str | None = None
     chat_id: str | None = None
     roles: tuple[str, ...] = ()
+    trace_id: str | None = None

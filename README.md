@@ -7,6 +7,10 @@ Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
 - memory dan lessons yang dibaca ulang otomatis
 - planner, executor, dan runner untuk loop semi-otonom
 - penyimpanan kredensial lokal yang terpisah dari konteks belajar
+- setup wizard interaktif untuk first-run dan reconfigure
+- doctor/status read-only untuk audit konfigurasi
+- structured result + universal formatter lintas skill inti
+- secret storage lintas-OS untuk menjaga service utama tetap portable
 
 ## Fondasi yang Sudah Jadi
 
@@ -32,6 +36,35 @@ Tiga lapisan capability yang sekarang sudah terbentuk:
 - `self-review`
 - `secrets`
 
+## Taxonomy Skill Otonom
+
+Selain pembagian `core / capability / governance`, skill sekarang mulai memakai taxonomy yang lebih dekat ke agent otonom populer:
+
+- `planning`
+- `memory`
+- `knowledge`
+- `environment`
+- `execution`
+- `governance`
+
+Mapping saat ini:
+
+- `planner`, `agent-loop` -> `planning`
+- `memory`, `profile` -> `memory`
+- `ai`, `research` -> `knowledge`
+- `workspace` -> `environment`
+- `executor`, `runner` -> `execution`
+- `self-review`, `secrets` -> `governance`
+
+Setiap skill juga bisa mendeklarasikan:
+
+- `risk_level`
+- `side_effects`
+- `requires`
+- `idempotency`
+
+Ini dipakai untuk memperkaya konteks routing AI dan audit skill layer.
+
 ## Penyimpanan Data
 
 State agent disimpan di:
@@ -42,7 +75,8 @@ State agent disimpan di:
 ├── planner.json
 ├── profile.md
 ├── lessons.md
-└── secrets.json
+├── secrets.json
+└── telegram_auth.json
 ```
 
 Makna file:
@@ -52,10 +86,13 @@ Makna file:
 - `profile.md`: personalisasi agent
 - `lessons.md`: pembelajaran yang dikonsolidasikan
 - `secrets.json`: kredensial lokal
+- `telegram_auth.json`: allowlist dan request pairing Telegram
 
 `.otonomassist/` sekarang di-ignore oleh git, jadi data lokal dan secret tidak ikut ter-commit.
 
 Di Windows, value secret sekarang disimpan terenkripsi lokal memakai DPAPI sebelum ditulis ke `secrets.json`.
+Di Linux/macOS, runtime memakai backend portable berbasis local file key agar service utama tetap bisa berjalan lintas OS.
+State JSON penting seperti planner dan secrets sekarang ditulis secara atomik untuk mengurangi risiko file parsial.
 
 ## Workspace Boundary
 
@@ -72,6 +109,8 @@ Konfigurasi:
 OTONOMASSIST_WORKSPACE_ROOT=
 OTONOMASSIST_WORKSPACE_ACCESS=ro
 ```
+
+Default workspace sekarang diarahkan ke folder `workspace/` di root project. Ini menjadi lokasi default untuk file kerja user, skill tambahan, dan aset eksternal yang dikelola di dalam boundary workspace.
 
 Saat ini skill inspeksi file seperti `workspace` dan `self-review file` memakai guard ini.
 
@@ -115,6 +154,14 @@ Urutan yang sekarang sudah bisa berjalan:
 4. `agent-loop` merefleksikan state agent
 5. `runner` dapat menjalankan beberapa langkah berturut-turut atau sampai idle
 
+Stabilisasi yang sudah diterapkan:
+
+- `executor` mengenali prefix native penting seperti `research`, `runner`, dan `secrets`
+- task otonom dibatasi agar tidak diam-diam memutasi `secrets` atau `profile`
+- `self-review` mendedupe follow-up task terbuka agar backlog tidak meledak
+- `runner until-idle` sekarang merefleksikan state setiap langkah
+- lesson yang identik di recent window tidak ditulis berulang-ulang
+
 Contoh:
 
 ```text
@@ -136,17 +183,84 @@ assistant: ai apa langkah berikutnya berdasarkan seluruh state yang ada?
 - `workspace`
 - `self-review`
 - `secrets`
+- `research`
 
 ## Menjalankan Aplikasi
 
 ```bash
 pip install -e .
-otonomassist -i
+otonomassist setup
+otonomassist status
+otonomassist chat
 ```
+
+CLI utama sekarang mendukung subcommand resmi:
+
+- `otonomassist setup`
+- `otonomassist status`
+- `otonomassist doctor`
+- `otonomassist doctor --json`
+- `otonomassist config status`
+- `otonomassist config setup`
+- `otonomassist chat`
+- `otonomassist run "<message>"`
+- `otonomassist telegram`
+- `otonomassist jobs list`
+- `otonomassist jobs enqueue`
+- `otonomassist worker --steps N`
+- `otonomassist external audit`
+- `otonomassist external sync`
+- `otonomassist external install <path-atau-url>`
+- `otonomassist skills audit`
+
+`otonomassist setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential.
+
+`otonomassist status` dan `otonomassist doctor` menampilkan audit konfigurasi read-only: provider aktif, credential tersedia atau tidak, workspace guard, dan status Telegram. Report sekarang juga memberi level `healthy`, `warning`, atau `critical` agar hasil audit lebih cepat dibaca. Di dalam assistant, audit yang sama juga tersedia lewat command `doctor` atau `config status`.
+
+Alias kompatibilitas lama masih didukung sementara:
+
+- `otonomassist --setup`
+- `otonomassist --doctor`
+- `otonomassist -i`
+- `otonomassist <pesan>`
+
+Ekstensi eksternal sekarang diarahkan ke layout workspace:
+
+```text
+workspace/
+├── skills-external/
+├── tools/
+└── packages/
+```
+
+`otonomassist external audit` atau command assistant `external audit` menampilkan inventaris asset eksternal yang teraudit, kapan terdeteksi/ditambahkan, dan di mana lokasinya.
+`otonomassist external sync` memaksa scan ulang `workspace/skills-external` lalu memperbarui registry audit bila ada skill baru atau metadata yang berubah.
+`otonomassist external install <path-lokal-atau-url-git>` memasang skill eksternal ke `workspace/skills-external/`, lalu langsung mencatat event audit install dan hasil cek kompatibilitas.
+
+Skill eksternal bisa menambahkan manifest opsional `asset.json` di root skill untuk membantu audit dan cek kompatibilitas. Contoh:
+
+```json
+{
+  "name": "my-skill",
+  "manager": "git",
+  "version": "1.0.0",
+  "requires": ["git", "python"],
+  "platforms": ["windows", "linux"]
+}
+```
+
+Audit akan memakai manifest itu untuk menampilkan:
+
+- siapa/apa yang menambahkan asset
+- versi yang dicatat
+- requirement toolchain
+- status kompatibilitas `ready` atau `degraded`
+- toolchain yang masih hilang
 
 Telegram runner:
 
 ```bash
+otonomassist telegram
 otonomassist-telegram
 ```
 
@@ -155,6 +269,10 @@ Built-in commands:
 ```text
 help
 list
+history
+skills audit
+doctor
+config status
 debug-config
 list-models
 ```
@@ -182,6 +300,14 @@ assistant: memory summary informasi singkat
 
 Jadi penyajian hasil tidak lagi harus ditanam di masing-masing skill; skill bisa fokus menghasilkan data yang stabil, lalu formatter mengubah presentasinya.
 
+Skill yang sudah memakai structured result sebagai jalur utama:
+
+- `research`
+- `workspace`
+- `planner`
+- `memory` untuk operasi baca utama
+- `self-review`
+
 ## Konfigurasi OpenAI
 
 Simpan API key di `secrets` bila memungkinkan, dan gunakan `.env` untuk konfigurasi non-secret seperti provider, model, dan base URL.
@@ -201,6 +327,8 @@ OPENAI_MODEL=gpt-4.1-mini
 OPENAI_FALLBACK_MODEL=gpt-4o
 OPENAI_WEB_MODEL=gpt-4.1
 ```
+
+Wizard setup akan menulis nilai non-secret ke `.env`, lalu menawarkan penyimpanan credential ke encrypted local secrets agar miss-config lebih kecil dan secret tidak tersebar ke file konteks lain.
 
 ## Telegram Ke Depan
 
@@ -276,9 +404,46 @@ Pada provider OpenAI, skill ini memakai web-grounded lookup sebelum menjawab. Se
 
 melewati jalur `research`, bukan menjawab dari model chat biasa.
 
+Output `research` sekarang distabilkan sebagai data terstruktur dengan metadata verifikasi, lalu dapat dirender ulang ke summary/table/json sesuai permintaan user.
+
+## Kualitas dan Test
+
+Suite test sekarang mencakup area yang paling riskan untuk operasi lebih serius:
+
+- stabilitas loop `planner -> executor -> runner -> self-review`
+- formatter universal di level `Assistant`
+- authorization Telegram
+- failure path AI provider
+- setup wizard dan doctor/status
+
+Fondasi observability minimum juga mulai aktif:
+
+- setiap command inbound sekarang punya `trace_id`
+- event inti seperti `command_received`, `skill_started`, `skill_completed`, dan `command_completed` ditulis ke `.otonomassist/execution_history.jsonl`
+- operator bisa melihat jejak terbaru lewat `otonomassist history`
+- timeout skill global bisa diatur dengan `OTONOMASSIST_SKILL_TIMEOUT_SECONDS`
+- `doctor/status` sekarang juga mendukung output machine-readable lewat `--json`
+
+Fondasi runtime Phase 2 juga mulai aktif:
+
+- planner task sekarang bisa membawa `priority`, `depends_on`, `retry_count`, dan `blocked_reason`
+- `planner next` sekarang memilih task `ready` berdasarkan dependency dan priority
+- runtime job queue lokal disimpan di `.otonomassist/job_queue.json`
+- command `jobs` dan `worker` memberi lapisan eksplisit antara planner dan executor
+
+Perubahan ini membuat fondasi saat ini lebih layak dipakai sebagai sistem semi-otonom yang konsisten, bukan hanya eksperimen skill per skill.
+
 ## Arsitektur
 
 Lihat [ARCHITECTURE.md](/d:/PROJECT/otonomAssist/ARCHITECTURE.md) untuk alur detail runtime, storage, dan loop semi-otonom.
+
+Untuk panduan install, first-run, reconfigure, audit config, operasi semi-otonom, dan troubleshooting cepat, lihat [OPERATIONS.md](/d:/PROJECT/otonomAssist/OPERATIONS.md).
+
+Untuk jejak perubahan fitur yang sudah mendarat, lihat [CHANGELOG.md](/d:/PROJECT/otonomAssist/CHANGELOG.md). Untuk arah implementasi berikutnya, lihat [ROADMAP.md](/d:/PROJECT/otonomAssist/ROADMAP.md) yang sekarang dibagi ke:
+
+- `Phase 1: Semi-Production Hardening`
+- `Phase 2: Autonomous Runtime`
+- `Phase 3: Production Agent Platform`
 
 ## Transport Ke Depan
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import os
 
-from otonomassist.core.agent_context import load_secrets_state, save_secrets_state
+from otonomassist.core.agent_context import canonicalize_secret_name, load_secrets_state, save_secrets_state
 from otonomassist.core.secure_storage import decrypt_secret, encrypt_secret
 
 
@@ -53,7 +53,8 @@ def _usage() -> str:
 
 def _set_secret(args: str) -> str:
     name, _, value = args.partition(" ")
-    name = name.strip()
+    raw_name = name.strip()
+    name = canonicalize_secret_name(raw_name)
     value = value.strip()
     if not name or not value:
         return "Format: secrets set <name> <value>"
@@ -67,6 +68,8 @@ def _set_secret(args: str) -> str:
         "fingerprint": _fingerprint(value),
     }
     save_secrets_state(state)
+    if raw_name != name:
+        return f"Secret '{raw_name}' tersimpan sebagai '{name}'."
     return f"Secret '{name}' tersimpan."
 
 
@@ -84,6 +87,8 @@ def _list_secrets() -> str:
 
 
 def _show_secret(name: str) -> str:
+    raw_name = name.strip()
+    name = canonicalize_secret_name(raw_name)
     if not name:
         return "Secrets show membutuhkan nama secret."
 
@@ -102,6 +107,8 @@ def _show_secret(name: str) -> str:
 
 
 def _delete_secret(name: str) -> str:
+    raw_name = name.strip()
+    name = canonicalize_secret_name(raw_name)
     if not name:
         return "Secrets delete membutuhkan nama secret."
 

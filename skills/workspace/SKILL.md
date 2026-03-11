@@ -5,6 +5,11 @@
 - description: Menjelajah, membaca, mencari, dan merangkum isi workspace proyek lokal untuk agent private AI
 - aliases: [files, repo, project]
 - category: capability
+- autonomy_category: environment
+- risk_level: medium
+- side_effects: [workspace_read]
+- requires: [workspace_access]
+- idempotency: idempotent
 
 ## Description
 Skill ini memberi kemampuan inspeksi workspace lokal.

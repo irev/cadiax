@@ -5,6 +5,11 @@
 - description: Mengelola tujuan, backlog, langkah berikutnya, dan status task untuk agent private AI yang bekerja mandiri
 - aliases: [plan, task, backlog]
 - category: core
+- autonomy_category: planning
+- risk_level: medium
+- side_effects: [planner_state]
+- requires: []
+- idempotency: non_idempotent
 
 ## Description
 Skill ini mengelola state perencanaan agent.

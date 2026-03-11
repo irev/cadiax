@@ -71,6 +71,13 @@ async def handle(args: str) -> str:
 
 Handler juga boleh mengembalikan structured result envelope (`dict`) bila skill ingin mendukung formatter universal.
 
+Saat ini runtime `Assistant` akan lebih stabil jika skill baru memisahkan:
+
+- produksi data hasil
+- presentasi hasil ke user
+
+Artinya, untuk skill baru yang bukan sekadar echo/string sederhana, envelope result sebaiknya dianggap default, bukan tambahan opsional belaka.
+
 ## Structured Result Envelope
 
 Untuk skill yang ingin mendukung tampilan universal seperti `table`, `summary`, `short`, `markdown`, atau `json`, handler sebaiknya mengembalikan envelope berikut:
@@ -120,6 +127,32 @@ Jika skill hanya butuh output sederhana, return string tetap valid. Envelope dir
 - mengembalikan summary data
 - berpotensi ditampilkan dalam beberapa view
 
+Selain itu, skill yang dipakai dalam loop otonom atau transport eksternal sebaiknya memakai envelope karena:
+
+- lebih mudah diuji
+- lebih stabil untuk automation chaining
+- lebih mudah dirender ulang di CLI/Telegram
+- lebih mudah diberi metadata status/verifikasi
+
+## Praktik yang Disarankan untuk Skill Baru
+
+Gunakan `build_result(...)` untuk response terstruktur.
+
+Pisahkan:
+
+- parsing args
+- eksekusi domain logic
+- penyusunan payload data
+- pemilihan `default_view`
+
+Hindari menanam renderer tabel/markdown manual di dalam skill jika formatter universal sudah cukup.
+
+Jika skill tetap menulis side effect seperti memory/planner/lessons:
+
+- laporkan side effect itu di `data`
+- jangan campur side effect dengan string presentasi acak
+- pertimbangkan field seperti `persistence`, `follow_up`, atau `verification_status`
+
 ## Section yang Diparse Loader
 
 Loader saat ini membaca section berikut dari `SKILL.md`:
@@ -132,6 +165,11 @@ Field yang didukung:
 - `description`: deskripsi singkat skill
 - `aliases`: daftar alias dalam format `[a, b, c]`
 - `category`: kategori skill
+- `autonomy_category`: kategori skill-layer otonom
+- `risk_level`: level risiko `low|medium|high|critical`
+- `side_effects`: daftar efek samping seperti `memory_write`, `planner_write`, `network_access`
+- `requires`: dependency logis seperti `ai_provider`, `workspace_access`, `secure_storage`
+- `idempotency`: `idempotent|best_effort|mixed|non_idempotent`
 
 Contoh:
 
@@ -141,7 +179,23 @@ Contoh:
 - description: Kalkulator sederhana
 - aliases: [calculator, hitung]
 - category: utility
+- autonomy_category: knowledge
+- risk_level: low
+- side_effects: []
+- requires: []
+- idempotency: idempotent
 ```
+
+Taxonomy `autonomy_category` yang direkomendasikan:
+
+- `planning`
+- `memory`
+- `knowledge`
+- `environment`
+- `execution`
+- `governance`
+
+Tujuannya adalah memberi sinyal ke orchestrator tentang peran skill dalam loop agent, bukan hanya kategori umum UI/dokumentasi.
 
 ### 2. `## Triggers`
 
@@ -266,9 +320,15 @@ Sebelum menambahkan skill baru, pastikan:
 - contoh penggunaan di `AI Instructions` cukup jelas untuk AI router
 - jika skill menghasilkan data/list/search result, pertimbangkan memakai structured result envelope
 - set `default_view` yang masuk akal, misalnya `summary` atau `table`
+- jika skill punya side effect, buat payload yang menjelaskan side effect itu secara eksplisit
+- jika skill akan dipakai di loop otonom, pikirkan stabilitas output lebih dulu daripada gaya string bebas
+- hindari mengasumsikan credential ada di `.env`; gunakan runtime helper env-or-secret bila perlu
+- isi metadata `autonomy_category`, `risk_level`, `side_effects`, `requires`, dan `idempotency` bila skill akan ikut dipakai oleh planner/orchestrator
 
 ## Referensi
 
 - Contoh implementasi: `skills/echo/`, `skills/calculator/`, `skills/ai-chat/`
 - Contoh structured result: `skills/research/`, `skills/workspace/`, `skills/planner/`, `skills/memory/`, `skills/self-review/`
+- Helper result: `src/otonomassist/core/result_builder.py`
+- Formatter universal: `src/otonomassist/core/result_formatter.py`
 - Arsitektur runtime: `ARCHITECTURE.md`

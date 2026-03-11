@@ -5,6 +5,11 @@
 - description: Menyimpan, menampilkan metadata, memperbarui, dan menghapus kredensial lokal untuk private AI tanpa memasukkannya ke memory atau prompt AI
 - aliases: [credential, creds, secret]
 - category: governance
+- autonomy_category: governance
+- risk_level: critical
+- side_effects: [secret_write]
+- requires: [secure_storage]
+- idempotency: non_idempotent
 
 ## Description
 Skill ini mengelola penyimpanan kredensial lokal.

@@ -44,6 +44,28 @@ class SkillRegistry:
         """List all registered skills."""
         return list(self._skills.values())
 
+    def get_skill_layer_summary(self) -> dict[str, object]:
+        """Summarize loaded skills by autonomous skill-layer taxonomy."""
+        categories: dict[str, list[dict[str, object]]] = {}
+        for skill in self._skills.values():
+            entry = {
+                "name": skill.name,
+                "category": skill.definition.category,
+                "risk_level": skill.definition.risk_level,
+                "side_effects": list(skill.definition.side_effects),
+                "requires": list(skill.definition.requires),
+                "idempotency": skill.definition.idempotency,
+            }
+            categories.setdefault(skill.definition.autonomy_category or "general", []).append(entry)
+
+        for skills in categories.values():
+            skills.sort(key=lambda item: str(item["name"]))
+
+        return {
+            "category_count": len(categories),
+            "skills": categories,
+        }
+
     def __iter__(self) -> Iterator[Skill]:
         return iter(self._skills.values())
 

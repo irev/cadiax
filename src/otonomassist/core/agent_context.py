@@ -9,15 +9,25 @@ from typing import Any
 import os
 
 from otonomassist.core.secure_storage import decrypt_secret
-from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed
+from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed, ensure_workspace_root_exists
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = PROJECT_ROOT / ".otonomassist"
+DATA_DIR = Path(os.getenv("OTONOMASSIST_STATE_DIR", str(PROJECT_ROOT / ".otonomassist"))).expanduser().resolve()
 MEMORY_FILE = DATA_DIR / "memory.jsonl"
 PLANNER_FILE = DATA_DIR / "planner.json"
 PROFILE_FILE = DATA_DIR / "profile.md"
 LESSONS_FILE = DATA_DIR / "lessons.md"
 SECRETS_FILE = DATA_DIR / "secrets.json"
+EXECUTION_HISTORY_FILE = DATA_DIR / "execution_history.jsonl"
+JOB_QUEUE_FILE = DATA_DIR / "job_queue.json"
+SECRET_NAME_ALIASES = {
+    "OPENAI_API_KEY": "openai_api_key",
+    "openai_api_key": "openai_api_key",
+    "ANTHROPIC_API_KEY": "anthropic_api_key",
+    "anthropic_api_key": "anthropic_api_key",
+    "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
+    "telegram_bot_token": "telegram_bot_token",
+}
 
 DEFAULT_PROFILE = """# Agent Profile
 
@@ -44,6 +54,7 @@ DEFAULT_LESSONS = """# Learned Lessons
 
 def ensure_agent_storage() -> None:
     """Ensure persistent agent files exist."""
+    ensure_workspace_root_exists()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not MEMORY_FILE.exists():
         ensure_internal_state_write_allowed(MEMORY_FILE)
@@ -60,6 +71,12 @@ def ensure_agent_storage() -> None:
     if not SECRETS_FILE.exists():
         ensure_internal_state_write_allowed(SECRETS_FILE)
         SECRETS_FILE.write_text(json.dumps({"secrets": {}}, indent=2), encoding="utf-8")
+    if not EXECUTION_HISTORY_FILE.exists():
+        ensure_internal_state_write_allowed(EXECUTION_HISTORY_FILE)
+        EXECUTION_HISTORY_FILE.touch()
+    if not JOB_QUEUE_FILE.exists():
+        ensure_internal_state_write_allowed(JOB_QUEUE_FILE)
+        JOB_QUEUE_FILE.write_text(json.dumps({"jobs": []}, indent=2), encoding="utf-8")
 
 
 def load_markdown(path: Path, max_chars: int = 1600) -> str:
@@ -179,6 +196,9 @@ def add_planner_task(text: str, status: str = "todo") -> dict[str, Any]:
         "text": text,
         "status": status,
         "notes": [],
+        "retry_count": 0,
+        "max_retries": 2,
+        "last_error": "",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     tasks.append(task)
@@ -200,9 +220,36 @@ def add_planner_note(task_id: int, note: str) -> bool:
 
 
 def get_next_planner_task() -> dict[str, Any] | None:
-    """Return the first todo task."""
+    """Return the highest-priority ready todo task."""
     state = load_planner_state()
-    return next((task for task in state.get("tasks", []) if task.get("status") == "todo"), None)
+    tasks = state.get("tasks", [])
+    done_ids = {int(task.get("id", 0)) for task in tasks if task.get("status") == "done"}
+    ready_tasks = [
+        task
+        for task in tasks
+        if task.get("status") == "todo" and _task_dependencies_satisfied(task, done_ids)
+    ]
+    if not ready_tasks:
+        return None
+    return sorted(
+        ready_tasks,
+        key=lambda item: (-int(item.get("priority", 0) or 0), int(item.get("id", 0) or 0)),
+    )[0]
+
+
+def list_ready_planner_tasks() -> list[dict[str, Any]]:
+    """List planner tasks that are currently ready to run."""
+    state = load_planner_state()
+    tasks = state.get("tasks", [])
+    done_ids = {int(task.get("id", 0)) for task in tasks if task.get("status") == "done"}
+    return [
+        task
+        for task in sorted(
+            tasks,
+            key=lambda item: (-int(item.get("priority", 0) or 0), int(item.get("id", 0) or 0)),
+        )
+        if task.get("status") == "todo" and _task_dependencies_satisfied(task, done_ids)
+    ]
 
 
 def update_planner_task_status(task_id: int, status: str) -> bool:
@@ -215,6 +262,41 @@ def update_planner_task_status(task_id: int, status: str) -> bool:
             save_planner_state(state)
             return True
     return False
+
+
+def get_planner_task(task_id: int) -> dict[str, Any] | None:
+    """Return a planner task by id."""
+    state = load_planner_state()
+    return next((task for task in state.get("tasks", []) if task.get("id") == task_id), None)
+
+
+def update_planner_task_fields(task_id: int, **fields: Any) -> bool:
+    """Update arbitrary planner task fields."""
+    state = load_planner_state()
+    for task in state.get("tasks", []):
+        if task.get("id") == task_id:
+            task.update(fields)
+            state["updated_at"] = datetime.now(timezone.utc).isoformat()
+            save_planner_state(state)
+            return True
+    return False
+
+
+def load_job_queue_state() -> dict[str, Any]:
+    """Load runtime job queue state."""
+    ensure_agent_storage()
+    ensure_read_allowed(JOB_QUEUE_FILE)
+    raw = JOB_QUEUE_FILE.read_text(encoding="utf-8")
+    if not raw.strip():
+        return {"jobs": []}
+    return json.loads(raw)
+
+
+def save_job_queue_state(state: dict[str, Any]) -> None:
+    """Persist runtime job queue state."""
+    ensure_agent_storage()
+    ensure_internal_state_write_allowed(JOB_QUEUE_FILE)
+    _write_text_atomic(JOB_QUEUE_FILE, json.dumps(state, indent=2))
 
 
 def load_secrets_state() -> dict[str, Any]:
@@ -237,7 +319,18 @@ def save_secrets_state(state: dict[str, Any]) -> None:
 def get_secret_value(name: str) -> str | None:
     """Get a decrypted secret value by name for internal runtime use."""
     state = load_secrets_state()
-    meta = state.get("secrets", {}).get(name)
+    secrets = state.get("secrets", {})
+    meta = secrets.get(name)
+    if not meta:
+        canonical_name = canonicalize_secret_name(name)
+        if canonical_name != name:
+            meta = secrets.get(canonical_name)
+    if not meta:
+        lowered = name.lower()
+        for secret_name, secret_meta in secrets.items():
+            if secret_name.lower() == lowered:
+                meta = secret_meta
+                break
     if not meta:
         return None
 
@@ -254,7 +347,20 @@ def get_env_or_secret(env_name: str, secret_name: str | None = None) -> str | No
     value = os.getenv(env_name)
     if value:
         return value
-    return get_secret_value(secret_name or env_name.lower())
+    return get_secret_value(secret_name or canonicalize_secret_name(env_name))
+
+
+def canonicalize_secret_name(name: str) -> str:
+    """Normalize a secret name to its canonical runtime key where known."""
+    return SECRET_NAME_ALIASES.get(name.strip(), name.strip())
+
+
+def _task_dependencies_satisfied(task: dict[str, Any], done_ids: set[int]) -> bool:
+    depends_on = task.get("depends_on", [])
+    if not isinstance(depends_on, list):
+        return True
+    normalized = {int(item) for item in depends_on if str(item).strip().isdigit()}
+    return normalized.issubset(done_ids)
 
 
 def _write_text_atomic(path: Path, text: str) -> None:

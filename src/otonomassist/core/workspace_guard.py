@@ -7,8 +7,12 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_WORKSPACE_ROOT = PROJECT_ROOT / "workspace"
 WORKSPACE_ROOT = Path(
-    os.getenv("OTONOMASSIST_WORKSPACE_ROOT", str(PROJECT_ROOT))
+    os.getenv("OTONOMASSIST_WORKSPACE_ROOT", str(DEFAULT_WORKSPACE_ROOT))
+).expanduser().resolve()
+INTERNAL_STATE_ROOT = Path(
+    os.getenv("OTONOMASSIST_STATE_DIR", str(PROJECT_ROOT / ".otonomassist"))
 ).expanduser().resolve()
 WORKSPACE_ACCESS = os.getenv("OTONOMASSIST_WORKSPACE_ACCESS", "ro").strip().lower() or "ro"
 SKIP_DIRS = {".git", ".venv", "__pycache__", ".mypy_cache", ".pytest_cache", "node_modules"}
@@ -22,6 +26,11 @@ def get_workspace_root() -> Path:
 def get_workspace_access() -> str:
     """Return configured workspace access mode."""
     return WORKSPACE_ACCESS
+
+
+def ensure_workspace_root_exists() -> None:
+    """Ensure the effective workspace root exists."""
+    WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def resolve_workspace_path(path_text: str) -> Path:
@@ -42,6 +51,8 @@ def resolve_workspace_path(path_text: str) -> Path:
 def ensure_read_allowed(path: Path) -> None:
     """Validate a read target remains inside workspace and is not a symlink escape."""
     resolved = path.resolve()
+    if resolved == INTERNAL_STATE_ROOT or INTERNAL_STATE_ROOT in resolved.parents:
+        return
     if resolved != WORKSPACE_ROOT and WORKSPACE_ROOT not in resolved.parents:
         raise ValueError("Path di luar workspace tidak diizinkan.")
 
@@ -58,8 +69,7 @@ def ensure_write_allowed(path: Path) -> None:
 def ensure_internal_state_write_allowed(path: Path) -> None:
     """Allow writes for internal state under .otonomassist regardless of workspace mode."""
     resolved = path.resolve()
-    internal_root = (WORKSPACE_ROOT / ".otonomassist").resolve()
-    if resolved == internal_root or internal_root in resolved.parents:
+    if resolved == INTERNAL_STATE_ROOT or INTERNAL_STATE_ROOT in resolved.parents:
         return
     ensure_write_allowed(path)
 

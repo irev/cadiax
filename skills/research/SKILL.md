@@ -5,6 +5,11 @@
 - description: Memverifikasi informasi faktual, tanggal, jadwal, dan klaim real-world dengan web lookup sebelum menjawab
 - aliases: [search-web, verify, browse]
 - category: capability
+- autonomy_category: knowledge
+- risk_level: medium
+- side_effects: [network_access]
+- requires: [ai_provider, web_search]
+- idempotency: best_effort
 
 ## Description
 Skill ini dipakai untuk pertanyaan yang butuh validasi fakta dunia nyata, terutama jika sensitif terhadap tanggal, jadwal, atau informasi terbaru.

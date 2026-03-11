@@ -30,12 +30,36 @@ Fondasi `Private AI` yang otonom dan stateful di workspace lokal, cukup kuat unt
 - `self-review`
 - `secrets`
 
+## Taxonomy Skill Layer Otonom
+
+Selain pembagian `core / capability / governance`, runtime sekarang mulai memakai taxonomy skill-layer yang lebih dekat ke pola agent otonom populer. Tujuannya agar orchestrator dapat menilai bukan hanya nama skill, tetapi juga jenis aksi, risiko, dan kebutuhannya.
+
+Enam kategori yang dipakai:
+
+- `planning`: skill untuk memecah tujuan, memilih langkah, dan menentukan prioritas
+- `memory`: skill untuk menyimpan identitas, konteks, dan jejak pembelajaran
+- `knowledge`: skill untuk reasoning umum dan pencarian/validasi pengetahuan
+- `environment`: skill untuk membaca atau menjelajah lingkungan kerja lokal
+- `execution`: skill yang benar-benar menindaklanjuti task atau menjalankan loop
+- `governance`: skill untuk audit, safety, secret handling, dan kontrol risiko
+
+Mapping saat ini:
+
+- `planning`: `planner`, `agent-loop`
+- `memory`: `memory`, `profile`
+- `knowledge`: `ai`, `research`
+- `environment`: `workspace`
+- `execution`: `executor`, `runner`
+- `governance`: `self-review`, `secrets`
+
 ## Diagram Sistem
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │                              CLI Layer                               │
 │                     src/otonomassist/cli.py                          │
+│  - setup / status / doctor / chat / run / telegram                  │
+│  - compatibility alias: --setup / --doctor / -i / raw message       │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │
                                 ▼
@@ -47,15 +71,25 @@ Fondasi `Private AI` yang otonom dan stateful di workspace lokal, cukup kuat unt
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────────┐
+│                    Setup + Config Audit Layer                        │
+│  src/otonomassist/core/setup_wizard.py                               │
+│  src/otonomassist/core/config_doctor.py                              │
+└───────────────────────────────┬──────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────────┐
 │                          Assistant Layer                             │
 │                 src/otonomassist/core/assistant.py                   │
 │  - load .env                                                         │
 │  - fallback ke local secrets untuk credential runtime                │
 │  - ensure .otonomassist storage                                      │
+│  - ensure default workspace root exists                              │
 │  - load skills                                                       │
 │  - inject persistent context into prompts                            │
+│  - route direct command / AI fallback / forced research              │
 │  - pilih view presentasi hasil                                       │
 │  - format structured result untuk user                               │
+│  - apply Telegram role-based authorization gate                      │
 └───────────────┬───────────────────────────────┬──────────────────────┘
                 │                               │
                 ▼                               ▼
@@ -85,6 +119,7 @@ Fondasi `Private AI` yang otonom dan stateful di workspace lokal, cukup kuat unt
 │  .otonomassist/planner.json                                          │
 │  .otonomassist/memory.jsonl                                          │
 │  .otonomassist/secrets.json                                          │
+│  .otonomassist/telegram_auth.json                                    │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -111,6 +146,15 @@ Artinya:
 - hasil eksekusi dapat disimpan kembali
 - hasil review dapat membuat task lanjutan
 - agent dapat memberi langkah berikutnya berdasarkan state lokal
+
+Stabilisasi loop yang sudah diterapkan:
+
+- planner/secrets state penting ditulis atomik
+- `executor` mengenali lebih banyak prefix native agar tidak terlalu bergantung pada fallback AI
+- task otonom yang mutatif terhadap `secrets` dan `profile` diblok di jalur executor planner-task
+- `self-review` mendedupe follow-up task terbuka
+- `runner until-idle` menjalankan refleksi di setiap langkah, konsisten dengan mode steps
+- lesson berulang didedupe di recent window
 
 ## Structured Result Pipeline
 
@@ -155,6 +199,36 @@ Makna field:
 
 Field meta tambahan boleh ditambahkan bila perlu, misalnya `verification_status`.
 
+## Skill Capability Contract
+
+Setiap skill sekarang bisa mendeklarasikan metadata tambahan di `SKILL.md`:
+
+- `autonomy_category`
+- `risk_level`
+- `side_effects`
+- `requires`
+- `idempotency`
+
+Contoh:
+
+```text
+## Metadata
+- name: workspace
+- category: capability
+- autonomy_category: environment
+- risk_level: medium
+- side_effects: [workspace_read]
+- requires: [workspace_access]
+- idempotency: idempotent
+```
+
+Kontrak ini dipakai untuk:
+
+- memperkaya konteks routing AI di `Assistant`
+- audit skill layer via command `skills audit`
+- memberi fondasi policy executor yang lebih granular ke depan
+- membantu skill eksternal menyatakan requirement dan risiko secara eksplisit
+
 ## View Presentation
 
 Formatter saat ini mendukung view:
@@ -177,6 +251,14 @@ Bagian ini dikerjakan oleh:
 - [result_formatter.py](/d:/PROJECT/otonomAssist/src/otonomassist/core/result_formatter.py)
 - [assistant.py](/d:/PROJECT/otonomAssist/src/otonomassist/core/assistant.py)
 
+Skill inti yang sudah mengikuti pola ini:
+
+- `research`
+- `workspace`
+- `planner`
+- `memory` untuk read path utama
+- `self-review`
+
 ## Persistent Context
 
 Modul [agent_context.py](/d:/PROJECT/otonomAssist/src/otonomassist/core/agent_context.py) adalah inti persistence.
@@ -189,6 +271,7 @@ Ia menangani:
 - planner json
 - memory jsonl
 - secrets json
+- atomic write untuk planner/secrets
 - helper update task / note / lesson / memory
 
 Konteks yang otomatis masuk ke prompt:
@@ -209,13 +292,15 @@ Secret di `secrets.json` sekarang disimpan terenkripsi lokal di Windows memakai 
 
 Untuk operasi file, arsitektur sekarang memakai boundary workspace terpusat:
 
-- root workspace berasal dari `OTONOMASSIST_WORKSPACE_ROOT` atau default ke root project
+- root workspace berasal dari `OTONOMASSIST_WORKSPACE_ROOT` atau default ke `workspace/` di root project
 - path absolut dan relatif di-resolve lalu divalidasi agar tetap berada di bawah workspace root
 - traversal ke luar workspace ditolak
 - symlink yang mengarah ke luar workspace diabaikan saat enumerasi
 - mode akses kebijakan disiapkan lewat `OTONOMASSIST_WORKSPACE_ACCESS`, default `ro`
 
 Ini penting agar inspeksi file oleh AI tetap terbatas pada workspace lokal yang diizinkan.
+
+Pilihan ini juga menjaga agar skill/asset eksternal tambahan yang dipasang user dapat terkonsentrasi di area kerja yang jelas, terpisah dari state internal `.otonomassist`.
 
 ## Penyimpanan Kredensial
 
@@ -237,6 +322,62 @@ Prinsipnya:
 
 Ini penting karena `memory`, `lessons`, dan `profile` memang dibaca ulang untuk pembelajaran; secret tidak boleh ikut tercampur di sana.
 
+Wizard setup menulis konfigurasi non-secret ke `.env`, lalu menawarkan penyimpanan credential ke encrypted local secrets untuk mengurangi miss-config.
+
+Backend secrets sekarang dibagi menurut platform:
+
+- Windows: DPAPI user-scoped
+- Linux/macOS: portable encrypted file key
+
+Tujuannya adalah menjaga contract runtime tetap sama untuk skill dan service utama, walau treatment backend berbeda per OS.
+
+## Setup dan Config Audit
+
+Layer konfigurasi sekarang dibagi dua:
+
+- `setup_wizard.py`
+  - first-run / reconfigure interaktif
+  - memilih provider
+  - menetapkan workspace root dan mode akses
+  - menawarkan penyimpanan credential ke secrets lokal
+  - mengatur Telegram dasar
+- `config_doctor.py`
+  - audit read-only
+  - memberi status `healthy`, `warning`, atau `critical`
+  - mengecek provider, credential, workspace, Telegram, dan storage
+
+Entry point CLI resmi:
+
+- `otonomassist setup`
+- `otonomassist status`
+- `otonomassist doctor`
+- `otonomassist config status`
+- `otonomassist config setup`
+- `otonomassist chat`
+- `otonomassist run "<message>"`
+- `otonomassist telegram`
+
+## Platform Layer
+
+Fondasi lintas-OS sekarang mulai dipisahkan ke layer platform:
+
+- `src/otonomassist/platform/process_manager.py`
+- `src/otonomassist/platform/service_runtime.py`
+- `src/otonomassist/platform/toolchain.py`
+
+Perannya:
+
+- mendeskripsikan strategi runtime per OS
+- menjaga service utama tidak hardcode Windows-only atau Linux-only
+- memberi contract untuk ekspansi supervisor/service manager berikutnya
+- memberi audit awal untuk toolchain eksternal seperti `git`, `python`, `pip`, `node`, dan `npm`
+
+Status saat ini:
+
+- process dan service runtime sudah punya abstraction
+- supervisor/background daemon penuh belum diimplementasikan
+- `doctor/status` sekarang menampilkan capability layer ini agar gap platform terlihat eksplisit
+
 ## Telegram Authorization Policy
 
 Transport Telegram sekarang memakai policy fail-closed yang cocok untuk private AI:
@@ -252,6 +393,7 @@ Transport Telegram sekarang memakai policy fail-closed yang cocok untuk private 
 - prefix sensitif default seperti `secrets`, `executor`, `runner`, `debug-config`, dan `list-models` dibatasi untuk owner Telegram
 - gate kedua ini juga memeriksa level aksi/subcommand, bukan hanya nama skill
 - akibatnya, `planner list` dapat diizinkan untuk user `approved`, sementara `planner add` tetap owner-only
+- transport Telegram dan `Assistant` sekarang sudah punya regression coverage untuk branch non-owner, unapproved, pairing prompt, dan owner-only prefix
 
 State authorization Telegram disimpan terpisah di:
 
@@ -333,14 +475,13 @@ Yang belum selesai:
 
 - background daemon sungguhan di luar command manual
 - Telegram masih long polling, belum webhook
-- tool execution policy yang lebih granular
+- tool execution policy yang lebih granular di luar guard sensitif awal
 - retrieval memory semantik
 - web-grounded research saat ini paling kuat pada provider OpenAI
 
 ## Langkah Berikut yang Logis
 
-- adapter Telegram yang memanggil `Assistant.handle_message(...)`
-- policy user/chat authorization yang lebih granular untuk Telegram
 - scheduler/background worker
 - retrieval memory berbasis embedding atau ranking
 - executor policy yang lebih ketat untuk aksi tulis/ubah file
+- output doctor machine-readable seperti JSON

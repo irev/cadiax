@@ -14,6 +14,11 @@ class SkillDefinition:
     description: str
     aliases: list[str] = field(default_factory=list)
     category: str = "general"
+    autonomy_category: str = "general"
+    risk_level: str = "medium"
+    side_effects: list[str] = field(default_factory=list)
+    requires: list[str] = field(default_factory=list)
+    idempotency: str = "unknown"
     triggers: list[str] = field(default_factory=list)
     handler_code: str = ""
     response_template: str = "{result}"
@@ -57,6 +62,14 @@ class Skill:
     @property
     def description(self) -> str:
         return self.definition.description
+
+    @property
+    def autonomy_category(self) -> str:
+        return self.definition.autonomy_category
+
+    @property
+    def risk_level(self) -> str:
+        return self.definition.risk_level
 
     def run(self, args: str) -> Any:
         """Execute the skill handler and return the raw result."""

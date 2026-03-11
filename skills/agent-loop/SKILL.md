@@ -5,6 +5,11 @@
 - description: Menjalankan loop semi-otonom dengan membaca profile, lessons, planner, dan memory untuk menentukan langkah berikutnya
 - aliases: [loop, reflect, next-step]
 - category: core
+- autonomy_category: planning
+- risk_level: medium
+- side_effects: [memory_write]
+- requires: [ai_provider]
+- idempotency: non_idempotent
 
 ## Description
 Skill ini menyatukan konteks persisten agent untuk refleksi dan langkah berikutnya.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 from otonomassist.ai.factory import AIProviderFactory
@@ -11,10 +12,13 @@ from otonomassist.core.agent_context import (
     append_lesson,
     append_memory_entry,
     build_agent_context_block,
+    get_planner_task,
     get_next_planner_task,
+    update_planner_task_fields,
     update_planner_task_status,
 )
 from otonomassist.core.assistant import Assistant
+from otonomassist.core.execution_control import classify_error_kind, classify_result_status
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -36,6 +40,7 @@ KNOWN_PREFIXES = [
     "debug-config",
     "list-models",
 ]
+DEFAULT_TASK_MAX_RETRIES = 2
 
 
 def handle(args: str) -> str:
@@ -104,16 +109,18 @@ def _execute_command(command: str, task_id: int | None, original_task: str | Non
         add_planner_note(task_id, f"Executed command: {command}")
         add_planner_note(task_id, f"Result: {result[:500]}")
 
-        if result.startswith("[ERROR]") or result.lower().startswith("error"):
-            update_planner_task_status(task_id, "blocked")
-            append_lesson(f"executor gagal untuk task #{task_id}: {command}")
-            return f"Task #{task_id} gagal dieksekusi.\n{result}"
+        status = classify_result_status(result)
+        if status in {"error", "timeout", "blocked", "degraded"}:
+            retry_outcome = _handle_task_failure(task_id, command, result)
+            if retry_outcome:
+                return retry_outcome
 
         update_planner_task_status(task_id, "done")
+        update_planner_task_fields(task_id, retry_count=0, last_error="")
         append_lesson(f"executor menyelesaikan task #{task_id}: {command}")
         return f"Task #{task_id} selesai dieksekusi.\n{result}"
 
-    if result.startswith("[ERROR]") or result.lower().startswith("error"):
+    if classify_result_status(result) in {"error", "timeout", "blocked", "degraded"}:
         append_lesson(f"executor run gagal: {command}")
     else:
         append_lesson(f"executor run berhasil: {command}")
@@ -139,6 +146,32 @@ def _guard_autonomous_command(command: str, task_id: int | None) -> str | None:
         if normalized == prefix or normalized.startswith(prefix + " "):
             return message
     return None
+
+
+def _handle_task_failure(task_id: int, command: str, result: str) -> str:
+    task = get_planner_task(task_id) or {}
+    retry_count = int(task.get("retry_count", 0) or 0)
+    max_retries = int(task.get("max_retries", _env_int("OTONOMASSIST_TASK_MAX_RETRIES", DEFAULT_TASK_MAX_RETRIES)) or 0)
+    error_kind = classify_error_kind(result)
+
+    update_planner_task_fields(task_id, last_error=result[:500])
+    add_planner_note(task_id, f"Failure classification: {error_kind}")
+
+    if error_kind == "transient" and retry_count < max_retries:
+        new_retry_count = retry_count + 1
+        update_planner_task_fields(task_id, retry_count=new_retry_count)
+        update_planner_task_status(task_id, "todo")
+        add_planner_note(task_id, f"Retry scheduled {new_retry_count}/{max_retries}.")
+        append_lesson(f"executor menjadwalkan retry untuk task #{task_id}: {command}")
+        return (
+            f"Task #{task_id} gagal sementara dan dijadwalkan ulang "
+            f"({new_retry_count}/{max_retries}).\n{result}"
+        )
+
+    update_planner_task_status(task_id, "blocked")
+    update_planner_task_fields(task_id, retry_count=retry_count)
+    append_lesson(f"executor gagal untuk task #{task_id}: {command}")
+    return f"Task #{task_id} gagal dieksekusi.\n{result}"
 
 
 def _resolve_command(task_text: str) -> str:
@@ -182,3 +215,13 @@ def _resolve_command(task_text: str) -> str:
             return resolved
 
     return f"ai {task_text}"
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return default

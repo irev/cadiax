@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from otonomassist.core.agent_context import load_planner_state, save_planner_state
+from otonomassist.core.agent_context import get_next_planner_task, load_planner_state, save_planner_state
 from otonomassist.core.result_builder import build_result
 from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed
 
@@ -55,6 +55,7 @@ def _usage() -> str:
         "Examples:\n"
         "- planner set-goal bangun private ai lokal\n"
         "- planner add buat skill memory\n"
+        "- planner add --priority 5 --depends-on 1,2 implement worker runtime\n"
         "- planner next"
     )
 
@@ -91,6 +92,10 @@ def _add_task(task_text: str) -> str:
     if not task_text:
         return "Planner add membutuhkan isi task."
 
+    task_text, options = _parse_task_options(task_text)
+    if not task_text:
+        return "Planner add membutuhkan isi task."
+
     state = _load_state()
     tasks = state.setdefault("tasks", [])
     task = {
@@ -98,6 +103,12 @@ def _add_task(task_text: str) -> str:
         "text": task_text,
         "status": "todo",
         "notes": [],
+        "priority": options["priority"],
+        "depends_on": options["depends_on"],
+        "blocked_reason": "",
+        "retry_count": 0,
+        "max_retries": options["max_retries"],
+        "last_error": "",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     tasks.append(task)
@@ -130,6 +141,8 @@ def _list_tasks() -> str:
                 {
                     "id": task.get("id"),
                     "status": task.get("status", ""),
+                    "priority": task.get("priority", 0),
+                    "depends_on": ",".join(str(item) for item in task.get("depends_on", [])),
                     "text": task.get("text", ""),
                     "notes_count": len(task.get("notes", [])),
                 }
@@ -143,22 +156,24 @@ def _list_tasks() -> str:
 
 def _next_task() -> str:
     state = _load_state()
-    for task in state.get("tasks", []):
-        if task.get("status") == "todo":
-            return _wrap_result(
-                result_type="planner_next",
-                data={
-                    "goal": state.get("goal") or "-",
-                    "next_task": {
-                        "id": task.get("id"),
-                        "status": task.get("status", ""),
-                        "text": task.get("text", ""),
-                        "notes": task.get("notes", []),
-                    },
-                    "summary": f"Task berikutnya adalah #{task['id']} {task['text']}",
+    task = get_next_planner_task()
+    if task:
+        return _wrap_result(
+            result_type="planner_next",
+            data={
+                "goal": state.get("goal") or "-",
+                "next_task": {
+                    "id": task.get("id"),
+                    "status": task.get("status", ""),
+                    "priority": task.get("priority", 0),
+                    "depends_on": task.get("depends_on", []),
+                    "text": task.get("text", ""),
+                    "notes": task.get("notes", []),
                 },
-                default_view="summary",
-            )
+                "summary": f"Task berikutnya adalah #{task['id']} {task['text']}",
+            },
+            default_view="summary",
+        )
     return "Tidak ada task berikutnya. Semua task selesai atau terblokir."
 
 
@@ -190,6 +205,7 @@ def _mark_blocked(args: str) -> str:
     for task in state.get("tasks", []):
         if task.get("id") == task_id:
             task["status"] = "blocked"
+            task["blocked_reason"] = note
             if note:
                 task.setdefault("notes", []).append(note)
             state["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -229,8 +245,12 @@ def _summary() -> str:
     state = _load_state()
     tasks = state.get("tasks", [])
     counts = {"todo": 0, "done": 0, "blocked": 0}
+    ready_count = 0
+    done_ids = {int(task.get("id", 0) or 0) for task in tasks if task.get("status") == "done"}
     for task in tasks:
         counts[task.get("status", "todo")] = counts.get(task.get("status", "todo"), 0) + 1
+        if task.get("status") == "todo" and _dependencies_satisfied(task, done_ids):
+            ready_count += 1
 
     return _wrap_result(
         result_type="planner_summary",
@@ -240,10 +260,11 @@ def _summary() -> str:
             "todo": counts.get("todo", 0),
             "done": counts.get("done", 0),
             "blocked": counts.get("blocked", 0),
+            "ready": ready_count,
             "summary": (
                 f"Planner memiliki {len(tasks)} task: "
-                f"{counts.get('todo', 0)} todo, {counts.get('done', 0)} done, "
-                f"{counts.get('blocked', 0)} blocked."
+                f"{counts.get('todo', 0)} todo, {ready_count} ready, "
+                f"{counts.get('done', 0)} done, {counts.get('blocked', 0)} blocked."
             ),
         },
         default_view="summary",
@@ -258,3 +279,50 @@ def _wrap_result(result_type: str, data: dict[str, object], default_view: str) -
         source_skill="planner",
         default_view=default_view,
     )
+
+
+def _parse_task_options(raw: str) -> tuple[str, dict[str, object]]:
+    priority = 0
+    max_retries = 2
+    depends_on: list[int] = []
+    text = raw.strip()
+
+    while text.startswith("--"):
+        option, _, remainder = text.partition(" ")
+        option = option.strip().lower()
+        remainder = remainder.strip()
+        if option == "--priority":
+            value, _, remainder = remainder.partition(" ")
+            try:
+                priority = max(0, int(value))
+            except ValueError:
+                priority = 0
+            text = remainder.strip()
+            continue
+        if option == "--depends-on":
+            value, _, remainder = remainder.partition(" ")
+            depends_on = [int(item) for item in value.split(",") if item.strip().isdigit()]
+            text = remainder.strip()
+            continue
+        if option == "--max-retries":
+            value, _, remainder = remainder.partition(" ")
+            try:
+                max_retries = max(0, int(value))
+            except ValueError:
+                max_retries = 2
+            text = remainder.strip()
+            continue
+        break
+
+    return text, {
+        "priority": priority,
+        "depends_on": depends_on,
+        "max_retries": max_retries,
+    }
+
+
+def _dependencies_satisfied(task: dict[str, Any], done_ids: set[int]) -> bool:
+    depends_on = task.get("depends_on", [])
+    if not isinstance(depends_on, list):
+        return True
+    return {int(item) for item in depends_on if str(item).strip().isdigit()}.issubset(done_ids)

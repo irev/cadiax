@@ -5,6 +5,11 @@
 - description: Meninjau output, file, dan rencana kerja agent untuk menemukan risiko, gap, dan perbaikan berikutnya
 - aliases: [review, critique, audit]
 - category: governance
+- autonomy_category: governance
+- risk_level: high
+- side_effects: [memory_write, lesson_write, planner_write]
+- requires: []
+- idempotency: non_idempotent
 
 ## Description
 Skill ini melakukan self-review heuristik terhadap output agent.
