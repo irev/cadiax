@@ -154,7 +154,7 @@ Konsekuensinya, `v1.0.0` harus mencakup paling tidak:
 ## 5. Struktur Folder Project Agent
 
 ```text
-autonomous-ai/
+autonomassist/
 ├─ README.md
 ├─ pyproject.toml
 ├─ .env.example
