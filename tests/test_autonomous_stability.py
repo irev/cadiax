@@ -24,6 +24,7 @@ from otonomassist.core.assistant import Assistant  # noqa: E402
 from otonomassist.core.job_runtime import process_job_queue  # noqa: E402
 from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
+from otonomassist.services import PolicyService  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
     ConversationService,
     InteractionRequest,
@@ -818,6 +819,13 @@ def test_assistant_blocks_unapproved_telegram_user(tmp_path, monkeypatch):
     )
 
     assert result == "Akses Telegram belum diotorisasi untuk operasi ini."
+    events = load_execution_events(limit=10)
+    assert any(
+        event["event_type"] == "policy_decision"
+        and event["status"] == "denied"
+        and event["data"].get("reason") == "telegram_unapproved"
+        for event in events
+    )
 
 
 def test_assistant_blocks_owner_only_executor_for_approved_telegram_user(tmp_path, monkeypatch):
@@ -838,6 +846,27 @@ def test_assistant_blocks_owner_only_executor_for_approved_telegram_user(tmp_pat
 
     assert "dibatasi untuk owner Telegram" in result
     assert "`executor`" in result
+
+
+def test_policy_service_honors_owner_only_prefix_override(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("TELEGRAM_OWNER_ONLY_PREFIXES", "workspace")
+
+    decision = PolicyService().authorize_command(
+        "workspace",
+        "read README.md",
+        context=telegram_module.TransportContext(
+            source="telegram",
+            user_id="200",
+            chat_id="300",
+            roles=("telegram", "approved"),
+            trace_id="trace-policy-1",
+        ),
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "telegram_owner_only_prefix"
+    assert "owner Telegram" in (decision.message or "")
 
 
 def test_telegram_transport_prompts_pairing_for_unapproved_dm(tmp_path, monkeypatch):

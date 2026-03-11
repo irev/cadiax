@@ -7,11 +7,16 @@ from otonomassist.services.interactions import (
     build_conversation_response,
     run_conversation_api,
 )
+from otonomassist.services.policy import PolicyDecision, PolicyService
+from otonomassist.services.runtime import InteractionOrchestrator
 
 __all__ = [
     "ConversationService",
     "InteractionRequest",
     "InteractionResponse",
+    "InteractionOrchestrator",
+    "PolicyDecision",
+    "PolicyService",
     "build_conversation_response",
     "run_conversation_api",
 ]
