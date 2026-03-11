@@ -747,6 +747,48 @@ def test_cli_doctor_report_exposes_whatsapp_interface_snapshot(tmp_path, monkeyp
     assert "[Privacy Controls]" in result.output
 
 
+def test_cli_doctor_reports_structured_preference_profile(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_preference_state(
+        {
+            "preferences": ["jawaban ringkas"],
+            "profile": {
+                "preferred_channels": ["telegram", "email"],
+                "preferred_brevity": "ringkas",
+                "formality": "formal",
+                "proactive_mode": "low",
+                "summary_style": "bullet",
+            },
+        }
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "- preferred_channels: telegram, email" in result.output
+    assert "- formality: formal" in result.output
+    assert payload["personality"]["preference_profile"]["preferred_brevity"] == "ringkas"
+
+
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 

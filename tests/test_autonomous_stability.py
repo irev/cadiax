@@ -203,6 +203,44 @@ def test_personality_service_bootstraps_structured_preferences_from_profile(tmp_
     assert "- ringkas" in service.build_prompt_block()
 
 
+def test_personality_service_persists_structured_preference_profile(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    service = PersonalityService()
+
+    profile = service.update_structured_profile(
+        preferred_channels=["telegram", "email"],
+        preferred_brevity="ringkas",
+        formality="semi-formal",
+        proactive_mode="low",
+        summary_style="bullet",
+    )
+    prompt = service.build_prompt_block()
+
+    assert profile["preferred_channels"] == ["telegram", "email"]
+    assert profile["preferred_brevity"] == "ringkas"
+    assert "preferred_channels: telegram, email" in prompt
+    assert "proactive_mode: low" in prompt
+
+
+def test_profile_skill_supports_structured_profile_commands(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    module = _load_module(ROOT / "skills" / "profile" / "script" / "handler.py", "profile_handler_structured_test")
+
+    set_channels = module.handle("set-channels telegram,email")
+    set_formality = module.handle("set-formality formal")
+    set_brevity = module.handle("set-brevity singkat")
+    show = module.handle("show-structured")
+    remove_pref = module.handle("add-preference jawab ringkas")
+    reset = module.handle("reset-preferences")
+
+    assert "Preferred channels diperbarui." in set_channels
+    assert "Formality preference diperbarui." in set_formality
+    assert "Brevity preference diperbarui." in set_brevity
+    assert "preferred_channels: telegram, email" in show
+    assert "Preference ditambahkan" in remove_pref
+    assert "Structured preferences direset." in reset
+
+
 def test_context_budgeter_truncates_large_prompt_sections(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     service = PersonalityService()

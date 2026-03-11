@@ -83,7 +83,16 @@ DEFAULT_PLANNER_STATE = {"goal": "", "tasks": []}
 DEFAULT_METRICS_STATE = {"counters": {}, "timings": {}, "updated_at": ""}
 DEFAULT_JOB_QUEUE_STATE = {"jobs": []}
 DEFAULT_SCHEDULER_STATE = {"last_run_at": "", "last_status": "", "last_cycles": 0, "last_processed": 0}
-DEFAULT_PREFERENCE_STATE = {"preferences": []}
+DEFAULT_PREFERENCE_STATE = {
+    "preferences": [],
+    "profile": {
+        "preferred_channels": [],
+        "preferred_brevity": "",
+        "formality": "",
+        "proactive_mode": "",
+        "summary_style": "",
+    },
+}
 DEFAULT_HABIT_STATE = {"habits": [], "updated_at": "", "signals_analyzed": 0}
 DEFAULT_MEMORY_SUMMARY_STATE = {"summaries": [], "updated_at": "", "prune_candidates": 0}
 DEFAULT_IDENTITY_STATE = {"identities": [], "updated_at": ""}
@@ -589,24 +598,21 @@ def save_scheduler_state(state: dict[str, Any]) -> None:
 def load_preference_state() -> dict[str, Any]:
     """Load structured personality preferences from durable state."""
     state = _load_durable_json_state(PREFERENCE_STATE_KEY, PREFERENCES_FILE, DEFAULT_PREFERENCE_STATE)
-    if state.get("preferences"):
-        return state
+    normalized = _normalize_preference_state(state)
+    if normalized.get("preferences"):
+        return normalized
     preferences = parse_markdown_section_bullets(PROFILE_FILE, "Preferences")
     if preferences:
-        state = {"preferences": preferences}
+        normalized["preferences"] = preferences
+        state = normalized
         save_preference_state(state)
-    return state
+        return state
+    return normalized
 
 
 def save_preference_state(state: dict[str, Any]) -> None:
     """Persist structured personality preferences."""
-    normalized = {
-        "preferences": [
-            str(item).strip()
-            for item in state.get("preferences", [])
-            if str(item).strip()
-        ]
-    }
+    normalized = _normalize_preference_state(state)
     _save_durable_json_state(PREFERENCE_STATE_KEY, PREFERENCES_FILE, normalized)
 
 
@@ -655,6 +661,11 @@ def list_preferences() -> list[str]:
         seen.add(key)
         items.append(text)
     return items
+
+
+def get_preference_profile() -> dict[str, Any]:
+    """Return normalized structured preference profile fields."""
+    return dict(load_preference_state().get("profile", {}))
 
 
 def get_secret_value(name: str) -> str | None:
@@ -755,19 +766,26 @@ def _ensure_state_in_store(
 
 def _ensure_preference_state_in_store(store: SQLiteStateStore) -> None:
     record = store.get_json_state(PREFERENCE_STATE_KEY)
-    if record is not None and record.value.get("preferences"):
-        return
+    if record is not None:
+        normalized_record = _normalize_preference_state(record.value)
+        if normalized_record.get("preferences") or any(normalized_record.get("profile", {}).values()):
+            store.upsert_json_state(PREFERENCE_STATE_KEY, normalized_record)
+            ensure_internal_state_write_allowed(PREFERENCES_FILE)
+            _write_text_atomic(PREFERENCES_FILE, json.dumps(normalized_record, indent=2))
+            return
     legacy_value, _ = _read_legacy_json_state(PREFERENCES_FILE, DEFAULT_PREFERENCE_STATE)
     preferences = [
         str(item).strip()
         for item in legacy_value.get("preferences", [])
         if str(item).strip()
     ]
+    normalized = _normalize_preference_state(legacy_value)
     if not preferences:
         preferences = parse_markdown_section_bullets(PROFILE_FILE, "Preferences")
-    store.upsert_json_state(PREFERENCE_STATE_KEY, {"preferences": preferences})
+    normalized["preferences"] = preferences
+    store.upsert_json_state(PREFERENCE_STATE_KEY, normalized)
     ensure_internal_state_write_allowed(PREFERENCES_FILE)
-    _write_text_atomic(PREFERENCES_FILE, json.dumps({"preferences": preferences}, indent=2))
+    _write_text_atomic(PREFERENCES_FILE, json.dumps(normalized, indent=2))
 
 
 def _load_durable_json_state(
@@ -833,6 +851,28 @@ def _parse_datetime(value: str) -> datetime | None:
 
 def _clone_json_dict(value: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(value))
+
+
+def _normalize_preference_state(state: dict[str, Any]) -> dict[str, Any]:
+    profile = state.get("profile", {}) if isinstance(state.get("profile"), dict) else {}
+    return {
+        "preferences": [
+            str(item).strip()
+            for item in state.get("preferences", [])
+            if str(item).strip()
+        ],
+        "profile": {
+            "preferred_channels": [
+                str(item).strip()
+                for item in profile.get("preferred_channels", [])
+                if str(item).strip()
+            ],
+            "preferred_brevity": str(profile.get("preferred_brevity", "") or "").strip(),
+            "formality": str(profile.get("formality", "") or "").strip(),
+            "proactive_mode": str(profile.get("proactive_mode", "") or "").strip(),
+            "summary_style": str(profile.get("summary_style", "") or "").strip(),
+        },
+    }
 
 
 def append_markdown_bullet(path: Path, section_title: str, text: str) -> None:

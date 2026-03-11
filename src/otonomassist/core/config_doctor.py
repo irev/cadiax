@@ -58,6 +58,7 @@ def get_config_status_data() -> dict[str, object]:
     scheduler = get_scheduler_summary()
     state_storage = agent_context.get_state_storage_info()
     personality = PersonalityService()
+    preference_profile = personality.get_structured_profile()
     habits = HabitModelService().load_or_refresh()
     memory_summary = agent_context.load_memory_summary_state()
     identity_state = agent_context.load_identity_state()
@@ -148,6 +149,7 @@ def get_config_status_data() -> dict[str, object]:
             "habit_count": len(habits.get("habits", [])),
             "habit_signals_analyzed": habits.get("signals_analyzed", 0),
             "habits": habits.get("habits", []),
+            "preference_profile": preference_profile,
         },
         "memory": {
             "summary_count": len(memory_summary.get("summaries", [])),
@@ -368,6 +370,17 @@ def get_config_status_report() -> str:
             f"- habit_signals_analyzed: {data['personality']['habit_signals_analyzed']}",
         ]
     )
+    preference_profile = data["personality"].get("preference_profile", {})
+    if preference_profile.get("preferred_channels"):
+        lines.append(f"- preferred_channels: {', '.join(preference_profile['preferred_channels'])}")
+    if preference_profile.get("preferred_brevity"):
+        lines.append(f"- preferred_brevity: {preference_profile['preferred_brevity']}")
+    if preference_profile.get("formality"):
+        lines.append(f"- formality: {preference_profile['formality']}")
+    if preference_profile.get("proactive_mode"):
+        lines.append(f"- proactive_mode: {preference_profile['proactive_mode']}")
+    if preference_profile.get("summary_style"):
+        lines.append(f"- summary_style: {preference_profile['summary_style']}")
     for habit in data["personality"].get("habits", [])[:3]:
         lines.append(
             f"- habit:{habit.get('kind')} -> {habit.get('value')} "
