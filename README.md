@@ -224,6 +224,11 @@ CLI utama sekarang mendukung subcommand resmi:
 - `otonomassist metrics`
 - `otonomassist metrics --json`
 - `otonomassist api --host 127.0.0.1 --port 8787`
+- `otonomassist conversation-api --host 127.0.0.1 --port 8788`
+- `otonomassist service status`
+- `otonomassist service show worker --runtime posix`
+- `otonomassist service write`
+- `otonomassist service run worker --interval 5 --steps 5 --max-loops 0`
 - `otonomassist scheduler --cycles 3 --interval 5`
 - `otonomassist external audit`
 - `otonomassist external sync`

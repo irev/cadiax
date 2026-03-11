@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 import os
 
+from otonomassist.storage import SQLiteStateStore
 from otonomassist.core.secure_storage import decrypt_secret
 from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed, ensure_workspace_root_exists
 
@@ -22,6 +23,7 @@ EXECUTION_HISTORY_FILE = DATA_DIR / "execution_history.jsonl"
 METRICS_FILE = DATA_DIR / "execution_metrics.json"
 JOB_QUEUE_FILE = DATA_DIR / "job_queue.json"
 SCHEDULER_STATE_FILE = DATA_DIR / "scheduler_state.json"
+STATE_DB_FILENAME = "state.db"
 SECRET_NAME_ALIASES = {
     "OPENAI_API_KEY": "openai_api_key",
     "openai_api_key": "openai_api_key",
@@ -53,6 +55,16 @@ DEFAULT_LESSONS = """# Learned Lessons
 - Belum ada pelajaran yang dikonsolidasikan.
 """
 
+PLANNER_STATE_KEY = "planner"
+JOB_QUEUE_STATE_KEY = "job_queue"
+METRICS_STATE_KEY = "metrics"
+SCHEDULER_STATE_KEY = "scheduler"
+
+DEFAULT_PLANNER_STATE = {"goal": "", "tasks": []}
+DEFAULT_METRICS_STATE = {"counters": {}, "timings": {}, "updated_at": ""}
+DEFAULT_JOB_QUEUE_STATE = {"jobs": []}
+DEFAULT_SCHEDULER_STATE = {"last_run_at": "", "last_status": "", "last_cycles": 0, "last_processed": 0}
+
 
 def ensure_agent_storage() -> None:
     """Ensure persistent agent files exist."""
@@ -63,7 +75,7 @@ def ensure_agent_storage() -> None:
         MEMORY_FILE.touch()
     if not PLANNER_FILE.exists():
         ensure_internal_state_write_allowed(PLANNER_FILE)
-        PLANNER_FILE.write_text(json.dumps({"goal": "", "tasks": []}, indent=2), encoding="utf-8")
+        PLANNER_FILE.write_text(json.dumps(DEFAULT_PLANNER_STATE, indent=2), encoding="utf-8")
     if not PROFILE_FILE.exists():
         ensure_internal_state_write_allowed(PROFILE_FILE)
         PROFILE_FILE.write_text(DEFAULT_PROFILE, encoding="utf-8")
@@ -79,18 +91,40 @@ def ensure_agent_storage() -> None:
     if not METRICS_FILE.exists():
         ensure_internal_state_write_allowed(METRICS_FILE)
         METRICS_FILE.write_text(
-            json.dumps({"counters": {}, "timings": {}, "updated_at": ""}, indent=2),
+            json.dumps(DEFAULT_METRICS_STATE, indent=2),
             encoding="utf-8",
         )
     if not JOB_QUEUE_FILE.exists():
         ensure_internal_state_write_allowed(JOB_QUEUE_FILE)
-        JOB_QUEUE_FILE.write_text(json.dumps({"jobs": []}, indent=2), encoding="utf-8")
+        JOB_QUEUE_FILE.write_text(json.dumps(DEFAULT_JOB_QUEUE_STATE, indent=2), encoding="utf-8")
     if not SCHEDULER_STATE_FILE.exists():
         ensure_internal_state_write_allowed(SCHEDULER_STATE_FILE)
         SCHEDULER_STATE_FILE.write_text(
-            json.dumps({"last_run_at": "", "last_status": "", "last_cycles": 0, "last_processed": 0}, indent=2),
+            json.dumps(DEFAULT_SCHEDULER_STATE, indent=2),
             encoding="utf-8",
         )
+    ensure_internal_state_write_allowed(get_state_db_path())
+    _get_state_store().ensure_initialized()
+    _bootstrap_durable_state()
+
+
+def get_state_db_path() -> Path:
+    """Return the durable SQLite state database path."""
+    raw = os.getenv("OTONOMASSIST_STATE_DB", "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (DATA_DIR / STATE_DB_FILENAME).resolve()
+
+
+def get_state_storage_info() -> dict[str, str]:
+    """Describe the current durable state backend."""
+    db_path = get_state_db_path()
+    return {
+        "backend": "sqlite",
+        "path": str(db_path),
+        "legacy_mirror": "enabled",
+        "exists": "yes" if db_path.exists() else "no",
+    }
 
 
 def load_markdown(path: Path, max_chars: int = 1600) -> str:
@@ -121,16 +155,12 @@ def load_recent_memories(limit: int = 8) -> list[dict[str, Any]]:
 
 def load_planner_state() -> dict[str, Any]:
     """Load planner state."""
-    ensure_agent_storage()
-    ensure_read_allowed(PLANNER_FILE)
-    return json.loads(PLANNER_FILE.read_text(encoding="utf-8"))
+    return _load_durable_json_state(PLANNER_STATE_KEY, PLANNER_FILE, DEFAULT_PLANNER_STATE)
 
 
 def save_planner_state(state: dict[str, Any]) -> None:
     """Persist planner state."""
-    ensure_agent_storage()
-    ensure_internal_state_write_allowed(PLANNER_FILE)
-    _write_text_atomic(PLANNER_FILE, json.dumps(state, indent=2))
+    _save_durable_json_state(PLANNER_STATE_KEY, PLANNER_FILE, state)
 
 
 def build_agent_context_block(query: str | None = None) -> str:
@@ -325,19 +355,12 @@ def retrieve_relevant_memories(query: str, limit: int = 5) -> list[dict[str, Any
 
 def load_job_queue_state() -> dict[str, Any]:
     """Load runtime job queue state."""
-    ensure_agent_storage()
-    ensure_read_allowed(JOB_QUEUE_FILE)
-    raw = JOB_QUEUE_FILE.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {"jobs": []}
-    return json.loads(raw)
+    return _load_durable_json_state(JOB_QUEUE_STATE_KEY, JOB_QUEUE_FILE, DEFAULT_JOB_QUEUE_STATE)
 
 
 def save_job_queue_state(state: dict[str, Any]) -> None:
     """Persist runtime job queue state."""
-    ensure_agent_storage()
-    ensure_internal_state_write_allowed(JOB_QUEUE_FILE)
-    _write_text_atomic(JOB_QUEUE_FILE, json.dumps(state, indent=2))
+    _save_durable_json_state(JOB_QUEUE_STATE_KEY, JOB_QUEUE_FILE, state)
 
 
 def load_secrets_state() -> dict[str, Any]:
@@ -359,36 +382,22 @@ def save_secrets_state(state: dict[str, Any]) -> None:
 
 def load_metrics_state() -> dict[str, Any]:
     """Load aggregated execution metrics state."""
-    ensure_agent_storage()
-    ensure_read_allowed(METRICS_FILE)
-    raw = METRICS_FILE.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {"counters": {}, "timings": {}, "updated_at": ""}
-    return json.loads(raw)
+    return _load_durable_json_state(METRICS_STATE_KEY, METRICS_FILE, DEFAULT_METRICS_STATE)
 
 
 def save_metrics_state(state: dict[str, Any]) -> None:
     """Persist aggregated execution metrics state."""
-    ensure_agent_storage()
-    ensure_internal_state_write_allowed(METRICS_FILE)
-    _write_text_atomic(METRICS_FILE, json.dumps(state, indent=2))
+    _save_durable_json_state(METRICS_STATE_KEY, METRICS_FILE, state)
 
 
 def load_scheduler_state() -> dict[str, Any]:
     """Load scheduler runtime state."""
-    ensure_agent_storage()
-    ensure_read_allowed(SCHEDULER_STATE_FILE)
-    raw = SCHEDULER_STATE_FILE.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {"last_run_at": "", "last_status": "", "last_cycles": 0, "last_processed": 0}
-    return json.loads(raw)
+    return _load_durable_json_state(SCHEDULER_STATE_KEY, SCHEDULER_STATE_FILE, DEFAULT_SCHEDULER_STATE)
 
 
 def save_scheduler_state(state: dict[str, Any]) -> None:
     """Persist scheduler runtime state."""
-    ensure_agent_storage()
-    ensure_internal_state_write_allowed(SCHEDULER_STATE_FILE)
-    _write_text_atomic(SCHEDULER_STATE_FILE, json.dumps(state, indent=2))
+    _save_durable_json_state(SCHEDULER_STATE_KEY, SCHEDULER_STATE_FILE, state)
 
 
 def get_secret_value(name: str) -> str | None:
@@ -452,6 +461,95 @@ def _write_text_atomic(path: Path, text: str) -> None:
     temp_path = path.with_name(f"{path.name}.tmp")
     temp_path.write_text(text, encoding="utf-8")
     temp_path.replace(path)
+
+
+def _get_state_store() -> SQLiteStateStore:
+    return SQLiteStateStore(get_state_db_path())
+
+
+def _bootstrap_durable_state() -> None:
+    store = _get_state_store()
+    _ensure_state_in_store(store, PLANNER_STATE_KEY, PLANNER_FILE, DEFAULT_PLANNER_STATE)
+    _ensure_state_in_store(store, JOB_QUEUE_STATE_KEY, JOB_QUEUE_FILE, DEFAULT_JOB_QUEUE_STATE)
+    _ensure_state_in_store(store, METRICS_STATE_KEY, METRICS_FILE, DEFAULT_METRICS_STATE)
+    _ensure_state_in_store(store, SCHEDULER_STATE_KEY, SCHEDULER_STATE_FILE, DEFAULT_SCHEDULER_STATE)
+
+
+def _ensure_state_in_store(
+    store: SQLiteStateStore,
+    state_key: str,
+    legacy_path: Path,
+    default: dict[str, Any],
+) -> None:
+    if store.get_json_state(state_key) is not None:
+        return
+    value, _ = _read_legacy_json_state(legacy_path, default)
+    store.upsert_json_state(state_key, value)
+
+
+def _load_durable_json_state(
+    state_key: str,
+    legacy_path: Path,
+    default: dict[str, Any],
+) -> dict[str, Any]:
+    ensure_agent_storage()
+    store = _get_state_store()
+    record = store.get_json_state(state_key)
+    legacy_value, legacy_mtime = _read_legacy_json_state(legacy_path, default)
+    if record is None:
+        store.upsert_json_state(state_key, legacy_value)
+        return legacy_value
+
+    record_time = _parse_datetime(record.updated_at)
+    if legacy_mtime is not None and (record_time is None or legacy_mtime >= record_time):
+        store.upsert_json_state(state_key, legacy_value)
+        return legacy_value
+    return record.value
+
+
+def _save_durable_json_state(
+    state_key: str,
+    legacy_path: Path,
+    state: dict[str, Any],
+) -> None:
+    ensure_agent_storage()
+    ensure_internal_state_write_allowed(legacy_path)
+    _write_text_atomic(legacy_path, json.dumps(state, indent=2))
+    _get_state_store().upsert_json_state(state_key, state)
+
+
+def _read_legacy_json_state(
+    path: Path,
+    default: dict[str, Any],
+) -> tuple[dict[str, Any], datetime | None]:
+    ensure_read_allowed(path)
+    if not path.exists():
+        return _clone_json_dict(default), None
+    raw = path.read_text(encoding="utf-8")
+    mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    if not raw.strip():
+        return _clone_json_dict(default), mtime
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return _clone_json_dict(default), mtime
+    if not isinstance(payload, dict):
+        return _clone_json_dict(default), mtime
+    return payload, mtime
+
+
+def _parse_datetime(value: str) -> datetime | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _clone_json_dict(value: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(json.dumps(value))
 
 
 def append_markdown_bullet(path: Path, section_title: str, text: str) -> None:

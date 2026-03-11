@@ -203,6 +203,7 @@ otonomassist metrics --json
 ```
 
 Command ini membaca agregat dari `.otonomassist/execution_metrics.json` untuk melihat volume command/skill, timeout, error, dan timing rata-rata.
+State runtime durable sekarang juga disimpan di `.otonomassist/state.db`, sementara file JSON/JSONL lama tetap dipertahankan sebagai mirror kompatibilitas.
 
 Timeout skill global bisa diatur lewat:
 
@@ -231,6 +232,62 @@ Jika `OTONOMASSIST_ADMIN_TOKEN` diisi, sertakan salah satu:
 
 - header `X-OtonomAssist-Token: <token>`
 - header `Authorization: Bearer <token>`
+
+Conversation API lokal:
+
+```bash
+otonomassist conversation-api --host 127.0.0.1 --port 8788
+```
+
+Endpoint yang tersedia:
+
+- `GET /health`
+- `POST /messages`
+- `POST /v1/messages`
+
+Jika `OTONOMASSIST_CONVERSATION_TOKEN` diisi, sertakan salah satu:
+
+- header `X-OtonomAssist-Conversation-Token: <token>`
+- header `Authorization: Bearer <token>`
+
+## Service Wrapper
+
+Untuk melihat readiness runtime service:
+
+```bash
+otonomassist service status
+```
+
+Untuk melihat artifact wrapper yang digenerate:
+
+```bash
+otonomassist service show worker --runtime posix
+otonomassist service show admin-api --runtime windows
+```
+
+Untuk menulis wrapper ke disk:
+
+```bash
+otonomassist service write
+otonomassist service write worker --runtime posix
+```
+
+Default output ada di:
+
+```text
+.otonomassist/service-wrappers/
+```
+
+Untuk menjalankan target sebagai foreground process yang siap disupervise:
+
+```bash
+otonomassist service run worker --interval 5 --steps 5 --max-loops 0
+otonomassist service run scheduler --interval 60 --steps 5 --max-loops 0
+otonomassist service run admin-api --host 127.0.0.1 --port 8787
+otonomassist service run conversation-api --host 127.0.0.1 --port 8788
+```
+
+`--max-loops 0` berarti berjalan terus sampai dihentikan supervisor atau operator.
 
 ## Asset Eksternal
 

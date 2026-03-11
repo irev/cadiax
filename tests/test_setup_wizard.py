@@ -14,6 +14,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from otonomassist.cli import main  # noqa: E402
+import otonomassist.cli as cli_module  # noqa: E402
 from otonomassist.core import agent_context, workspace_guard  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
 from otonomassist.core.skill_loader import SkillLoader  # noqa: E402
@@ -123,6 +124,111 @@ def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypat
     secrets_state = json.loads(agent_context.SECRETS_FILE.read_text(encoding="utf-8"))
     assert secrets_state["secrets"]["openai_api_key"]["encrypted_value"] == "enc:sk-test-openai"
     assert secrets_state["secrets"]["telegram_bot_token"]["encrypted_value"] == "enc:tg-test-token"
+
+
+def test_cli_conversation_api_command_starts_separate_service(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_conversation_api(service, host, port):
+        captured["service"] = service
+        captured["host"] = host
+        captured["port"] = port
+
+    monkeypatch.setattr(cli_module, "run_conversation_api", fake_run_conversation_api)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["conversation-api", "--host", "0.0.0.0", "--port", "8790"])
+
+    assert result.exit_code == 0
+    assert "Conversation API listening on http://0.0.0.0:8790" in result.output
+    assert captured["host"] == "0.0.0.0"
+    assert captured["port"] == 8790
+    assert captured["service"].__class__.__name__ == "ConversationService"
+
+
+def test_cli_service_status_reports_wrapper_targets(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["service", "status"])
+
+    assert result.exit_code == 0
+    assert "Service Runtime" in result.output
+    assert "wrapper_output_dir:" in result.output
+    assert "worker:" in result.output
+    assert "conversation-api:" in result.output
+
+
+def test_cli_service_show_renders_posix_worker_artifacts(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["service", "show", "worker", "--runtime", "posix"])
+
+    assert result.exit_code == 0
+    assert "Service Wrapper Artifacts: worker" in result.output
+    assert "[otonomassist-worker.service]" in result.output
+    assert "service run worker" in result.output
+
+
+def test_cli_service_write_generates_wrapper_files(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    output_dir = tmp_path / "wrappers"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["service", "write", "worker", "--runtime", "posix", "--output-dir", str(output_dir)],
+    )
+
+    assert result.exit_code == 0
+    assert (output_dir / "otonomassist-worker.service").exists()
+    assert (output_dir / "otonomassist-worker.sh").exists()
+
+
+def test_cli_service_run_uses_named_service_target(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_named_service_target(
+        target,
+        *,
+        skills_dir,
+        host,
+        port,
+        interval_seconds,
+        steps,
+        enqueue_first,
+        until_idle,
+        max_loops,
+    ):
+        captured.update(
+            {
+                "target": target,
+                "skills_dir": skills_dir,
+                "host": host,
+                "port": port,
+                "interval_seconds": interval_seconds,
+                "steps": steps,
+                "enqueue_first": enqueue_first,
+                "until_idle": until_idle,
+                "max_loops": max_loops,
+            }
+        )
+        return {"output": "service-run-ok"}
+
+    monkeypatch.setattr(cli_module, "run_named_service_target", fake_run_named_service_target)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["service", "run", "worker", "--max-loops", "1"])
+
+    assert result.exit_code == 0
+    assert "service-run-ok" in result.output
+    assert captured["target"] == "worker"
+    assert captured["max_loops"] == 1
 
 
 def test_should_recommend_setup_requires_provider_credential_for_remote_provider(tmp_path, monkeypatch):
@@ -465,6 +571,7 @@ def test_cli_status_reports_metrics_file_path(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert "- metrics_file:" in result.output
+    assert "- state_db_file:" in result.output
 
 
 def test_cli_scheduler_runs_cycles_and_updates_status_report(tmp_path, monkeypatch):
@@ -535,6 +642,7 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
 
     assert workspace_root.exists()
     assert workspace_root.is_dir()
+    assert agent_context.get_state_db_path().exists()
 
 
 def test_run_process_wrapper_executes_python_command():

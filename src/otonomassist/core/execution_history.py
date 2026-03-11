@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import otonomassist.core.agent_context as agent_context
+from otonomassist.storage import SQLiteStateStore
 from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed
 
 
@@ -29,6 +30,7 @@ def append_execution_event(
 ) -> dict[str, Any]:
     """Append one structured execution event to the local history log."""
     agent_context.ensure_agent_storage()
+    _sync_execution_history_store()
     event = {
         "event_id": uuid.uuid4().hex,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -44,23 +46,15 @@ def append_execution_event(
     ensure_internal_state_write_allowed(agent_context.EXECUTION_HISTORY_FILE)
     with agent_context.EXECUTION_HISTORY_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=True) + "\n")
+    _get_state_store().append_execution_event(event)
     return event
 
 
 def load_execution_events(limit: int = 20) -> list[dict[str, Any]]:
     """Load the most recent execution events."""
     agent_context.ensure_agent_storage()
-    ensure_read_allowed(agent_context.EXECUTION_HISTORY_FILE)
-    entries: list[dict[str, Any]] = []
-    for line in agent_context.EXECUTION_HISTORY_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entries.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return entries[-limit:]
+    _sync_execution_history_store()
+    return _get_state_store().load_execution_events(limit=limit)
 
 
 def export_execution_events(limit: int = 20) -> list[dict[str, Any]]:
@@ -110,3 +104,24 @@ def _truncate_text(value: str, limit: int = 240) -> str:
     if len(text) <= limit:
         return text
     return text[:limit].rstrip() + "..."
+
+
+def _get_state_store() -> SQLiteStateStore:
+    return SQLiteStateStore(agent_context.get_state_db_path())
+
+
+def _sync_execution_history_store() -> None:
+    store = _get_state_store()
+    if store.count_execution_events() > 0:
+        return
+    ensure_read_allowed(agent_context.EXECUTION_HISTORY_FILE)
+    for line in agent_context.EXECUTION_HISTORY_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            store.append_execution_event(event)

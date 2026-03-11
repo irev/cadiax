@@ -1,0 +1,16 @@
+"""Interaction service surfaces."""
+
+from otonomassist.services.interactions.conversation_api import (
+    build_conversation_response,
+    run_conversation_api,
+)
+from otonomassist.services.interactions.conversation_service import ConversationService
+from otonomassist.services.interactions.models import InteractionRequest, InteractionResponse
+
+__all__ = [
+    "ConversationService",
+    "InteractionRequest",
+    "InteractionResponse",
+    "build_conversation_response",
+    "run_conversation_api",
+]

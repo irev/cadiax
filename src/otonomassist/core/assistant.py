@@ -199,7 +199,7 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
             _, payload = build_admin_snapshot("/status")
             return self._finalize_command_result(context, command, str(payload), command_started)
         if cmd_lower in {"jobs enqueue", "job enqueue"}:
-            job = enqueue_ready_planner_task()
+            job = enqueue_ready_planner_task(trace_id=trace_id, source=context.source)
             if not job:
                 return self._finalize_command_result(context, command, "Tidak ada task ready untuk dimasukkan ke job queue.", command_started)
             return self._finalize_command_result(

@@ -21,6 +21,14 @@ from otonomassist.core import workspace_guard  # noqa: E402
 from otonomassist.core.admin_api import build_admin_snapshot  # noqa: E402
 from otonomassist.ai.factory import AIProviderFactory  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
+from otonomassist.core.job_runtime import process_job_queue  # noqa: E402
+from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
+from otonomassist.platform import run_worker_service  # noqa: E402
+from otonomassist.services.interactions import (  # noqa: E402
+    ConversationService,
+    InteractionRequest,
+    build_conversation_response,
+)
 from otonomassist.transports.telegram import TelegramPollingTransport  # noqa: E402
 import otonomassist.transports.telegram as telegram_module  # noqa: E402
 
@@ -395,6 +403,149 @@ def test_assistant_updates_execution_metrics_for_completed_commands(tmp_path, mo
     assert "command_completed" in "".join(metrics["counters"].keys())
 
 
+def test_conversation_service_records_interaction_trace_events(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    response = service.handle(
+        InteractionRequest(
+            message="help",
+            source="api",
+            user_id="user-42",
+            session_id="session-42",
+        )
+    )
+    events = load_execution_events(limit=10)
+    event_types = [event["event_type"] for event in events]
+    traced = [
+        event for event in events
+        if event["event_type"] in {"interaction_received", "interaction_completed", "command_received", "command_completed"}
+    ]
+
+    assert response.trace_id
+    assert "interaction_received" in event_types
+    assert "interaction_completed" in event_types
+    assert len({event["trace_id"] for event in traced}) == 1
+
+
+def test_worker_trace_records_job_task_and_cycle_events(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    agent_context.add_planner_task("memory add jejak worker trace", status="todo")
+
+    result = process_job_queue(
+        assistant,
+        max_jobs=1,
+        enqueue_first=True,
+        until_idle=False,
+        trace_id="worker-cycle-root",
+        source="worker",
+    )
+    events = load_execution_events(limit=20)
+    event_types = [event["event_type"] for event in events]
+
+    assert result["processed"] == 1
+    assert "worker_cycle_started" in event_types
+    assert "worker_cycle_completed" in event_types
+    assert "job_enqueued" in event_types
+    assert "job_leased" in event_types
+    assert "task_execution_started" in event_types
+    assert "task_execution_completed" in event_types
+    assert "job_completed" in event_types
+    assert any(
+        event["event_type"] == "task_execution_completed"
+        and event["data"].get("parent_trace_id") == "worker-cycle-root"
+        for event in events
+    )
+
+
+def test_scheduler_trace_records_scheduler_and_worker_cycles(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    agent_context.add_planner_task("memory add jejak scheduler trace", status="todo")
+
+    result = run_scheduler(
+        assistant,
+        cycles=1,
+        interval_seconds=0.0,
+        max_jobs_per_cycle=1,
+        enqueue_first=True,
+        until_idle=True,
+        trace_id="scheduler-root",
+        source="scheduler",
+    )
+    events = load_execution_events(limit=30)
+    event_types = [event["event_type"] for event in events]
+
+    assert result["processed"] == 1
+    assert "scheduler_run_started" in event_types
+    assert "scheduler_run_completed" in event_types
+    assert "scheduler_cycle_started" in event_types
+    assert "scheduler_cycle_completed" in event_types
+    assert "worker_cycle_completed" in event_types
+    assert any(
+        event["event_type"] == "scheduler_cycle_completed"
+        and event["data"].get("parent_trace_id") == "scheduler-root"
+        for event in events
+    )
+
+
+def test_worker_service_records_service_cycle_trace_events(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.add_planner_task("memory add jejak service worker", status="todo")
+
+    result = run_worker_service(
+        skills_dir=ROOT / "skills",
+        interval_seconds=0.0,
+        steps=1,
+        enqueue_first=True,
+        until_idle=False,
+        max_loops=1,
+    )
+    events = load_execution_events(limit=30)
+    event_types = [event["event_type"] for event in events]
+
+    assert result["loops"] == 1
+    assert "service_run_started" in event_types
+    assert "service_cycle_started" in event_types
+    assert "service_cycle_completed" in event_types
+    assert "service_run_completed" in event_types
+
+
+def test_durable_state_store_imports_newer_legacy_planner_file(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    initial = agent_context.load_planner_state()
+    assert initial["tasks"] == []
+
+    planner_payload = {
+        "goal": "import dari legacy file",
+        "tasks": [
+            {
+                "id": 1,
+                "text": "memory add dari legacy file",
+                "status": "todo",
+                "notes": [],
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ],
+    }
+    time.sleep(0.02)
+    agent_context.PLANNER_FILE.write_text(json.dumps(planner_payload, indent=2), encoding="utf-8")
+
+    reloaded = agent_context.load_planner_state()
+
+    assert reloaded["goal"] == "import dari legacy file"
+    assert reloaded["tasks"][0]["text"] == "memory add dari legacy file"
+
+
 def test_admin_api_snapshot_exposes_status_metrics_and_history(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     (tmp_path / "README.md").write_text("README untuk admin api\n", encoding="utf-8")
@@ -429,6 +580,67 @@ def test_admin_api_requires_token_when_configured(tmp_path, monkeypatch):
     assert unauthorized_payload["error"] == "unauthorized"
     assert authorized_code == 200
     assert "overall" in authorized_payload
+
+
+def test_conversation_api_handles_message_and_returns_trace_metadata(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    status_code, payload = build_conversation_response(
+        "/v1/messages",
+        service=service,
+        method="POST",
+        body=json.dumps(
+            {
+                "message": "help",
+                "source": "api",
+                "user_id": "user-1",
+                "session_id": "session-1",
+                "roles": ["api", "trusted"],
+            }
+        ).encode("utf-8"),
+    )
+
+    assert status_code == 200
+    assert payload["status"] == "ok"
+    assert payload["source"] == "api"
+    assert payload["user_id"] == "user-1"
+    assert payload["session_id"] == "session-1"
+    assert payload["trace_id"]
+    assert payload["metadata"]["roles"] == ["api", "trusted"]
+    assert payload["response"].startswith("OtonomAssist - Available commands:")
+
+
+def test_conversation_api_requires_token_when_configured(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("OTONOMASSIST_CONVERSATION_TOKEN", "token-rahasia")
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+    body = json.dumps({"message": "help"}).encode("utf-8")
+
+    unauthorized_code, unauthorized_payload = build_conversation_response(
+        "/v1/messages",
+        service=service,
+        method="POST",
+        body=body,
+    )
+    authorized_code, authorized_payload = build_conversation_response(
+        "/v1/messages",
+        service=service,
+        method="POST",
+        body=body,
+        headers={"Authorization": "Bearer token-rahasia"},
+    )
+
+    assert unauthorized_code == 401
+    assert unauthorized_payload["error"] == "unauthorized"
+    assert authorized_code == 200
+    assert authorized_payload["status"] == "ok"
 
 
 def test_assistant_times_out_slow_skill_and_records_timeout_status(tmp_path, monkeypatch):

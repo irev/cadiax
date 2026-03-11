@@ -26,6 +26,14 @@ from otonomassist.core.external_installer import install_external_skill, render_
 from otonomassist.core.job_runtime import enqueue_ready_planner_task, process_job_queue, render_job_queue
 from otonomassist.core.scheduler_runtime import run_scheduler
 from otonomassist.core.setup_wizard import run_setup_wizard, should_recommend_setup
+from otonomassist.platform import (
+    get_service_wrapper_output_dir,
+    render_service_runtime_status,
+    render_service_wrapper_artifacts,
+    run_named_service_target,
+    write_service_wrapper_artifacts,
+)
+from otonomassist.services.interactions import ConversationService, run_conversation_api
 from otonomassist.telegram_cli import run_telegram_transport
 
 
@@ -35,7 +43,11 @@ def _build_assistant(skills_dir: Path) -> Assistant:
     return assistant
 
 
-def _run_interactive(assistant: Assistant) -> None:
+def _build_conversation_service(skills_dir: Path) -> ConversationService:
+    return ConversationService(_build_assistant(skills_dir))
+
+
+def _run_interactive(service: ConversationService) -> None:
     click.echo("OtonomAssist v0.1.0")
     click.echo("Type 'help' for available commands, 'exit' to quit.")
     if should_recommend_setup():
@@ -53,7 +65,7 @@ def _run_interactive(assistant: Assistant) -> None:
                 click.echo("Goodbye!")
                 break
 
-            result = assistant.handle_message(user_input, TransportContext(source="cli"))
+            result = service.handle_message(user_input, TransportContext(source="cli"))
             click.echo(result)
 
         except KeyboardInterrupt:
@@ -107,13 +119,13 @@ def main(
     if ctx.invoked_subcommand:
         return
 
-    assistant = _build_assistant(skills_dir)
+    service = _build_conversation_service(skills_dir)
     if interactive or not ctx.args:
-        _run_interactive(assistant)
+        _run_interactive(service)
         return
 
     command = " ".join(ctx.args).strip()
-    result = assistant.handle_message(command, TransportContext(source="cli"))
+    result = service.handle_message(command, TransportContext(source="cli"))
     click.echo(result)
 
 
@@ -260,8 +272,7 @@ def config_setup_command() -> None:
 )
 def chat_command(skills_dir: Path) -> None:
     """Run interactive chat mode."""
-    assistant = _build_assistant(skills_dir)
-    _run_interactive(assistant)
+    _run_interactive(_build_conversation_service(skills_dir))
 
 
 @main.command("run")
@@ -274,8 +285,8 @@ def chat_command(skills_dir: Path) -> None:
 @click.argument("message", required=True)
 def run_command(skills_dir: Path, message: str) -> None:
     """Run a single assistant message."""
-    assistant = _build_assistant(skills_dir)
-    result = assistant.handle_message(message, TransportContext(source="cli"))
+    service = _build_conversation_service(skills_dir)
+    result = service.handle_message(message, TransportContext(source="cli"))
     click.echo(result)
 
 
@@ -298,6 +309,143 @@ def api_command(host: str, port: int) -> None:
     """Run the local read-only admin API."""
     click.echo(f"Admin API listening on http://{host}:{port}")
     run_admin_api(host=host, port=port)
+
+
+@main.command("conversation-api")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind address for the conversation API")
+@click.option("--port", default=8788, type=int, show_default=True, help="Bind port for the conversation API")
+@click.option(
+    "--skills-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default="skills",
+    help="Directory containing skill markdown files",
+)
+def conversation_api_command(host: str, port: int, skills_dir: Path) -> None:
+    """Run the local conversation API."""
+    click.echo(f"Conversation API listening on http://{host}:{port}")
+    run_conversation_api(_build_conversation_service(skills_dir), host=host, port=port)
+
+
+@main.group("service")
+def service_group() -> None:
+    """Foreground service runtime and wrapper commands."""
+
+
+@service_group.command("status")
+def service_status_command() -> None:
+    """Show service runtime readiness and supported targets."""
+    click.echo(render_service_runtime_status())
+
+
+@service_group.command("show")
+@click.argument(
+    "target",
+    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api"], case_sensitive=False),
+)
+@click.option(
+    "--runtime",
+    type=click.Choice(["auto", "windows", "posix", "all"], case_sensitive=False),
+    default="auto",
+    show_default=True,
+    help="Which wrapper runtime to render",
+)
+@click.option(
+    "--skills-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default="skills",
+    help="Directory containing skill markdown files",
+)
+def service_show_command(target: str, runtime: str, skills_dir: Path) -> None:
+    """Render generated wrapper artifacts for one service target."""
+    click.echo(render_service_wrapper_artifacts(target, runtime=runtime, skills_dir=skills_dir))
+
+
+@service_group.command("write")
+@click.argument(
+    "target",
+    required=False,
+    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api"], case_sensitive=False),
+)
+@click.option(
+    "--runtime",
+    type=click.Choice(["auto", "windows", "posix", "all"], case_sensitive=False),
+    default="auto",
+    show_default=True,
+    help="Which wrapper runtime to generate",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Directory where wrapper files will be written",
+)
+@click.option(
+    "--skills-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default="skills",
+    help="Directory containing skill markdown files",
+)
+def service_write_command(
+    target: str | None,
+    runtime: str,
+    output_dir: Path | None,
+    skills_dir: Path,
+) -> None:
+    """Write generated wrapper artifacts to disk."""
+    written = write_service_wrapper_artifacts(
+        target=target,
+        output_dir=output_dir or get_service_wrapper_output_dir(),
+        runtime=runtime,
+        skills_dir=skills_dir,
+    )
+    click.echo(f"Wrote {len(written)} service wrapper file(s):")
+    for path in written:
+        click.echo(str(path))
+
+
+@service_group.command("run")
+@click.argument(
+    "target",
+    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api"], case_sensitive=False),
+)
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind address for API targets")
+@click.option("--port", default=None, type=int, help="Bind port for API targets")
+@click.option("--interval", default=None, type=float, help="Loop interval in seconds for worker/scheduler targets")
+@click.option("--steps", default=None, type=int, help="Maximum jobs per loop for worker/scheduler targets")
+@click.option("--enqueue-first/--no-enqueue-first", default=True, show_default=True, help="Enqueue ready planner task before processing")
+@click.option("--until-idle/--single-pass", default=True, show_default=True, help="Run worker loop until queue becomes idle")
+@click.option("--max-loops", default=0, type=int, show_default=True, help="Number of service loops; 0 means run until stopped")
+@click.option(
+    "--skills-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default="skills",
+    help="Directory containing skill markdown files",
+)
+def service_run_command(
+    target: str,
+    host: str,
+    port: int | None,
+    interval: float | None,
+    steps: int | None,
+    enqueue_first: bool,
+    until_idle: bool,
+    max_loops: int,
+    skills_dir: Path,
+) -> None:
+    """Run one foreground service target suitable for supervision."""
+    result = run_named_service_target(
+        target,
+        skills_dir=skills_dir,
+        host=host,
+        port=port,
+        interval_seconds=interval,
+        steps=steps,
+        enqueue_first=enqueue_first,
+        until_idle=until_idle,
+        max_loops=max(0, max_loops),
+    )
+    if result is not None:
+        click.echo(result["output"])
 
 
 @main.command("scheduler")

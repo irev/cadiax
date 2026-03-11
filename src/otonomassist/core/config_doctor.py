@@ -38,6 +38,7 @@ def get_config_status_data() -> dict[str, object]:
     runtime = get_job_queue_summary()
     metrics = get_execution_metrics_snapshot()
     scheduler = get_scheduler_summary()
+    state_storage = agent_context.get_state_storage_info()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -99,6 +100,8 @@ def get_config_status_data() -> dict[str, object]:
             "secrets_file": str(agent_context.SECRETS_FILE),
             "execution_history_file": str(agent_context.EXECUTION_HISTORY_FILE),
             "metrics_file": str(agent_context.METRICS_FILE),
+            "state_backend": state_storage["backend"],
+            "state_db_file": state_storage["path"],
             "portable_key_file": str(PORTABLE_KEY_FILE),
             "skill_timeout_seconds": get_skill_timeout_seconds(),
         },
@@ -203,6 +206,8 @@ def get_config_status_report() -> str:
             f"- secrets_file: {data['storage']['secrets_file']}",
             f"- execution_history_file: {data['storage']['execution_history_file']}",
             f"- metrics_file: {data['storage']['metrics_file']}",
+            f"- state_backend: {data['storage']['state_backend']}",
+            f"- state_db_file: {data['storage']['state_db_file']}",
             f"- portable_key_file: {data['storage']['portable_key_file']}",
             f"- skill_timeout_seconds: {data['storage']['skill_timeout_seconds']:.2f}",
         ]
@@ -221,6 +226,7 @@ def get_config_status_report() -> str:
             f"- last_worker_run_at: {data['runtime']['last_worker_run_at'] or '-'}",
             f"- last_worker_status: {data['runtime']['last_worker_status'] or '-'}",
             f"- last_worker_processed: {data['runtime']['last_worker_processed']}",
+            f"- last_worker_trace_id: {data['runtime']['last_worker_trace_id'] or '-'}",
         ]
     )
     lines.extend(
@@ -232,6 +238,7 @@ def get_config_status_report() -> str:
             f"- last_status: {data['scheduler']['last_status'] or '-'}",
             f"- last_cycles: {data['scheduler']['last_cycles']}",
             f"- last_processed: {data['scheduler']['last_processed']}",
+            f"- last_trace_id: {data['scheduler']['last_trace_id'] or '-'}",
         ]
     )
     lines.extend(
@@ -443,6 +450,8 @@ def _get_storage_status() -> str:
     if not ENV_FILE.exists():
         return "warning"
     if not agent_context.DATA_DIR.exists():
+        return "critical"
+    if not agent_context.get_state_db_path().exists():
         return "critical"
     if not agent_context.SECRETS_FILE.exists():
         return "critical"
