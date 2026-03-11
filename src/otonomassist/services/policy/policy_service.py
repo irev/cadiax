@@ -3,14 +3,91 @@
 from __future__ import annotations
 
 import os
+from typing import Mapping
 
 from otonomassist.core.execution_history import append_execution_event, new_trace_id
 from otonomassist.core.transport import TransportContext
 from otonomassist.services.policy.models import PolicyDecision
 
+DEFAULT_OWNER_ONLY_PREFIXES = {
+    "admin",
+    "debug-config",
+    "doctor",
+    "external",
+    "list-models",
+    "secrets",
+    "executor",
+    "runner",
+}
+DEFAULT_APPROVED_PREFIXES = {
+    "help",
+    "history",
+    "list",
+    "metrics",
+    "jobs",
+    "skills",
+    "ai",
+    "research",
+    "memory",
+    "planner",
+    "profile",
+    "agent-loop",
+    "workspace",
+    "self-review",
+}
+APPROVED_READ_ONLY_ACTIONS: dict[str, set[str]] = {
+    "help": {""},
+    "history": {"", "recent"},
+    "list": {""},
+    "metrics": {"", "summary"},
+    "jobs": {"", "list", "queue"},
+    "skills": {"audit"},
+    "ai": {"*"},
+    "research": {"*"},
+    "workspace": {"tree", "read", "find", "files", "summary"},
+    "memory": {"list", "search", "get", "summarize", "summary", "context"},
+    "planner": {"list", "next", "summary"},
+    "profile": {"show"},
+}
+APPROVED_MUTATE_DENIAL: dict[str, str] = {
+    "jobs": "Operasi runtime job Telegram dibatasi untuk owner.",
+    "memory": "Operasi ubah memory Telegram dibatasi untuk owner.",
+    "planner": "Operasi ubah planner Telegram dibatasi untuk owner.",
+    "profile": "Operasi ubah profile Telegram dibatasi untuk owner.",
+    "self-review": "Self-review Telegram dibatasi untuk owner karena menulis memory, lessons, dan planner.",
+    "agent-loop": "Agent-loop Telegram dibatasi untuk owner karena menulis memory pembelajaran.",
+}
+
 
 class PolicyService:
     """Evaluate whether one command may execute for the given transport context."""
+
+    def get_diagnostics(self, env_values: Mapping[str, str] | None = None) -> dict[str, object]:
+        """Return operator-facing policy diagnostics for the current env config."""
+        owner_only = sorted(
+            _parse_prefix_set(
+                "TELEGRAM_OWNER_ONLY_PREFIXES",
+                DEFAULT_OWNER_ONLY_PREFIXES,
+                env_values=env_values,
+            )
+        )
+        approved = sorted(
+            _parse_prefix_set(
+                "TELEGRAM_APPROVED_PREFIXES",
+                DEFAULT_APPROVED_PREFIXES,
+                env_values=env_values,
+            )
+        )
+        return {
+            "telegram_owner_only_prefixes": owner_only,
+            "telegram_approved_prefixes": approved,
+            "telegram_read_only_prefixes": sorted(APPROVED_READ_ONLY_ACTIONS),
+            "telegram_mutating_prefixes": sorted(APPROVED_MUTATE_DENIAL),
+            "telegram_read_only_actions": {
+                key: sorted(actions)
+                for key, actions in sorted(APPROVED_READ_ONLY_ACTIONS.items())
+            },
+        }
 
     def authorize_command(
         self,
@@ -65,26 +142,11 @@ class PolicyService:
 
         owner_only = _parse_prefix_set(
             "TELEGRAM_OWNER_ONLY_PREFIXES",
-            {"admin", "debug-config", "doctor", "external", "list-models", "secrets", "executor", "runner"},
+            DEFAULT_OWNER_ONLY_PREFIXES,
         )
         approved = _parse_prefix_set(
             "TELEGRAM_APPROVED_PREFIXES",
-            {
-                "help",
-                "history",
-                "list",
-                "metrics",
-                "jobs",
-                "skills",
-                "ai",
-                "research",
-                "memory",
-                "planner",
-                "profile",
-                "agent-loop",
-                "workspace",
-                "self-review",
-            },
+            DEFAULT_APPROVED_PREFIXES,
         )
 
         if prefix in owner_only:
@@ -146,41 +208,18 @@ class PolicyService:
 
     def _authorize_approved_action(self, prefix: str, subcommand: str) -> str | None:
         """Apply finer-grained action checks for approved Telegram users."""
-        read_only_actions: dict[str, set[str]] = {
-            "help": {""},
-            "history": {"", "recent"},
-            "list": {""},
-            "metrics": {"", "summary"},
-            "jobs": {"", "list", "queue"},
-            "skills": {"audit"},
-            "ai": {"*"},
-            "research": {"*"},
-            "workspace": {"tree", "read", "find", "files", "summary"},
-            "memory": {"list", "search", "get", "summarize", "summary", "context"},
-            "planner": {"list", "next", "summary"},
-            "profile": {"show"},
-        }
-        mutate_denial: dict[str, str] = {
-            "jobs": "Operasi runtime job Telegram dibatasi untuk owner.",
-            "memory": "Operasi ubah memory Telegram dibatasi untuk owner.",
-            "planner": "Operasi ubah planner Telegram dibatasi untuk owner.",
-            "profile": "Operasi ubah profile Telegram dibatasi untuk owner.",
-            "self-review": "Self-review Telegram dibatasi untuk owner karena menulis memory, lessons, dan planner.",
-            "agent-loop": "Agent-loop Telegram dibatasi untuk owner karena menulis memory pembelajaran.",
-        }
-
-        allowed = read_only_actions.get(prefix)
+        allowed = APPROVED_READ_ONLY_ACTIONS.get(prefix)
         if allowed is None:
-            if prefix in mutate_denial:
-                return mutate_denial[prefix]
+            if prefix in APPROVED_MUTATE_DENIAL:
+                return APPROVED_MUTATE_DENIAL[prefix]
             return f"Operasi `{prefix}` tidak diizinkan untuk user Telegram approved."
 
         if "*" in allowed:
             return None
         if subcommand in allowed:
             return None
-        if prefix in mutate_denial:
-            return mutate_denial[prefix]
+        if prefix in APPROVED_MUTATE_DENIAL:
+            return APPROVED_MUTATE_DENIAL[prefix]
         return f"Subcommand `{prefix} {subcommand or '(default)'}` dibatasi untuk owner Telegram."
 
     def _record_decision(
@@ -210,8 +249,13 @@ class PolicyService:
         return decision
 
 
-def _parse_prefix_set(name: str, default: set[str]) -> set[str]:
-    raw = os.getenv(name, "").strip()
+def _parse_prefix_set(
+    name: str,
+    default: set[str],
+    *,
+    env_values: Mapping[str, str] | None = None,
+) -> set[str]:
+    raw = (env_values.get(name, "") if env_values is not None else os.getenv(name, "")).strip()
     if not raw:
         return set(default)
     return {item.strip().lower() for item in raw.split(",") if item.strip()}

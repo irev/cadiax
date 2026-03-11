@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -14,8 +13,10 @@ from otonomassist.core.external_assets import build_external_asset_audit_summary
 from otonomassist.core.job_runtime import get_job_queue_summary
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
 from otonomassist.core.scheduler_runtime import get_scheduler_summary
+from otonomassist.interfaces.telegram import TelegramAuthService
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
+from otonomassist.services.policy.policy_service import PolicyService
 
 
 ENV_FILE = agent_context.PROJECT_ROOT / ".env"
@@ -29,7 +30,12 @@ def get_config_status_data() -> dict[str, object]:
     provider = provider_info["provider"]
     workspace_root = env_values.get("OTONOMASSIST_WORKSPACE_ROOT") or str(agent_context.PROJECT_ROOT / "workspace")
     workspace_access = env_values.get("OTONOMASSIST_WORKSPACE_ACCESS") or "ro"
-    telegram = _get_telegram_status(env_values)
+    telegram_auth = TelegramAuthService.from_config(
+        env_values,
+        auth_file=agent_context.DATA_DIR / "telegram_auth.json",
+    )
+    telegram = _get_telegram_status(env_values, telegram_auth)
+    policy = _get_policy_status(env_values)
     secret_storage = get_secret_storage_info()
     process_manager = get_process_manager_info()
     service_runtime = get_service_runtime_info()
@@ -50,6 +56,7 @@ def get_config_status_data() -> dict[str, object]:
         ai_status,
         workspace_status,
         telegram_status,
+        policy["status"],
         storage_status,
         platform_status,
         runtime_status,
@@ -73,6 +80,7 @@ def get_config_status_data() -> dict[str, object]:
             "status": telegram_status,
             **telegram,
         },
+        "policy": policy,
         "platform": {
             "status": platform_status,
             "os": os.name,
@@ -160,11 +168,26 @@ def get_config_status_report() -> str:
             f"- status: {data['telegram']['status']}",
             f"- token_configured: {'yes' if data['telegram']['token_configured'] else 'no'}",
             f"- owner_ids: {data['telegram']['owner_ids'] or '-'}",
+            f"- auth_file: {data['telegram']['auth_file']}",
             f"- dm_policy: {data['telegram']['dm_policy']}",
             f"- group_policy: {data['telegram']['group_policy']}",
+            f"- require_mention: {'yes' if data['telegram']['require_mention'] else 'no'}",
             f"- approved_users: {data['telegram']['approved_users']}",
             f"- approved_groups: {data['telegram']['approved_groups']}",
             f"- pending_requests: {data['telegram']['pending_requests']}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[Policy]",
+            f"- status: {data['policy']['status']}",
+            f"- telegram_owner_only_prefixes: {', '.join(data['policy']['telegram_owner_only_prefixes']) or '-'}",
+            f"- telegram_approved_prefixes: {', '.join(data['policy']['telegram_approved_prefixes']) or '-'}",
+            f"- telegram_read_only_prefixes: {', '.join(data['policy']['telegram_read_only_prefixes']) or '-'}",
+            f"- telegram_mutating_prefixes: {', '.join(data['policy']['telegram_mutating_prefixes']) or '-'}",
+            f"- admin_api_token_required: {'yes' if data['policy']['admin_api_token_required'] else 'no'}",
+            f"- conversation_api_token_required: {'yes' if data['policy']['conversation_api_token_required'] else 'no'}",
         ]
     )
 
@@ -359,39 +382,38 @@ def _provider_has_credential(provider: str, env_values: dict[str, str]) -> bool:
     return True
 
 
-def _get_telegram_status(env_values: dict[str, str]) -> dict[str, object]:
-    auth_state = _load_telegram_auth_state()
+def _get_telegram_status(
+    env_values: dict[str, str],
+    auth_service: TelegramAuthService,
+) -> dict[str, object]:
+    auth_state = auth_service.get_diagnostics()
     owner_ids = _parse_csv(env_values.get("TELEGRAM_OWNER_IDS", ""))
     token_configured = bool(
         agent_context.get_secret_value("telegram_bot_token") or env_values.get("TELEGRAM_BOT_TOKEN")
     )
     return {
         "token_configured": token_configured,
+        "auth_file": auth_state["auth_file"],
         "owner_ids": ", ".join(owner_ids),
         "dm_policy": (env_values.get("TELEGRAM_DM_POLICY") or "pairing").strip().lower() or "pairing",
         "group_policy": (env_values.get("TELEGRAM_GROUP_POLICY") or "allowlist").strip().lower() or "allowlist",
-        "approved_users": len(auth_state.get("approved_users", [])),
-        "approved_groups": len(auth_state.get("approved_groups", [])),
-        "pending_requests": len(auth_state.get("pending_requests", [])),
+        "require_mention": bool(auth_state["require_mention"]),
+        "approved_users": int(auth_state.get("approved_users", 0) or 0),
+        "approved_groups": int(auth_state.get("approved_groups", 0) or 0),
+        "pending_requests": int(auth_state.get("pending_requests", 0) or 0),
     }
 
 
-def _load_telegram_auth_state() -> dict[str, object]:
-    path = agent_context.DATA_DIR / "telegram_auth.json"
-    if not path.exists():
-        return {
-            "approved_users": [],
-            "approved_groups": [],
-            "pending_requests": [],
-        }
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {
-            "approved_users": [],
-            "approved_groups": [],
-            "pending_requests": [],
-        }
+def _get_policy_status(env_values: dict[str, str]) -> dict[str, object]:
+    diagnostics = PolicyService().get_diagnostics(env_values)
+    return {
+        "status": "healthy",
+        **diagnostics,
+        "admin_api_token_required": bool(env_values.get("OTONOMASSIST_ADMIN_TOKEN", "").strip()),
+        "conversation_api_token_required": bool(
+            env_values.get("OTONOMASSIST_CONVERSATION_TOKEN", "").strip()
+        ),
+    }
 
 
 def _collect_issues(

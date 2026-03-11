@@ -336,6 +336,7 @@ def test_cli_doctor_marks_warning_for_rw_workspace_and_pending_telegram(tmp_path
                 "TELEGRAM_BOT_TOKEN=dummy-token",
                 "TELEGRAM_DM_POLICY=pairing",
                 "TELEGRAM_GROUP_POLICY=allowlist",
+                "TELEGRAM_OWNER_ONLY_PREFIXES=workspace,external",
             ]
         )
         + "\n",
@@ -367,6 +368,8 @@ def test_cli_doctor_marks_warning_for_rw_workspace_and_pending_telegram(tmp_path
     assert "[Workspace]" in result.output
     assert "[Telegram]" in result.output
     assert "- pending_requests: 1" in result.output
+    assert "[Policy]" in result.output
+    assert "- telegram_owner_only_prefixes: external, workspace" in result.output
 
 
 def test_cli_doctor_reads_openai_api_key_from_env_file(tmp_path, monkeypatch):
@@ -487,6 +490,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert payload["overall"]["status"] == "warning"
     assert payload["ai"]["provider"] == "ollama"
+    assert "policy" in payload
     assert "runtime" in payload
     assert "storage" in payload
 
