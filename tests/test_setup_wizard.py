@@ -47,7 +47,9 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
+    monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
     monkeypatch.setattr(agent_context, "JOB_QUEUE_FILE", data_dir / "job_queue.json")
+    monkeypatch.setattr(agent_context, "SCHEDULER_STATE_FILE", data_dir / "scheduler_state.json")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
     agent_context.ensure_agent_storage()
@@ -209,7 +211,10 @@ def test_assistant_supports_doctor_and_config_status_commands(tmp_path, monkeypa
     assert "[Overall]" in doctor_result
     assert "- status: healthy" in doctor_result
     assert "[Workspace]" in doctor_result
-    assert alias_result == doctor_result
+    assert "OtonomAssist Config Status" in alias_result
+    assert "[Overall]" in alias_result
+    assert "- status: healthy" in alias_result
+    assert "[Workspace]" in alias_result
 
 
 def test_cli_doctor_marks_warning_for_rw_workspace_and_pending_telegram(tmp_path, monkeypatch):
@@ -317,6 +322,7 @@ def test_cli_doctor_reports_platform_runtime_capabilities(tmp_path, monkeypatch)
     assert "- process_manager:" in result.output
     assert "- service_runtime:" in result.output
     assert "[Toolchains]" in result.output
+    assert "[Runtime]" in result.output
     assert "- python:" in result.output
     assert "- skill_timeout_seconds: 12.50" in result.output
 
@@ -375,6 +381,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert payload["overall"]["status"] == "warning"
     assert payload["ai"]["provider"] == "ollama"
+    assert "runtime" in payload
     assert "storage" in payload
 
 
@@ -400,6 +407,96 @@ def test_cli_history_shows_recent_execution_events(tmp_path, monkeypatch):
     assert "Execution History" in history_result.output
     assert "command_received" in history_result.output
     assert "command_completed" in history_result.output
+
+
+def test_cli_metrics_reports_aggregated_execution_data(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    run_result = runner.invoke(main, ["run", "list"])
+    metrics_result = runner.invoke(main, ["metrics"])
+    metrics_json_result = runner.invoke(main, ["metrics", "--json"])
+
+    payload = json.loads(metrics_json_result.output)
+    assert run_result.exit_code == 0
+    assert metrics_result.exit_code == 0
+    assert "Execution Metrics" in metrics_result.output
+    assert payload["summary"]["commands_total"] >= 1
+
+
+def test_cli_worker_until_idle_processes_runtime_queue(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    planner_result = runner.invoke(main, ["run", "planner add memory add dari cli worker"])
+    worker_result = runner.invoke(main, ["worker", "--steps", "5", "--until-idle", "--enqueue-first"])
+    status_result = runner.invoke(main, ["status", "--json"])
+
+    payload = json.loads(status_result.output)
+    assert planner_result.exit_code == 0
+    assert worker_result.exit_code == 0
+    assert "until idle" in worker_result.output
+    assert payload["runtime"]["total_jobs"] >= 1
+    assert payload["runtime"]["done_jobs"] >= 1
+    assert payload["runtime"]["last_worker_run_at"]
+
+
+def test_cli_status_reports_metrics_file_path(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["status"])
+
+    assert result.exit_code == 0
+    assert "- metrics_file:" in result.output
+
+
+def test_cli_scheduler_runs_cycles_and_updates_status_report(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+
+    runner = CliRunner()
+    runner.invoke(main, ["run", "planner add memory add dari scheduler"])
+    scheduler_result = runner.invoke(main, ["scheduler", "--cycles", "1", "--steps", "5"])
+    status_result = runner.invoke(main, ["status", "--json"])
+
+    payload = json.loads(status_result.output)
+    assert scheduler_result.exit_code == 0
+    assert "Scheduler running 1 cycle" in scheduler_result.output
+    assert payload["scheduler"]["last_run_at"]
+    assert payload["scheduler"]["last_cycles"] == 1
+    assert payload["scheduler"]["last_processed"] >= 1
 
 
 def test_portable_secret_storage_roundtrip(tmp_path, monkeypatch):
@@ -428,7 +525,9 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
+    monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
     monkeypatch.setattr(agent_context, "JOB_QUEUE_FILE", data_dir / "job_queue.json")
+    monkeypatch.setattr(agent_context, "SCHEDULER_STATE_FILE", data_dir / "scheduler_state.json")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", workspace_root)
     monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", data_dir)
 
@@ -448,6 +547,7 @@ def test_run_process_wrapper_executes_python_command():
 
 def test_assistant_loads_external_skill_from_workspace(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("OTONOMASSIST_EXTERNAL_SKILL_POLICY", "allow-all")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
     monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
     external_skill_dir = workspace_guard.WORKSPACE_ROOT / "skills-external" / "echox"
@@ -561,6 +661,7 @@ def test_external_audit_reports_manifest_requirements_and_degraded_compatibility
     assert status_result.exit_code == 0
     assert "[External Assets]" in status_result.output
     assert "- incompatible_count: 1" in status_result.output
+    assert "- unapproved_count: 1" in status_result.output
 
 
 def test_cli_external_install_copies_local_skill_and_audits_it(tmp_path, monkeypatch):
@@ -608,6 +709,7 @@ def test_cli_external_install_copies_local_skill_and_audits_it(tmp_path, monkeyp
                 "manager": "local-path",
                 "version": "0.0.1",
                 "requires": ["python"],
+                "capabilities": ["workspace_read"],
                 "platforms": ["windows", "linux"],
             },
             indent=2,
@@ -636,11 +738,167 @@ def test_cli_external_install_copies_local_skill_and_audits_it(tmp_path, monkeyp
 
     assistant = Assistant(skills_dir=ROOT / "skills")
     assistant.initialize()
+    assert assistant.execute("local-ext halo") != "LOCAL-EXT:halo"
+
+    approve_result = runner.invoke(main, ["external", "approve", "local-ext"])
+    assert approve_result.exit_code == 0
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
     assert assistant.execute("local-ext halo") == "LOCAL-EXT:halo"
 
     state = external_assets.load_external_asset_registry()
     assert len(state["events"]) >= 1
     assert any(event["action"] == "install-request" for event in state["events"])
+    assert any(event["action"] == "approval-approved" for event in state["events"])
+
+
+def test_external_reject_disables_loading_for_approved_skill(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+    source_skill_dir = tmp_path / "external-reject-skill"
+    (source_skill_dir / "script").mkdir(parents=True, exist_ok=True)
+    (source_skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "# Rejectable External Skill",
+                "",
+                "## Metadata",
+                "- name: rejectable-ext",
+                "- description: Installed from local path",
+                "",
+                "## Triggers",
+                "- rejectable-ext",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (source_skill_dir / "script" / "handler.py").write_text(
+        "def handle(args: str) -> str:\n    return f'REJECTABLE:{args}'\n",
+        encoding="utf-8",
+    )
+    (source_skill_dir / "asset.json").write_text(
+        json.dumps(
+            {
+                "name": "rejectable-ext",
+                "manager": "local-path",
+                "version": "0.0.1",
+                "capabilities": ["workspace_read"],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    runner.invoke(main, ["external", "install", str(source_skill_dir)])
+    runner.invoke(main, ["external", "approve", "rejectable-ext"])
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    assert assistant.execute("rejectable-ext halo") == "REJECTABLE:halo"
+
+    reject_result = runner.invoke(main, ["external", "reject", "rejectable-ext"])
+    assert reject_result.exit_code == 0
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    assert assistant.execute("rejectable-ext halo") != "REJECTABLE:halo"
+
+
+def test_external_approve_requires_declared_capabilities(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+
+    source_skill_dir = tmp_path / "undeclared-capability-skill"
+    (source_skill_dir / "script").mkdir(parents=True, exist_ok=True)
+    (source_skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "# Undeclared Capability Skill",
+                "",
+                "## Metadata",
+                "- name: undeclared-ext",
+                "- description: Installed from local path",
+                "",
+                "## Triggers",
+                "- undeclared-ext",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (source_skill_dir / "script" / "handler.py").write_text(
+        "def handle(args: str) -> str:\n    return f'UNDECLARED:{args}'\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    install_result = runner.invoke(main, ["external", "install", str(source_skill_dir)])
+    approve_result = runner.invoke(main, ["external", "approve", "undeclared-ext"])
+    audit_result = runner.invoke(main, ["external", "audit"])
+
+    assert install_result.exit_code == 0
+    assert approve_result.exit_code != 0
+    assert "capability declaration belum valid" in approve_result.output
+    assert "undeclared_capability_count: 1" in audit_result.output
+
+
+def test_external_approve_rejects_disallowed_capability_until_policy_allows_it(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+
+    source_skill_dir = tmp_path / "network-skill"
+    (source_skill_dir / "script").mkdir(parents=True, exist_ok=True)
+    (source_skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "# Network Skill",
+                "",
+                "## Metadata",
+                "- name: network-ext",
+                "- description: Installed from local path",
+                "",
+                "## Triggers",
+                "- network-ext",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (source_skill_dir / "script" / "handler.py").write_text(
+        "def handle(args: str) -> str:\n    return f'NETWORK:{args}'\n",
+        encoding="utf-8",
+    )
+    (source_skill_dir / "asset.json").write_text(
+        json.dumps(
+            {
+                "name": "network-ext",
+                "manager": "local-path",
+                "version": "0.0.1",
+                "capabilities": ["network"],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    install_result = runner.invoke(main, ["external", "install", str(source_skill_dir)])
+    approve_result = runner.invoke(main, ["external", "approve", "network-ext"])
+    audit_result = runner.invoke(main, ["external", "audit"])
+
+    assert install_result.exit_code == 0
+    assert approve_result.exit_code != 0
+    assert "capability declaration belum valid" in approve_result.output
+    assert "blocked_capability_count: 1" in audit_result.output
+    assert "allowed_capabilities: workspace_read" in audit_result.output
+
+    monkeypatch.setenv("OTONOMASSIST_EXTERNAL_CAPABILITY_ALLOW", "workspace_read,network")
+    runner.invoke(main, ["external", "sync"])
+    approve_after_allow = runner.invoke(main, ["external", "approve", "network-ext"])
+    assert approve_after_allow.exit_code == 0
 
 
 def test_external_install_rejects_invalid_source_and_logs_failure(tmp_path, monkeypatch):

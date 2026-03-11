@@ -12,13 +12,16 @@ from dotenv import load_dotenv
 
 from otonomassist.ai.factory import AIProviderFactory
 from otonomassist.core.agent_context import build_agent_context_block, ensure_agent_storage
+from otonomassist.core.admin_api import build_admin_snapshot
 from otonomassist.core.config_doctor import get_config_status_report
 from otonomassist.core.execution_control import classify_result_status, get_skill_timeout_seconds, run_with_timeout
 from otonomassist.core.execution_history import append_execution_event, new_trace_id, render_execution_history
+from otonomassist.core.execution_metrics import record_execution_metric, render_execution_metrics
 from otonomassist.core.external_assets import (
     ensure_external_asset_layout,
     get_external_skills_dir,
     render_external_asset_audit,
+    set_external_asset_approval,
     sync_external_skill_inventory,
 )
 from otonomassist.core.external_installer import install_external_skill, render_external_install_result
@@ -113,13 +116,13 @@ class Assistant:
                     lines.append("  side_effects: " + ", ".join(item["side_effects"]))
         return "\n".join(lines)
 
-    def _get_orchestration_system_prompt(self) -> str:
+    def _get_orchestration_system_prompt(self, command: str) -> str:
         """Build system prompt for AI orchestration."""
         return f"""Anda adalah asisten yang menentukan skill mana yang akan digunakan berdasarkan input user.
 
 {self._build_skills_context()}
 
-{build_agent_context_block()}
+{build_agent_context_block(command)}
 
 Petunjuk:
 1. Analisis input user untuk menentukan skill yang tepat
@@ -188,8 +191,13 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 
         if cmd_lower in {"history", "history recent"}:
             return self._finalize_command_result(context, command, render_execution_history(), command_started)
+        if cmd_lower in {"metrics", "metrics summary"}:
+            return self._finalize_command_result(context, command, render_execution_metrics(), command_started)
         if cmd_lower in {"jobs", "jobs list", "job queue"}:
             return self._finalize_command_result(context, command, render_job_queue(), command_started)
+        if cmd_lower in {"api status", "admin status"}:
+            _, payload = build_admin_snapshot("/status")
+            return self._finalize_command_result(context, command, str(payload), command_started)
         if cmd_lower in {"jobs enqueue", "job enqueue"}:
             job = enqueue_ready_planner_task()
             if not job:
@@ -203,6 +211,24 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 
         if cmd_lower in {"external audit", "external list"}:
             return self._finalize_command_result(context, command, render_external_asset_audit(), command_started)
+        if cmd_lower.startswith("external approve "):
+            name = command.strip()[len("external approve "):].strip()
+            if not name:
+                return self._finalize_command_result(context, command, "Gunakan: external approve <name>", command_started)
+            try:
+                asset = set_external_asset_approval(name, "approved", actor="assistant")
+            except Exception as exc:
+                return self._finalize_command_result(context, command, f"External approve gagal: {exc}", command_started)
+            return self._finalize_command_result(context, command, f"External asset `{asset['name']}` diset ke approved.", command_started)
+        if cmd_lower.startswith("external reject "):
+            name = command.strip()[len("external reject "):].strip()
+            if not name:
+                return self._finalize_command_result(context, command, "Gunakan: external reject <name>", command_started)
+            try:
+                asset = set_external_asset_approval(name, "rejected", actor="assistant")
+            except Exception as exc:
+                return self._finalize_command_result(context, command, f"External reject gagal: {exc}", command_started)
+            return self._finalize_command_result(context, command, f"External asset `{asset['name']}` diset ke rejected.", command_started)
         if cmd_lower == "external sync":
             result = sync_external_skill_inventory(installed_by="assistant")
             return self._finalize_command_result(context, command, (
@@ -291,7 +317,7 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
         try:
             response = self._run_async(provider.chat_completion(
                 prompt=command,
-                system_prompt=self._get_orchestration_system_prompt()
+                system_prompt=self._get_orchestration_system_prompt(command)
             ))
 
             return self._parse_and_execute(response, command, context=context)
@@ -413,10 +439,11 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
         else:
             formatted = format_result(raw_result, presentation)
         if trace_id:
+            status = classify_result_status(formatted)
             append_execution_event(
                 "skill_completed",
                 trace_id=trace_id,
-                status=classify_result_status(formatted),
+                status=status,
                 skill_name=skill.name,
                 command=original_command or args,
                 duration_ms=int((time.perf_counter() - skill_started) * 1000),
@@ -426,6 +453,12 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
                     "timed_out": timed_out,
                     "timeout_seconds": timeout_seconds,
                 },
+            )
+            record_execution_metric(
+                "skill_completed",
+                status=status,
+                skill_name=skill.name,
+                duration_ms=int((time.perf_counter() - skill_started) * 1000),
             )
         return formatted
 
@@ -460,6 +493,12 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
             data={
                 "result_preview": result[:240],
             },
+        )
+        record_execution_metric(
+            "command_completed",
+            status=classify_result_status(result),
+            source=context.source,
+            duration_ms=int((time.perf_counter() - started_at) * 1000),
         )
         return result
 
@@ -568,9 +607,12 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 - help: Show this help message
 - list: List all available skills
 - history: Show recent execution history
+- metrics: Show aggregated execution metrics
 - jobs: Show runtime job queue
 - jobs enqueue: Enqueue the next ready planner task into runtime job queue
 - external audit: Show audited external assets in workspace
+- external approve <name>: Approve one external skill for loading
+- external reject <name>: Reject one external skill from loading
 - external sync: Refresh external asset inventory from workspace
 - external install <source>: Install external skill into workspace/skills-external
 - skills audit: Show autonomous skill-layer categories, risk, and requirements

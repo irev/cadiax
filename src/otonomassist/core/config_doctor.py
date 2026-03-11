@@ -11,6 +11,9 @@ from dotenv import dotenv_values
 import otonomassist.core.agent_context as agent_context
 from otonomassist.core.execution_control import get_skill_timeout_seconds
 from otonomassist.core.external_assets import build_external_asset_audit_summary
+from otonomassist.core.job_runtime import get_job_queue_summary
+from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
+from otonomassist.core.scheduler_runtime import get_scheduler_summary
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
 
@@ -32,13 +35,24 @@ def get_config_status_data() -> dict[str, object]:
     service_runtime = get_service_runtime_info()
     toolchains = get_toolchain_info()
     external_assets = build_external_asset_audit_summary()
+    runtime = get_job_queue_summary()
+    metrics = get_execution_metrics_snapshot()
+    scheduler = get_scheduler_summary()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
     telegram_status = _get_telegram_section_status(telegram)
     storage_status = _get_storage_status()
     platform_status = _get_platform_status(secret_storage, process_manager, service_runtime, toolchains)
-    overall_status = _combine_statuses(ai_status, workspace_status, telegram_status, storage_status, platform_status)
+    runtime_status = _get_runtime_status(runtime)
+    overall_status = _combine_statuses(
+        ai_status,
+        workspace_status,
+        telegram_status,
+        storage_status,
+        platform_status,
+        runtime_status,
+    )
     return {
         "overall": {"status": overall_status},
         "ai": {
@@ -69,12 +83,22 @@ def get_config_status_data() -> dict[str, object]:
             "service_runtime_detail": service_runtime["detail"],
         },
         "toolchains": toolchains,
+        "runtime": {
+            "status": runtime_status,
+            **runtime,
+        },
+        "metrics": metrics,
+        "scheduler": {
+            "status": "healthy" if not scheduler["last_status"] or scheduler["last_status"] in {"idle", "active"} else "warning",
+            **scheduler,
+        },
         "storage": {
             "status": storage_status,
             "env_file": str(ENV_FILE if ENV_FILE.exists() else "(missing)"),
             "state_dir": str(agent_context.DATA_DIR),
             "secrets_file": str(agent_context.SECRETS_FILE),
             "execution_history_file": str(agent_context.EXECUTION_HISTORY_FILE),
+            "metrics_file": str(agent_context.METRICS_FILE),
             "portable_key_file": str(PORTABLE_KEY_FILE),
             "skill_timeout_seconds": get_skill_timeout_seconds(),
         },
@@ -82,6 +106,11 @@ def get_config_status_data() -> dict[str, object]:
             "asset_count": external_assets["asset_count"],
             "event_count": external_assets["event_count"],
             "incompatible_count": external_assets["incompatible_count"],
+            "unapproved_count": external_assets["unapproved_count"],
+            "undeclared_capability_count": external_assets["undeclared_capability_count"],
+            "blocked_capability_count": external_assets["blocked_capability_count"],
+            "trust_policy": external_assets["trust_policy"],
+            "allowed_capabilities": external_assets["allowed_capabilities"],
             "layout": external_assets["layout"],
         },
         "issues": issues,
@@ -173,8 +202,47 @@ def get_config_status_report() -> str:
             f"- state_dir: {data['storage']['state_dir']}",
             f"- secrets_file: {data['storage']['secrets_file']}",
             f"- execution_history_file: {data['storage']['execution_history_file']}",
+            f"- metrics_file: {data['storage']['metrics_file']}",
             f"- portable_key_file: {data['storage']['portable_key_file']}",
             f"- skill_timeout_seconds: {data['storage']['skill_timeout_seconds']:.2f}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[Runtime]",
+            f"- status: {data['runtime']['status']}",
+            f"- total_jobs: {data['runtime']['total_jobs']}",
+            f"- queued_jobs: {data['runtime']['queued_jobs']}",
+            f"- leased_jobs: {data['runtime']['leased_jobs']}",
+            f"- done_jobs: {data['runtime']['done_jobs']}",
+            f"- failed_jobs: {data['runtime']['failed_jobs']}",
+            f"- requeued_jobs: {data['runtime']['requeued_jobs']}",
+            f"- last_worker_run_at: {data['runtime']['last_worker_run_at'] or '-'}",
+            f"- last_worker_status: {data['runtime']['last_worker_status'] or '-'}",
+            f"- last_worker_processed: {data['runtime']['last_worker_processed']}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[Scheduler]",
+            f"- status: {data['scheduler']['status']}",
+            f"- last_run_at: {data['scheduler']['last_run_at'] or '-'}",
+            f"- last_status: {data['scheduler']['last_status'] or '-'}",
+            f"- last_cycles: {data['scheduler']['last_cycles']}",
+            f"- last_processed: {data['scheduler']['last_processed']}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[Metrics]",
+            f"- events_total: {data['metrics']['summary']['events_total']}",
+            f"- commands_total: {data['metrics']['summary']['commands_total']}",
+            f"- skills_total: {data['metrics']['summary']['skills_total']}",
+            f"- timeouts_total: {data['metrics']['summary']['timeouts_total']}",
+            f"- errors_total: {data['metrics']['summary']['errors_total']}",
         ]
     )
 
@@ -185,6 +253,11 @@ def get_config_status_report() -> str:
             f"- asset_count: {data['external_assets']['asset_count']}",
             f"- event_count: {data['external_assets']['event_count']}",
             f"- incompatible_count: {data['external_assets']['incompatible_count']}",
+            f"- unapproved_count: {data['external_assets']['unapproved_count']}",
+            f"- undeclared_capability_count: {data['external_assets']['undeclared_capability_count']}",
+            f"- blocked_capability_count: {data['external_assets']['blocked_capability_count']}",
+            f"- trust_policy: {data['external_assets']['trust_policy']}",
+            f"- allowed_capabilities: {', '.join(data['external_assets']['allowed_capabilities']) or '-'}",
             f"- skills_dir: {data['external_assets']['layout']['skills_dir']}",
             f"- tools_dir: {data['external_assets']['layout']['tools_dir']}",
             f"- packages_dir: {data['external_assets']['layout']['packages_dir']}",
@@ -388,6 +461,17 @@ def _get_platform_status(
         _normalize_status(service_runtime.get("status")),
         _normalize_status(toolchains.get("status")),
     )
+
+
+def _get_runtime_status(runtime: dict[str, object]) -> str:
+    leased_jobs = int(runtime.get("leased_jobs", 0) or 0)
+    failed_jobs = int(runtime.get("failed_jobs", 0) or 0)
+    queued_jobs = int(runtime.get("queued_jobs", 0) or 0)
+    if leased_jobs > 0:
+        return "warning"
+    if failed_jobs > 0 and queued_jobs == 0:
+        return "warning"
+    return "healthy"
 
 
 def _combine_statuses(*statuses: str) -> str:

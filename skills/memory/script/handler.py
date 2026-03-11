@@ -13,6 +13,7 @@ from otonomassist.core.agent_context import (
     append_lesson,
     append_memory_entry,
     ensure_agent_storage,
+    retrieve_relevant_memories,
 )
 from otonomassist.core.result_builder import build_result
 
@@ -126,11 +127,20 @@ def _search_memories(query: str) -> str:
     if not query:
         return "Memory search membutuhkan query."
 
-    query_lower = query.lower()
-    matches = [
+    exact_matches = [
         entry for entry in _load_memories()
-        if query_lower in entry.get("text", "").lower()
+        if query.lower() in entry.get("text", "").lower()
     ]
+    semantic_matches = retrieve_relevant_memories(query, limit=10)
+    combined: list[dict[str, Any]] = []
+    seen_ids: set[int] = set()
+    for entry in exact_matches + semantic_matches:
+        entry_id = int(entry.get("id", 0) or 0)
+        if entry_id in seen_ids:
+            continue
+        seen_ids.add(entry_id)
+        combined.append(entry)
+    matches = combined
     if not matches:
         return f"Tidak ada memori yang cocok untuk '{query}'."
 
@@ -141,6 +151,7 @@ def _search_memories(query: str) -> str:
             "query": query,
             "match_count": len(matches),
             "returned_entries": len(selected),
+            "retrieval_mode": "hybrid_exact_token_overlap",
             "entries": [_memory_row(entry) for entry in selected],
             "summary": f"Ditemukan {len(matches)} memory yang cocok untuk '{query}'.",
         },

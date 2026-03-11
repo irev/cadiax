@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from otonomassist.core.external_assets import get_external_skills_dir, is_external_skill_approved
 from otonomassist.models import Skill, SkillDefinition
 
 if TYPE_CHECKING:
@@ -46,6 +47,9 @@ class SkillLoader:
         # Check for directory-based skills first
         for entry in self.skills_dir.iterdir():
             if entry.is_dir() and not entry.name.startswith("__"):
+                if self._is_unapproved_external_skill(entry):
+                    print(f"Skipping unapproved external skill: {entry.name}", file=sys.stderr)
+                    continue
                 skill = self._load_skill_from_directory(entry)
                 if skill:
                     registry.register(skill)
@@ -59,6 +63,17 @@ class SkillLoader:
                 count += 1
 
         return count
+
+    def _is_unapproved_external_skill(self, skill_dir: Path) -> bool:
+        """Return True when a skill dir is external and not approved for loading."""
+        try:
+            external_root = get_external_skills_dir().resolve()
+            resolved = skill_dir.resolve()
+        except OSError:
+            return False
+        if resolved == external_root or external_root not in resolved.parents:
+            return False
+        return not is_external_skill_approved(resolved)
 
     def _load_skill_from_directory(self, skill_dir: Path) -> Skill | None:
         """Load a skill from a directory structure."""

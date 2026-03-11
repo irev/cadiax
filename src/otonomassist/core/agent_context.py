@@ -19,7 +19,9 @@ PROFILE_FILE = DATA_DIR / "profile.md"
 LESSONS_FILE = DATA_DIR / "lessons.md"
 SECRETS_FILE = DATA_DIR / "secrets.json"
 EXECUTION_HISTORY_FILE = DATA_DIR / "execution_history.jsonl"
+METRICS_FILE = DATA_DIR / "execution_metrics.json"
 JOB_QUEUE_FILE = DATA_DIR / "job_queue.json"
+SCHEDULER_STATE_FILE = DATA_DIR / "scheduler_state.json"
 SECRET_NAME_ALIASES = {
     "OPENAI_API_KEY": "openai_api_key",
     "openai_api_key": "openai_api_key",
@@ -74,9 +76,21 @@ def ensure_agent_storage() -> None:
     if not EXECUTION_HISTORY_FILE.exists():
         ensure_internal_state_write_allowed(EXECUTION_HISTORY_FILE)
         EXECUTION_HISTORY_FILE.touch()
+    if not METRICS_FILE.exists():
+        ensure_internal_state_write_allowed(METRICS_FILE)
+        METRICS_FILE.write_text(
+            json.dumps({"counters": {}, "timings": {}, "updated_at": ""}, indent=2),
+            encoding="utf-8",
+        )
     if not JOB_QUEUE_FILE.exists():
         ensure_internal_state_write_allowed(JOB_QUEUE_FILE)
         JOB_QUEUE_FILE.write_text(json.dumps({"jobs": []}, indent=2), encoding="utf-8")
+    if not SCHEDULER_STATE_FILE.exists():
+        ensure_internal_state_write_allowed(SCHEDULER_STATE_FILE)
+        SCHEDULER_STATE_FILE.write_text(
+            json.dumps({"last_run_at": "", "last_status": "", "last_cycles": 0, "last_processed": 0}, indent=2),
+            encoding="utf-8",
+        )
 
 
 def load_markdown(path: Path, max_chars: int = 1600) -> str:
@@ -119,7 +133,7 @@ def save_planner_state(state: dict[str, Any]) -> None:
     _write_text_atomic(PLANNER_FILE, json.dumps(state, indent=2))
 
 
-def build_agent_context_block() -> str:
+def build_agent_context_block(query: str | None = None) -> str:
     """Build a compact persistent context block for prompting."""
     ensure_agent_storage()
     parts = [
@@ -146,13 +160,13 @@ def build_agent_context_block() -> str:
     if next_task:
         parts.append(f"- next_task: #{next_task.get('id')} {next_task.get('text')}")
 
-    memories = load_recent_memories(limit=5)
-    parts.extend(["", "## Recent Memories"])
+    memories = retrieve_relevant_memories(query, limit=5) if query and query.strip() else load_recent_memories(limit=5)
+    parts.extend(["", "## Relevant Memories" if query and query.strip() else "## Recent Memories"])
     if memories:
         for entry in memories:
             parts.append(f"- #{entry.get('id')}: {entry.get('text', '')}")
     else:
-        parts.append("- belum ada memori")
+        parts.append("- tidak ada memori relevan" if query and query.strip() else "- belum ada memori")
 
     return "\n".join(parts)
 
@@ -282,6 +296,33 @@ def update_planner_task_fields(task_id: int, **fields: Any) -> bool:
     return False
 
 
+def retrieve_relevant_memories(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    """Retrieve memory entries by simple token overlap and recency weighting."""
+    normalized = _tokenize_text(query)
+    if not normalized:
+        return load_recent_memories(limit=limit)
+
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for entry in load_recent_memories(limit=10_000):
+        text = str(entry.get("text", ""))
+        tokens = _tokenize_text(text)
+        if not tokens:
+            continue
+        overlap = len(normalized.intersection(tokens))
+        if overlap <= 0:
+            continue
+        recency_bonus = min(int(entry.get("id", 0) or 0) / 10_000.0, 0.25)
+        scored.append((float(overlap) + recency_bonus, entry))
+
+    return [
+        entry
+        for _, entry in sorted(
+            scored,
+            key=lambda item: (-item[0], -int(item[1].get("id", 0) or 0)),
+        )[: max(1, limit)]
+    ]
+
+
 def load_job_queue_state() -> dict[str, Any]:
     """Load runtime job queue state."""
     ensure_agent_storage()
@@ -314,6 +355,40 @@ def save_secrets_state(state: dict[str, Any]) -> None:
     ensure_agent_storage()
     ensure_internal_state_write_allowed(SECRETS_FILE)
     _write_text_atomic(SECRETS_FILE, json.dumps(state, indent=2))
+
+
+def load_metrics_state() -> dict[str, Any]:
+    """Load aggregated execution metrics state."""
+    ensure_agent_storage()
+    ensure_read_allowed(METRICS_FILE)
+    raw = METRICS_FILE.read_text(encoding="utf-8")
+    if not raw.strip():
+        return {"counters": {}, "timings": {}, "updated_at": ""}
+    return json.loads(raw)
+
+
+def save_metrics_state(state: dict[str, Any]) -> None:
+    """Persist aggregated execution metrics state."""
+    ensure_agent_storage()
+    ensure_internal_state_write_allowed(METRICS_FILE)
+    _write_text_atomic(METRICS_FILE, json.dumps(state, indent=2))
+
+
+def load_scheduler_state() -> dict[str, Any]:
+    """Load scheduler runtime state."""
+    ensure_agent_storage()
+    ensure_read_allowed(SCHEDULER_STATE_FILE)
+    raw = SCHEDULER_STATE_FILE.read_text(encoding="utf-8")
+    if not raw.strip():
+        return {"last_run_at": "", "last_status": "", "last_cycles": 0, "last_processed": 0}
+    return json.loads(raw)
+
+
+def save_scheduler_state(state: dict[str, Any]) -> None:
+    """Persist scheduler runtime state."""
+    ensure_agent_storage()
+    ensure_internal_state_write_allowed(SCHEDULER_STATE_FILE)
+    _write_text_atomic(SCHEDULER_STATE_FILE, json.dumps(state, indent=2))
 
 
 def get_secret_value(name: str) -> str | None:
@@ -361,6 +436,15 @@ def _task_dependencies_satisfied(task: dict[str, Any], done_ids: set[int]) -> bo
         return True
     normalized = {int(item) for item in depends_on if str(item).strip().isdigit()}
     return normalized.issubset(done_ids)
+
+
+def _tokenize_text(text: str) -> set[str]:
+    return {
+        cleaned.lower()
+        for raw in str(text).replace("\n", " ").split()
+        for cleaned in [raw.strip(".,:;!?()[]{}\"'")]
+        if len(cleaned) >= 4
+    }
 
 
 def _write_text_atomic(path: Path, text: str) -> None:

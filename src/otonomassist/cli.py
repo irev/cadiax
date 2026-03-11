@@ -4,13 +4,27 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import time
 
 import click
 
-from otonomassist.core import Assistant, TransportContext, get_config_status_data, get_config_status_report, render_execution_history
-from otonomassist.core.external_assets import render_external_asset_audit, sync_external_skill_inventory
+from otonomassist.core import (
+    Assistant,
+    TransportContext,
+    get_config_status_data,
+    get_config_status_report,
+    render_execution_history,
+)
+from otonomassist.core.admin_api import run_admin_api
+from otonomassist.core.execution_metrics import get_execution_metrics_snapshot, render_execution_metrics
+from otonomassist.core.external_assets import (
+    render_external_asset_audit,
+    set_external_asset_approval,
+    sync_external_skill_inventory,
+)
 from otonomassist.core.external_installer import install_external_skill, render_external_install_result
-from otonomassist.core.job_runtime import complete_job, enqueue_ready_planner_task, lease_next_job, render_job_queue
+from otonomassist.core.job_runtime import enqueue_ready_planner_task, process_job_queue, render_job_queue
+from otonomassist.core.scheduler_runtime import run_scheduler
 from otonomassist.core.setup_wizard import run_setup_wizard, should_recommend_setup
 from otonomassist.telegram_cli import run_telegram_transport
 
@@ -135,6 +149,16 @@ def history_command() -> None:
     click.echo(render_execution_history())
 
 
+@main.command("metrics")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON metrics")
+def metrics_command(as_json: bool) -> None:
+    """Show aggregated execution metrics."""
+    if as_json:
+        click.echo(json.dumps(get_execution_metrics_snapshot(), ensure_ascii=False, indent=2))
+        return
+    click.echo(render_execution_metrics())
+
+
 @main.group("jobs")
 def jobs_group() -> None:
     """Runtime job queue commands."""
@@ -158,35 +182,51 @@ def jobs_enqueue_command() -> None:
 
 @main.command("worker")
 @click.option("--steps", default=1, type=int, show_default=True, help="Jumlah job yang diproses")
+@click.option("--until-idle", is_flag=True, help="Proses queue sampai tidak ada job queued")
 @click.option("--enqueue-first", is_flag=True, help="Enqueue ready planner task sebelum memproses")
+@click.option("--interval", default=0.0, type=float, show_default=True, help="Jeda antar cycle worker (detik)")
+@click.option("--max-cycles", default=1, type=int, show_default=True, help="Jumlah cycle worker terjadwal")
 @click.option(
     "--skills-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default="skills",
     help="Directory containing skill markdown files",
 )
-def worker_command(steps: int, enqueue_first: bool, skills_dir: Path) -> None:
+def worker_command(
+    steps: int,
+    until_idle: bool,
+    enqueue_first: bool,
+    interval: float,
+    max_cycles: int,
+    skills_dir: Path,
+) -> None:
     """Process runtime jobs from the queue."""
     assistant = _build_assistant(skills_dir)
-    lines: list[str] = [f"Worker processing up to {max(1, steps)} job(s):"]
-    processed = 0
-    for _ in range(max(1, steps)):
-        if enqueue_first:
-            enqueue_ready_planner_task()
-        job = lease_next_job()
-        if not job:
-            lines.append("- idle: tidak ada job queued")
+    cycles = max(1, max_cycles)
+    lines: list[str] = [
+        (
+            f"Worker scheduled for {cycles} cycle(s) until idle "
+            f"(max_jobs={max(1, steps)}, interval={max(0.0, interval):.2f}s):"
+            if until_idle or cycles > 1
+            else f"Worker processing up to {max(1, steps)} job(s):"
+        )
+    ]
+    total_processed = 0
+    for cycle_index in range(cycles):
+        result = process_job_queue(
+            assistant,
+            max_jobs=max(1, steps),
+            enqueue_first=enqueue_first,
+            until_idle=until_idle,
+        )
+        lines.append(f"[cycle {cycle_index + 1}]")
+        lines.extend(result["lines"][1:])
+        total_processed += int(result["processed"])
+        if result["idle"] and cycle_index + 1 < cycles and interval <= 0:
             break
-        result = assistant.handle_message("executor next", TransportContext(source="worker"))
-        status = "done"
-        if result.startswith("Task #") and "dijadwalkan ulang" in result:
-            status = "requeued"
-        elif result.startswith("Task #") and "gagal dieksekusi" in result:
-            status = "failed"
-        complete_job(int(job["id"]), status)
-        processed += 1
-        lines.append(f"- job {job['id']}: task #{job['task_id']} -> {status}")
-    lines.append(f"- processed: {processed}")
+        if cycle_index + 1 < cycles and interval > 0:
+            time.sleep(max(0.0, interval))
+    lines.append(f"- total_processed: {total_processed}")
     click.echo("\n".join(lines))
 
 
@@ -251,6 +291,48 @@ def telegram_command(skills_dir: Path) -> None:
     run_telegram_transport(skills_dir)
 
 
+@main.command("api")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind address for the admin API")
+@click.option("--port", default=8787, type=int, show_default=True, help="Bind port for the admin API")
+def api_command(host: str, port: int) -> None:
+    """Run the local read-only admin API."""
+    click.echo(f"Admin API listening on http://{host}:{port}")
+    run_admin_api(host=host, port=port)
+
+
+@main.command("scheduler")
+@click.option("--cycles", default=1, type=int, show_default=True, help="Jumlah cycle scheduler")
+@click.option("--interval", default=0.0, type=float, show_default=True, help="Jeda antar cycle (detik)")
+@click.option("--steps", default=5, type=int, show_default=True, help="Maksimum job per cycle")
+@click.option("--enqueue-first/--no-enqueue-first", default=True, show_default=True, help="Enqueue task ready di awal cycle")
+@click.option("--until-idle/--single-pass", default=True, show_default=True, help="Jalankan worker sampai idle per cycle")
+@click.option(
+    "--skills-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default="skills",
+    help="Directory containing skill markdown files",
+)
+def scheduler_command(
+    cycles: int,
+    interval: float,
+    steps: int,
+    enqueue_first: bool,
+    until_idle: bool,
+    skills_dir: Path,
+) -> None:
+    """Run scheduled autonomous worker cycles."""
+    assistant = _build_assistant(skills_dir)
+    result = run_scheduler(
+        assistant,
+        cycles=max(1, cycles),
+        interval_seconds=max(0.0, interval),
+        max_jobs_per_cycle=max(1, steps),
+        enqueue_first=enqueue_first,
+        until_idle=until_idle,
+    )
+    click.echo(result["output"])
+
+
 @main.group("external")
 def external_group() -> None:
     """External asset audit commands."""
@@ -275,6 +357,28 @@ def external_sync_command() -> None:
     click.echo(
         f"External assets synced: {result['discovered_count']} scanned"
     )
+
+
+@external_group.command("approve")
+@click.argument("name", required=True)
+def external_approve_command(name: str) -> None:
+    """Approve one external skill for loading."""    
+    try:
+        asset = set_external_asset_approval(name, "approved", actor="cli")
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"External asset `{asset['name']}` diset ke approved.")
+
+
+@external_group.command("reject")
+@click.argument("name", required=True)
+def external_reject_command(name: str) -> None:
+    """Reject one external skill from loading."""    
+    try:
+        asset = set_external_asset_approval(name, "rejected", actor="cli")
+    except Exception as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"External asset `{asset['name']}` diset ke rejected.")
 
 
 @external_group.command("install")

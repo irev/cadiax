@@ -21,6 +21,17 @@ Dokumen ini merangkum perubahan penting yang sudah mendarat di OtonomAssist.
 - retry dasar di `executor` untuk kegagalan transient seperti timeout/provider error
 - planner task sekarang mendukung `priority`, `depends_on`, dan metadata retry yang lebih kaya
 - runtime job queue lokal dan command `jobs` / `worker` untuk pemrosesan job eksplisit
+- worker runtime sekarang mendukung mode `until-idle`, cycle terjadwal, dan pencatatan status run terakhir
+- section `[Runtime]` ditambahkan ke `doctor/status` untuk audit queue worker
+- command `metrics` dan file agregat `execution_metrics.json` untuk observability ringan
+- admin API read-only lokal untuk status, metrics, jobs, dan history
+- scheduler runtime dengan state persisten dan command CLI `scheduler`
+- admin API sekarang mendukung token auth opsional via `OTONOMASSIST_ADMIN_TOKEN`
+- retrieval memori sekarang memakai hybrid exact match + token overlap untuk konteks dan search memory
+- trust boundary skill eksternal sekarang aman-by-default lewat policy `approval-required`
+- command `external approve` dan `external reject` ditambahkan untuk mengendalikan loading skill eksternal
+- capability declaration untuk asset eksternal sekarang diaudit dan diperlukan sebelum approval
+- allowlist capability eksternal sekarang dienforce lewat `OTONOMASSIST_EXTERNAL_CAPABILITY_ALLOW`
 - CLI subcommand resmi:
   - `otonomassist setup`
   - `otonomassist status`

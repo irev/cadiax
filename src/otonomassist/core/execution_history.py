@@ -63,6 +63,11 @@ def load_execution_events(limit: int = 20) -> list[dict[str, Any]]:
     return entries[-limit:]
 
 
+def export_execution_events(limit: int = 20) -> list[dict[str, Any]]:
+    """Export recent execution events as machine-readable data."""
+    return load_execution_events(limit=limit)
+
+
 def render_execution_history(limit: int = 20) -> str:
     """Render recent execution history for operator-facing inspection."""
     events = load_execution_events(limit=limit)

@@ -179,9 +179,13 @@ Runtime job queue:
 otonomassist jobs list
 otonomassist jobs enqueue
 otonomassist worker --steps 1 --enqueue-first
+otonomassist worker --steps 10 --until-idle --enqueue-first
+otonomassist worker --steps 5 --until-idle --enqueue-first --max-cycles 3 --interval 2
+otonomassist scheduler --cycles 3 --interval 5 --steps 5
 ```
 
 Ini berguna bila Anda ingin memisahkan tahap `task ready` dari planner dan `job execution` di runtime worker.
+Section `[Runtime]` pada `status/doctor` sekarang juga menunjukkan ringkasan queue dan aktivitas worker terakhir.
 
 Lihat jejak eksekusi terbaru:
 
@@ -191,6 +195,15 @@ otonomassist history
 
 Command ini membaca event dari `.otonomassist/execution_history.jsonl` dan menampilkan ringkasan eksekusi terbaru beserta `trace_id`.
 
+Lihat metrik agregat runtime:
+
+```bash
+otonomassist metrics
+otonomassist metrics --json
+```
+
+Command ini membaca agregat dari `.otonomassist/execution_metrics.json` untuk melihat volume command/skill, timeout, error, dan timing rata-rata.
+
 Timeout skill global bisa diatur lewat:
 
 ```bash
@@ -198,6 +211,26 @@ OTONOMASSIST_SKILL_TIMEOUT_SECONDS=60
 ```
 
 Jika sebuah skill melewati batas ini, assistant akan mengembalikan error timeout dan event history akan ditandai `status=timeout`.
+
+Admin API read-only lokal:
+
+```bash
+otonomassist api --host 127.0.0.1 --port 8787
+```
+
+Endpoint yang tersedia:
+
+- `/health`
+- `/status`
+- `/metrics`
+- `/jobs`
+- `/scheduler`
+- `/history?limit=20`
+
+Jika `OTONOMASSIST_ADMIN_TOKEN` diisi, sertakan salah satu:
+
+- header `X-OtonomAssist-Token: <token>`
+- header `Authorization: Bearer <token>`
 
 ## Asset Eksternal
 
@@ -216,6 +249,8 @@ Audit asset eksternal:
 otonomassist external install <path-lokal-atau-url-git>
 otonomassist external sync
 otonomassist external audit
+otonomassist external approve <name>
+otonomassist external reject <name>
 ```
 
 Di dalam assistant:
@@ -234,6 +269,7 @@ Jika sebuah skill eksternal ingin mendeklarasikan metadata audit dan requirement
   "manager": "git",
   "version": "1.0.0",
   "requires": ["git", "python"],
+  "capabilities": ["workspace_read"],
   "platforms": ["windows", "linux"]
 }
 ```
@@ -241,9 +277,29 @@ Jika sebuah skill eksternal ingin mendeklarasikan metadata audit dan requirement
 Field ini membantu sistem menilai:
 
 - requirement toolchain yang dibutuhkan
+- capability yang diminta asset
 - apakah platform saat ini didukung
 - apakah asset siap dipakai atau masih `degraded`
 - siapa/apa yang terakhir menyinkronkan atau menambahkan asset itu ke registry audit
+
+Secara default, skill eksternal memakai policy `approval-required`:
+
+- skill bisa di-install
+- skill masuk audit registry
+- skill belum di-load sampai di-approve
+- approval akan ditolak jika capability declaration belum valid
+
+Untuk mode yang lebih longgar:
+
+```bash
+OTONOMASSIST_EXTERNAL_SKILL_POLICY=allow-all
+```
+
+Capability yang diizinkan default hanya `workspace_read`. Jika asset membutuhkan capability lain, buka eksplisit melalui:
+
+```bash
+OTONOMASSIST_EXTERNAL_CAPABILITY_ALLOW=workspace_read,network
+```
 
 ## Operasi Semi-Otonom
 
@@ -272,6 +328,8 @@ Catatan operasional:
 - ubah ke `rw` hanya bila memang ingin memberi kemampuan modifikasi file
 - task otonom tertentu yang menyentuh `secrets` dan `profile` diblok untuk mencegah perubahan sensitif otomatis
 - kegagalan transient seperti timeout/provider error sekarang bisa dijadwalkan ulang otomatis oleh `executor` sampai batas retry task
+- worker runtime bisa dipakai untuk memproses queue secara bertahap atau sampai idle tanpa memakai `runner`
+- konteks prompt agent sekarang mulai menarik memori yang relevan terhadap command saat orchestration, bukan hanya memory terbaru
 
 ## Structured Result dan View
 
@@ -362,6 +420,8 @@ State lokal utama:
 ├── lessons.md
 ├── secrets.json
 ├── execution_history.jsonl
+├── execution_metrics.json
+├── scheduler_state.json
 └── telegram_auth.json
 ```
 

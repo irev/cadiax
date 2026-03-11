@@ -16,7 +16,9 @@ if str(SRC) not in sys.path:
 
 from otonomassist.core import agent_context  # noqa: E402
 from otonomassist.core.execution_history import load_execution_events  # noqa: E402
+from otonomassist.core.execution_metrics import get_execution_metrics_snapshot  # noqa: E402
 from otonomassist.core import workspace_guard  # noqa: E402
+from otonomassist.core.admin_api import build_admin_snapshot  # noqa: E402
 from otonomassist.ai.factory import AIProviderFactory  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
 from otonomassist.transports.telegram import TelegramPollingTransport  # noqa: E402
@@ -50,7 +52,9 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
+    monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
     monkeypatch.setattr(agent_context, "JOB_QUEUE_FILE", data_dir / "job_queue.json")
+    monkeypatch.setattr(agent_context, "SCHEDULER_STATE_FILE", data_dir / "scheduler_state.json")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
     agent_context.ensure_agent_storage()
@@ -264,6 +268,25 @@ def test_worker_processes_job_queue_from_ready_planner_task(tmp_path, monkeypatc
     assert any(job["status"] == "done" for job in job_state["jobs"])
 
 
+def test_worker_until_idle_processes_multiple_jobs_and_records_runtime_state(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: _FakeProvider()))
+
+    planner_module = _load_module(ROOT / "skills" / "planner" / "script" / "handler.py", "planner_handler_worker_until_idle")
+    worker_module = _load_module(ROOT / "skills" / "worker" / "script" / "handler.py", "worker_handler_until_idle_test")
+
+    planner_module.handle("add --priority 2 memory add tugas worker satu")
+    planner_module.handle("add --priority 1 memory add tugas worker dua")
+    output = worker_module.handle("until-idle --enqueue")
+    job_state = agent_context.load_job_queue_state()
+
+    assert "Worker processing until idle" in output
+    assert "processed: 2" in output
+    assert job_state["worker"]["last_status"] in {"active", "idle"}
+    assert int(job_state["worker"]["last_processed"]) == 2
+    assert all(job["status"] == "done" for job in job_state["jobs"])
+
+
 def test_executor_resolves_natural_language_to_known_prefix(monkeypatch):
     module = _load_module(ROOT / "skills" / "executor" / "script" / "handler.py", "executor_handler_resolve_test")
     monkeypatch.setattr(module.AIProviderFactory, "auto_detect", staticmethod(lambda: _ResolveProvider()))
@@ -357,6 +380,57 @@ def test_assistant_writes_execution_history_with_trace_id(tmp_path, monkeypatch)
     assert any(event.get("skill_name") == "workspace" for event in events)
 
 
+def test_assistant_updates_execution_metrics_for_completed_commands(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "README.md").write_text("README untuk metrics\n", encoding="utf-8")
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    assistant.handle_message("workspace read README.md")
+
+    metrics = get_execution_metrics_snapshot()
+    assert metrics["summary"]["events_total"] >= 2
+    assert metrics["summary"]["commands_total"] >= 1
+    assert metrics["summary"]["skills_total"] >= 1
+    assert "command_completed" in "".join(metrics["counters"].keys())
+
+
+def test_admin_api_snapshot_exposes_status_metrics_and_history(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "README.md").write_text("README untuk admin api\n", encoding="utf-8")
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    assistant.handle_message("workspace read README.md")
+
+    status_code, metrics_payload = build_admin_snapshot("/metrics")
+    history_code, history_payload = build_admin_snapshot("/history?limit=5")
+    jobs_code, jobs_payload = build_admin_snapshot("/jobs")
+
+    assert status_code == 200
+    assert history_code == 200
+    assert jobs_code == 200
+    assert metrics_payload["summary"]["commands_total"] >= 1
+    assert len(history_payload["events"]) >= 1
+    assert "summary" in jobs_payload
+
+
+def test_admin_api_requires_token_when_configured(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("OTONOMASSIST_ADMIN_TOKEN", "token-rahasia")
+
+    unauthorized_code, unauthorized_payload = build_admin_snapshot("/status")
+    authorized_code, authorized_payload = build_admin_snapshot(
+        "/status",
+        headers={"X-OtonomAssist-Token": "token-rahasia"},
+    )
+
+    assert unauthorized_code == 401
+    assert unauthorized_payload["error"] == "unauthorized"
+    assert authorized_code == 200
+    assert "overall" in authorized_payload
+
+
 def test_assistant_times_out_slow_skill_and_records_timeout_status(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setenv("OTONOMASSIST_SKILL_TIMEOUT_SECONDS", "0.05")
@@ -399,6 +473,19 @@ def test_assistant_times_out_slow_skill_and_records_timeout_status(tmp_path, mon
     assert "slowpoke" in result
     assert any(event["event_type"] == "skill_completed" and event["status"] == "timeout" for event in events)
     assert any(event["event_type"] == "command_completed" and event["status"] == "timeout" for event in events)
+
+
+def test_memory_search_uses_hybrid_retrieval_for_relevant_entries(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    memory_module = _load_module(ROOT / "skills" / "memory" / "script" / "handler.py", "memory_handler_hybrid_test")
+
+    memory_module.handle("add catatan tentang planner dependency runtime")
+    memory_module.handle("add catatan tentang cuaca jakarta")
+    result = memory_module.handle("search dependency planner")
+
+    assert result["type"] == "memory_search"
+    assert result["data"]["retrieval_mode"] == "hybrid_exact_token_overlap"
+    assert any("planner dependency runtime" in entry["text"] for entry in result["data"]["entries"])
 
 
 def test_telegram_transport_handles_message_without_network(tmp_path, monkeypatch):

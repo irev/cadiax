@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from otonomassist.core.job_runtime import complete_job, enqueue_ready_planner_task, lease_next_job, render_job_queue
+from otonomassist.core.job_runtime import process_job_queue, render_job_queue
 from otonomassist.core.assistant import Assistant
 
 
@@ -18,37 +18,27 @@ def handle(args: str) -> str:
     if not text or text == "list":
         return render_job_queue()
     if text in {"once", "once --enqueue", "--enqueue once"}:
-        return _run_jobs(1, enqueue_first="--enqueue" in text)
+        return _run_jobs(1, enqueue_first="--enqueue" in text, until_idle=False)
+    if text in {"until-idle", "until-idle --enqueue", "--enqueue until-idle"}:
+        return _run_jobs(20, enqueue_first="--enqueue" in text, until_idle=True)
     if text.startswith("steps "):
         _, _, count_text = text.partition(" ")
+        count_part = count_text.replace("--enqueue", "").strip()
         try:
-            count = max(1, min(20, int(count_text.strip())))
+            count = max(1, min(20, int(count_part)))
         except ValueError:
             return "Format: worker steps <angka> [--enqueue]"
-        return _run_jobs(count, enqueue_first="--enqueue" in text)
-    return "Usage: worker <list|once|once --enqueue|steps N>"
+        return _run_jobs(count, enqueue_first="--enqueue" in text, until_idle=False)
+    return "Usage: worker <list|once|once --enqueue|until-idle|until-idle --enqueue|steps N>"
 
 
-def _run_jobs(count: int, enqueue_first: bool) -> str:
+def _run_jobs(count: int, enqueue_first: bool, until_idle: bool) -> str:
     assistant = Assistant(skills_dir=SKILLS_DIR)
     assistant.initialize()
-    lines = [f"Worker processing {count} job(s):"]
-    processed = 0
-    for _ in range(count):
-        if enqueue_first:
-            enqueue_ready_planner_task()
-        job = lease_next_job()
-        if not job:
-            lines.append("- idle: tidak ada job queued")
-            break
-        result = assistant.execute("executor next")
-        status = "done"
-        if "dijadwalkan ulang" in result:
-            status = "requeued"
-        elif "gagal dieksekusi" in result:
-            status = "failed"
-        complete_job(int(job["id"]), status)
-        processed += 1
-        lines.append(f"- job {job['id']}: task #{job['task_id']} -> {status}")
-    lines.append(f"- processed: {processed}")
-    return "\n".join(lines)
+    result = process_job_queue(
+        assistant,
+        max_jobs=count,
+        enqueue_first=enqueue_first,
+        until_idle=until_idle,
+    )
+    return str(result["output"])

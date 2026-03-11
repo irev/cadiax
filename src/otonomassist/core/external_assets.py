@@ -7,14 +7,46 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+import re
 
 import otonomassist.core.agent_context as agent_context
 from otonomassist.platform import get_toolchain_info
 import otonomassist.core.workspace_guard as workspace_guard
 
 
+KNOWN_EXTERNAL_CAPABILITIES = {
+    "workspace_read",
+    "workspace_write",
+    "network",
+    "subprocess",
+    "memory_write",
+    "planner_write",
+    "profile_write",
+}
+
+
 def get_external_registry_file() -> Path:
     return agent_context.DATA_DIR / "external_assets.json"
+
+
+def get_external_skill_trust_policy() -> str:
+    """Return effective trust policy for workspace-managed external skills."""
+    policy = os.getenv("OTONOMASSIST_EXTERNAL_SKILL_POLICY", "approval-required").strip().lower()
+    if policy in {"allow-all", "approval-required"}:
+        return policy
+    return "approval-required"
+
+
+def get_allowed_external_capabilities() -> set[str]:
+    """Return capabilities currently allowed for external skills."""
+    raw = os.getenv("OTONOMASSIST_EXTERNAL_CAPABILITY_ALLOW", "workspace_read").strip().lower()
+    if raw in {"*", "all"}:
+        return set(KNOWN_EXTERNAL_CAPABILITIES)
+    return {
+        item.strip()
+        for item in raw.split(",")
+        if item.strip()
+    }
 
 
 def get_external_skills_dir() -> Path:
@@ -94,6 +126,18 @@ def get_external_asset_manifest(asset_root: Path) -> dict[str, Any]:
     return payload
 
 
+def get_external_skill_metadata_name(asset_root: Path) -> str:
+    """Read skill name from SKILL.md metadata when manifest is absent."""
+    skill_md = asset_root / "SKILL.md"
+    if not skill_md.exists():
+        return ""
+    pattern = re.compile(r"^- name:\s*(.+)$", re.MULTILINE)
+    match = pattern.search(skill_md.read_text(encoding="utf-8"))
+    if not match:
+        return ""
+    return str(match.group(1)).strip()
+
+
 def evaluate_external_asset_compatibility(manifest: dict[str, Any] | None = None) -> dict[str, Any]:
     """Evaluate an asset manifest against current OS and available toolchains."""
     manifest = manifest or {}
@@ -130,6 +174,34 @@ def evaluate_external_asset_compatibility(manifest: dict[str, Any] | None = None
         "required_platforms": required_platforms,
         "required_toolchains": required_toolchains,
         "missing_toolchains": missing_toolchains,
+    }
+
+
+def evaluate_external_asset_capabilities(manifest: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Evaluate declared capabilities for one external asset."""
+    manifest = manifest or {}
+    declared = [
+        str(item).strip().lower()
+        for item in manifest.get("capabilities", [])
+        if str(item).strip()
+    ]
+    unknown = [name for name in declared if name not in KNOWN_EXTERNAL_CAPABILITIES]
+    allowed = get_allowed_external_capabilities()
+    disallowed = [name for name in declared if name in KNOWN_EXTERNAL_CAPABILITIES and name not in allowed]
+    if not declared:
+        status = "missing"
+    elif unknown:
+        status = "unknown"
+    elif disallowed:
+        status = "blocked"
+    else:
+        status = "declared"
+    return {
+        "status": status,
+        "declared_capabilities": declared,
+        "unknown_capabilities": unknown,
+        "disallowed_capabilities": disallowed,
+        "allowed_capabilities": sorted(allowed),
     }
 
 
@@ -207,6 +279,9 @@ def record_external_asset(
         "requirements": requirements or [],
         "compatibility": compatibility or _build_default_compatibility_snapshot(),
         "compatibility_status": compatibility_status or "ready",
+        "capability_status": "missing",
+        "declared_capabilities": [],
+        "approval_state": "approved" if get_external_skill_trust_policy() == "allow-all" else "pending",
         "notes": notes or [],
         "updated_at": now,
     }
@@ -221,10 +296,14 @@ def record_external_asset(
             "version": existing.get("version"),
             "requirements": existing.get("requirements", []),
             "compatibility_status": existing.get("compatibility_status"),
+            "capability_status": existing.get("capability_status", "missing"),
+            "declared_capabilities": existing.get("declared_capabilities", []),
+            "approval_state": existing.get("approval_state", "pending"),
             "notes": existing.get("notes", []),
         }
         existing.update(payload)
         existing.setdefault("installed_at", now)
+        existing.setdefault("approval_state", "approved" if get_external_skill_trust_policy() == "allow-all" else "pending")
         record = existing
         changed = previous != {
             "manager": record.get("manager"),
@@ -234,6 +313,9 @@ def record_external_asset(
             "version": record.get("version"),
             "requirements": record.get("requirements", []),
             "compatibility_status": record.get("compatibility_status"),
+            "capability_status": record.get("capability_status", "missing"),
+            "declared_capabilities": record.get("declared_capabilities", []),
+            "approval_state": record.get("approval_state", "pending"),
             "notes": record.get("notes", []),
         }
     else:
@@ -261,6 +343,7 @@ def sync_external_skill_inventory(installed_by: str = "system-sync") -> dict[str
             continue
         manifest = get_external_asset_manifest(entry)
         compatibility = evaluate_external_asset_compatibility(manifest)
+        capabilities = evaluate_external_asset_capabilities(manifest)
         requirements = [
             str(item).strip()
             for item in manifest.get("requires", [])
@@ -278,9 +361,15 @@ def sync_external_skill_inventory(installed_by: str = "system-sync") -> dict[str
                 "Platform unsupported for this asset: "
                 + ", ".join(compatibility["required_platforms"])
             )
+        if capabilities["status"] == "missing":
+            notes.append("Capabilities belum dideklarasikan di asset.json.")
+        if capabilities["unknown_capabilities"]:
+            notes.append("Unknown capabilities: " + ", ".join(capabilities["unknown_capabilities"]))
+        if capabilities["disallowed_capabilities"]:
+            notes.append("Disallowed capabilities: " + ", ".join(capabilities["disallowed_capabilities"]))
         discovered.append(
             record_external_asset(
-                name=str(manifest.get("name") or entry.name),
+                name=str(manifest.get("name") or get_external_skill_metadata_name(entry) or entry.name),
                 asset_type="skill",
                 manager=str(manifest.get("manager") or "workspace-local"),
                 source=str(manifest.get("source") or skill_md),
@@ -294,15 +383,31 @@ def sync_external_skill_inventory(installed_by: str = "system-sync") -> dict[str
                 notes=notes,
             )
         )
+        discovered[-1]["capability_status"] = capabilities["status"]
+        discovered[-1]["declared_capabilities"] = capabilities["declared_capabilities"]
+        state = load_external_asset_registry()
+        asset = next(
+            (
+                item for item in state.get("assets", [])
+                if item.get("name") == discovered[-1]["name"]
+                and item.get("target_path") == discovered[-1]["target_path"]
+            ),
+            None,
+        )
+        if asset is not None:
+            asset["capability_status"] = capabilities["status"]
+            asset["declared_capabilities"] = capabilities["declared_capabilities"]
+            state["updated_at"] = datetime.now(timezone.utc).isoformat()
+            save_external_asset_registry(state)
         if discovered[-1].get("_created") or discovered[-1].get("_changed"):
             append_external_asset_event(
                 action="install" if discovered[-1].get("_created") else "update",
-                name=str(manifest.get("name") or entry.name),
+                name=str(manifest.get("name") or get_external_skill_metadata_name(entry) or entry.name),
                 asset_type="skill",
                 target_path=str(entry),
                 actor=installed_by,
                 source=str(manifest.get("source") or skill_md),
-                detail=f"compatibility={compatibility['status']}",
+                detail=f"compatibility={compatibility['status']}; capabilities={capabilities['status']}",
             )
     return {
         "discovered_count": len(discovered),
@@ -320,22 +425,78 @@ def list_external_assets() -> list[dict[str, Any]]:
     )
 
 
+def set_external_asset_approval(name: str, approval_state: str, actor: str = "system") -> dict[str, Any]:
+    """Approve or reject one external asset by name."""
+    if approval_state not in {"approved", "rejected", "pending"}:
+        raise ValueError("approval_state harus approved, rejected, atau pending.")
+    state = load_external_asset_registry()
+    asset = next((item for item in state.get("assets", []) if item.get("name") == name), None)
+    if not asset:
+        raise ValueError(f"Asset eksternal '{name}' tidak ditemukan.")
+    if approval_state == "approved" and asset.get("capability_status") != "declared":
+        raise ValueError(
+            f"Asset eksternal '{name}' belum bisa di-approve karena capability declaration belum valid."
+        )
+    asset["approval_state"] = approval_state
+    asset["updated_at"] = datetime.now(timezone.utc).isoformat()
+    state["updated_at"] = asset["updated_at"]
+    save_external_asset_registry(state)
+    append_external_asset_event(
+        action=f"approval-{approval_state}",
+        name=name,
+        asset_type=str(asset.get("type") or "skill"),
+        target_path=str(asset.get("target_path") or ""),
+        actor=actor,
+        source=str(asset.get("source") or ""),
+        detail=f"policy={get_external_skill_trust_policy()}",
+    )
+    return _strip_internal_flags(asset)
+
+
+def is_external_skill_approved(skill_dir: Path) -> bool:
+    """Check whether an external skill directory is approved under current policy."""
+    if get_external_skill_trust_policy() == "allow-all":
+        return True
+    state = load_external_asset_registry()
+    normalized_target = str(Path(skill_dir).resolve())
+    for asset in state.get("assets", []):
+        if asset.get("type") != "skill":
+            continue
+        if str(Path(str(asset.get("target_path") or "")).resolve()) == normalized_target:
+            return asset.get("approval_state", "pending") == "approved"
+    return False
+
+
 def build_external_asset_audit_summary() -> dict[str, Any]:
     """Build a compact summary for external assets and layout."""
     sync_external_skill_inventory()
     assets = list_external_assets()
     by_type: dict[str, int] = {}
     incompatible_count = 0
+    unapproved_count = 0
+    undeclared_capability_count = 0
+    blocked_capability_count = 0
     for item in assets:
         by_type[item.get("type", "unknown")] = by_type.get(item.get("type", "unknown"), 0) + 1
         if item.get("compatibility_status") != "ready":
             incompatible_count += 1
+        if item.get("approval_state") != "approved":
+            unapproved_count += 1
+        if item.get("capability_status") != "declared":
+            undeclared_capability_count += 1
+        if item.get("capability_status") == "blocked":
+            blocked_capability_count += 1
     registry = load_external_asset_registry()
     return {
         "layout": get_external_asset_layout(),
         "asset_count": len(assets),
         "event_count": len(registry.get("events", [])),
         "incompatible_count": incompatible_count,
+        "unapproved_count": unapproved_count,
+        "undeclared_capability_count": undeclared_capability_count,
+        "blocked_capability_count": blocked_capability_count,
+        "trust_policy": get_external_skill_trust_policy(),
+        "allowed_capabilities": sorted(get_allowed_external_capabilities()),
         "by_type": by_type,
         "assets": assets,
     }
@@ -358,6 +519,11 @@ def render_external_asset_audit() -> str:
         f"- asset_count: {summary['asset_count']}",
         f"- event_count: {summary['event_count']}",
         f"- incompatible_count: {summary['incompatible_count']}",
+        f"- unapproved_count: {summary['unapproved_count']}",
+        f"- undeclared_capability_count: {summary['undeclared_capability_count']}",
+        f"- blocked_capability_count: {summary['blocked_capability_count']}",
+        f"- trust_policy: {summary['trust_policy']}",
+        f"- allowed_capabilities: {', '.join(summary['allowed_capabilities']) or '-'}",
     ]
     for key, value in sorted(summary["by_type"].items()):
         lines.append(f"- {key}: {value}")
@@ -370,7 +536,7 @@ def render_external_asset_audit() -> str:
     for item in summary["assets"]:
         lines.append(
             f"- #{item.get('id')} {item.get('type')} {item.get('name')} "
-            f"[manager={item.get('manager')}, status={item.get('status')}, compatibility={item.get('compatibility_status')}]"
+            f"[manager={item.get('manager')}, status={item.get('status')}, compatibility={item.get('compatibility_status')}, approval={item.get('approval_state', 'pending')}]"
         )
         lines.append(f"  target: {item.get('target_path')}")
         lines.append(f"  source: {item.get('source')}")
@@ -380,6 +546,9 @@ def render_external_asset_audit() -> str:
             lines.append(f"  version: {item.get('version')}")
         if item.get("requirements"):
             lines.append("  requirements: " + ", ".join(item.get("requirements", [])))
+        if item.get("declared_capabilities"):
+            lines.append("  capabilities: " + ", ".join(item.get("declared_capabilities", [])))
+        lines.append(f"  capability_status: {item.get('capability_status', 'missing')}")
         compatibility = item.get("compatibility") or {}
         if compatibility.get("missing_toolchains"):
             lines.append("  missing_toolchains: " + ", ".join(compatibility.get("missing_toolchains", [])))

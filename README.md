@@ -208,9 +208,16 @@ CLI utama sekarang mendukung subcommand resmi:
 - `otonomassist jobs list`
 - `otonomassist jobs enqueue`
 - `otonomassist worker --steps N`
+- `otonomassist worker --until-idle --enqueue-first`
+- `otonomassist metrics`
+- `otonomassist metrics --json`
+- `otonomassist api --host 127.0.0.1 --port 8787`
+- `otonomassist scheduler --cycles 3 --interval 5`
 - `otonomassist external audit`
 - `otonomassist external sync`
 - `otonomassist external install <path-atau-url>`
+- `otonomassist external approve <name>`
+- `otonomassist external reject <name>`
 - `otonomassist skills audit`
 
 `otonomassist setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential.
@@ -245,6 +252,7 @@ Skill eksternal bisa menambahkan manifest opsional `asset.json` di root skill un
   "manager": "git",
   "version": "1.0.0",
   "requires": ["git", "python"],
+  "capabilities": ["workspace_read"],
   "platforms": ["windows", "linux"]
 }
 ```
@@ -254,8 +262,31 @@ Audit akan memakai manifest itu untuk menampilkan:
 - siapa/apa yang menambahkan asset
 - versi yang dicatat
 - requirement toolchain
+- capability yang diminta asset
 - status kompatibilitas `ready` atau `degraded`
 - toolchain yang masih hilang
+
+Policy trust default untuk skill eksternal sekarang adalah `approval-required`. Artinya skill eksternal tetap bisa di-install dan diaudit, tetapi tidak otomatis di-load sampai di-approve.
+Approval sekarang juga memerlukan capability declaration yang valid di `asset.json`.
+Secara default, capability yang diizinkan untuk skill eksternal hanya `workspace_read`. Capability lain harus dibuka eksplisit lewat:
+
+```bash
+OTONOMASSIST_EXTERNAL_CAPABILITY_ALLOW=workspace_read,network
+```
+
+Contoh:
+
+```bash
+otonomassist external install <path-atau-url-git>
+otonomassist external approve my-skill
+otonomassist external reject my-skill
+```
+
+Jika ingin perilaku lama yang langsung memuat semua skill eksternal, set:
+
+```bash
+OTONOMASSIST_EXTERNAL_SKILL_POLICY=allow-all
+```
 
 Telegram runner:
 
@@ -270,6 +301,7 @@ Built-in commands:
 help
 list
 history
+metrics
 skills audit
 doctor
 config status
@@ -421,8 +453,12 @@ Fondasi observability minimum juga mulai aktif:
 - setiap command inbound sekarang punya `trace_id`
 - event inti seperti `command_received`, `skill_started`, `skill_completed`, dan `command_completed` ditulis ke `.otonomassist/execution_history.jsonl`
 - operator bisa melihat jejak terbaru lewat `otonomassist history`
+- operator bisa melihat agregat metrik lewat `otonomassist metrics`
 - timeout skill global bisa diatur dengan `OTONOMASSIST_SKILL_TIMEOUT_SECONDS`
 - `doctor/status` sekarang juga mendukung output machine-readable lewat `--json`
+- report `doctor/status` sekarang juga memiliki section `[Runtime]` untuk queue worker
+- admin API read-only lokal tersedia untuk `/health`, `/status`, `/metrics`, `/jobs`, dan `/history`
+- jika `OTONOMASSIST_ADMIN_TOKEN` diisi, admin API memerlukan header `X-OtonomAssist-Token` atau `Authorization: Bearer ...`
 
 Fondasi runtime Phase 2 juga mulai aktif:
 
@@ -430,6 +466,9 @@ Fondasi runtime Phase 2 juga mulai aktif:
 - `planner next` sekarang memilih task `ready` berdasarkan dependency dan priority
 - runtime job queue lokal disimpan di `.otonomassist/job_queue.json`
 - command `jobs` dan `worker` memberi lapisan eksplisit antara planner dan executor
+- worker sekarang bisa berjalan `until-idle` dan mencatat `last_worker_run_at` / `last_worker_status`
+- context orchestration sekarang mulai memanfaatkan retrieval memori relevan berbasis token overlap, bukan recency-only
+- scheduler runtime sekarang tersedia untuk menjalankan cycle worker berkala dan mencatat state terakhir ke `.otonomassist/scheduler_state.json`
 
 Perubahan ini membuat fondasi saat ini lebih layak dipakai sebagai sistem semi-otonom yang konsisten, bukan hanya eksperimen skill per skill.
 
