@@ -6,9 +6,10 @@ import re
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
+from otonomassist.ai.base import AIResponse
 from otonomassist.core.execution_control import classify_result_status, get_skill_timeout_seconds, run_with_timeout
 from otonomassist.core.execution_history import append_execution_event
-from otonomassist.core.execution_metrics import record_execution_metric
+from otonomassist.core.execution_metrics import record_ai_usage_metric, record_execution_metric
 from otonomassist.core.result_formatter import extract_presentation_request, format_result
 from otonomassist.core.transport import TransportContext
 from otonomassist.services.policy import PolicyService
@@ -55,14 +56,28 @@ class ExecutionService:
             )
 
         try:
-            response = self.async_runner(
-                provider.chat_completion(
-                    prompt=command,
-                    system_prompt=self.system_prompt_builder(command),
-                )
+            ai_response = self._run_chat_completion(
+                provider,
+                command,
+                self.system_prompt_builder(command),
             )
-            return self.parse_and_execute(response, command, context=context)
+            self._record_ai_route_usage(
+                provider_name=provider.__class__.__name__.removesuffix("Provider").lower(),
+                response=ai_response,
+                command=command,
+                context=context,
+            )
+            return self.parse_and_execute(ai_response.content, command, context=context)
         except Exception as exc:
+            if context and context.trace_id:
+                append_execution_event(
+                    "ai_route_failed",
+                    trace_id=context.trace_id,
+                    status="error",
+                    source=context.source,
+                    command=command,
+                    data={"error": str(exc)},
+                )
             return self.error_formatter("api_error", str(exc))
 
     def parse_and_execute(
@@ -98,6 +113,59 @@ class ExecutionService:
             )
         except Exception as exc:
             return f"Error executing skill '{skill_name}': {str(exc)}"
+
+    def _run_chat_completion(self, provider: Any, prompt: str, system_prompt: str) -> AIResponse:
+        if hasattr(provider, "chat_completion_response"):
+            result = self.async_runner(
+                provider.chat_completion_response(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                )
+            )
+            if isinstance(result, AIResponse):
+                return result
+            if hasattr(result, "content"):
+                return result
+
+        content = self.async_runner(
+            provider.chat_completion(
+                prompt=prompt,
+                system_prompt=system_prompt,
+            )
+        )
+        return AIResponse(
+            content=str(content),
+            model=getattr(provider, "get_model_name", lambda: "")() or "",
+            usage=None,
+        )
+
+    def _record_ai_route_usage(
+        self,
+        *,
+        provider_name: str,
+        response: AIResponse,
+        command: str,
+        context: TransportContext | None,
+    ) -> None:
+        record_ai_usage_metric(
+            provider=provider_name,
+            model=response.model,
+            usage=response.usage,
+        )
+        if context and context.trace_id:
+            append_execution_event(
+                "ai_route_completed",
+                trace_id=context.trace_id,
+                status="ok",
+                source=context.source,
+                command=command,
+                duration_ms=None,
+                data={
+                    "model": response.model,
+                    "usage": response.usage or {},
+                    "finish_reason": response.finish_reason or "",
+                },
+            )
 
     def execute_skill(
         self,

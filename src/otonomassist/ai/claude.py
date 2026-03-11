@@ -75,6 +75,7 @@ class ClaudeProvider(AIProvider):
                 content=data.get("content", [{}])[0].get("text", ""),
                 model=self._model,
                 finish_reason=data.get("stop_reason"),
+                usage=data.get("usage"),
             )
 
     async def chat_completion(
@@ -87,6 +88,16 @@ class ClaudeProvider(AIProvider):
         messages = self._prepare_messages(prompt, system_prompt)
         response = await self.chat(messages, **kwargs)
         return response.content
+
+    async def chat_completion_response(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        **kwargs: Any,
+    ) -> AIResponse:
+        """Simple chat completion that preserves usage metadata."""
+        messages = self._prepare_messages(prompt, system_prompt)
+        return await self.chat(messages, **kwargs)
 
     def get_model_name(self) -> str:
         """Get the model name."""

@@ -19,6 +19,7 @@ from otonomassist.core.execution_history import load_execution_events  # noqa: E
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot  # noqa: E402
 from otonomassist.core import workspace_guard  # noqa: E402
 from otonomassist.core.admin_api import build_admin_snapshot  # noqa: E402
+from otonomassist.ai.base import AIResponse  # noqa: E402
 from otonomassist.ai.factory import AIProviderFactory  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
 from otonomassist.core.job_runtime import process_job_queue  # noqa: E402
@@ -107,6 +108,23 @@ class _PromptCaptureProvider:
     async def chat_completion(self, prompt, system_prompt=None, **kwargs):
         self.prompts.append((prompt, system_prompt))
         return self.response
+
+
+class _UsageRouteProvider:
+    async def chat_completion_response(self, prompt, system_prompt=None, **kwargs):
+        return AIResponse(
+            content="SKILL: profile | ARGS: show",
+            model="test-model-1",
+            finish_reason="stop",
+            usage={
+                "prompt_tokens": 11,
+                "completion_tokens": 7,
+                "total_tokens": 18,
+            },
+        )
+
+    async def chat_completion(self, prompt, system_prompt=None, **kwargs):
+        return "SKILL: profile | ARGS: show"
 
 
 def test_append_lesson_deduplicates_recent_entry(tmp_path, monkeypatch):
@@ -875,6 +893,28 @@ def test_assistant_ai_prompt_uses_personality_service_and_runtime_context(tmp_pa
     assert "- jawaban formal" in system_prompt
     assert "Persistent runtime context:" in system_prompt
     assert "catatan penting tentang dependency runtime" in system_prompt
+
+
+def test_ai_route_records_token_usage_in_trace_and_metrics(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: _UsageRouteProvider()))
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("tolong route via ai dengan usage")
+
+    assert "# Agent Profile" in result
+    metrics = get_execution_metrics_snapshot()
+    assert metrics["summary"]["ai_requests_total"] == 1
+    assert metrics["summary"]["ai_total_tokens"] == 18
+    token_usage = metrics["token_usage"]["_usageroute:test-model-1"]
+    assert token_usage["prompt_tokens"] == 11
+    assert token_usage["completion_tokens"] == 7
+    events = load_execution_events(limit=10)
+    ai_event = next(event for event in events if event["event_type"] == "ai_route_completed")
+    assert ai_event["data"]["model"] == "test-model-1"
+    assert ai_event["data"]["usage"]["total_tokens"] == 18
 
 
 def test_assistant_returns_api_error_when_provider_fails(tmp_path, monkeypatch):

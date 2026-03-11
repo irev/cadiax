@@ -51,6 +51,56 @@ def record_execution_metric(
     save_metrics_state(state)
 
 
+def record_ai_usage_metric(
+    *,
+    provider: str,
+    model: str,
+    usage: dict[str, int] | None,
+) -> None:
+    """Record aggregated token usage for one AI request when available."""
+    if not usage:
+        return
+
+    state = load_metrics_state()
+    counters = state.setdefault("counters", {})
+    token_usage = state.setdefault("token_usage", {})
+
+    prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
+    completion_tokens = int(usage.get("completion_tokens", 0) or 0)
+    total_tokens = int(usage.get("total_tokens", 0) or 0)
+
+    if total_tokens <= 0 and (prompt_tokens > 0 or completion_tokens > 0):
+        total_tokens = prompt_tokens + completion_tokens
+
+    _bump(counters, "ai_requests_total")
+    _add(counters, "ai_prompt_tokens_total", prompt_tokens)
+    _add(counters, "ai_completion_tokens_total", completion_tokens)
+    _add(counters, "ai_total_tokens_total", total_tokens)
+    if provider:
+        _bump(counters, f"ai_provider_{provider}_requests_total")
+    if model:
+        _bump(counters, f"ai_model_{model}_requests_total")
+
+    bucket = token_usage.setdefault(
+        f"{provider}:{model}" if provider or model else "unknown",
+        {
+            "provider": provider,
+            "model": model,
+            "requests": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        },
+    )
+    bucket["requests"] = int(bucket.get("requests", 0) or 0) + 1
+    bucket["prompt_tokens"] = int(bucket.get("prompt_tokens", 0) or 0) + prompt_tokens
+    bucket["completion_tokens"] = int(bucket.get("completion_tokens", 0) or 0) + completion_tokens
+    bucket["total_tokens"] = int(bucket.get("total_tokens", 0) or 0) + total_tokens
+
+    state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    save_metrics_state(state)
+
+
 def get_execution_metrics_snapshot() -> dict[str, Any]:
     """Return a machine-readable snapshot of aggregated metrics."""
     state = load_metrics_state()
@@ -60,6 +110,7 @@ def get_execution_metrics_snapshot() -> dict[str, Any]:
         "updated_at": state.get("updated_at", ""),
         "counters": counters,
         "timings": timings,
+        "token_usage": state.get("token_usage", {}),
         "summary": {
             "events_total": int(counters.get("events_total", 0) or 0),
             "commands_total": int(counters.get("command_completed_total", 0) or 0),
@@ -67,6 +118,8 @@ def get_execution_metrics_snapshot() -> dict[str, Any]:
             "timeouts_total": int(counters.get("skill_completed_status_timeout", 0) or 0),
             "errors_total": int(counters.get("command_completed_status_error", 0) or 0)
             + int(counters.get("skill_completed_status_error", 0) or 0),
+            "ai_requests_total": int(counters.get("ai_requests_total", 0) or 0),
+            "ai_total_tokens": int(counters.get("ai_total_tokens_total", 0) or 0),
         },
     }
 
@@ -84,7 +137,20 @@ def render_execution_metrics() -> str:
         f"- skills_total: {snapshot['summary']['skills_total']}",
         f"- timeouts_total: {snapshot['summary']['timeouts_total']}",
         f"- errors_total: {snapshot['summary']['errors_total']}",
+        f"- ai_requests_total: {snapshot['summary']['ai_requests_total']}",
+        f"- ai_total_tokens: {snapshot['summary']['ai_total_tokens']}",
     ]
+    token_usage = snapshot.get("token_usage", {})
+    if token_usage:
+        lines.extend(["", "[Token Usage]"])
+        for _, summary in sorted(token_usage.items()):
+            lines.append(
+                f"- {summary.get('provider') or '-'} / {summary.get('model') or '-'}: "
+                f"requests={summary.get('requests', 0)}, "
+                f"prompt_tokens={summary.get('prompt_tokens', 0)}, "
+                f"completion_tokens={summary.get('completion_tokens', 0)}, "
+                f"total_tokens={summary.get('total_tokens', 0)}"
+            )
     timings = snapshot.get("timings", {})
     if timings:
         lines.extend(["", "[Timings]"])
@@ -98,3 +164,7 @@ def render_execution_metrics() -> str:
 
 def _bump(counters: dict[str, Any], key: str) -> None:
     counters[key] = int(counters.get(key, 0) or 0) + 1
+
+
+def _add(counters: dict[str, Any], key: str, amount: int) -> None:
+    counters[key] = int(counters.get(key, 0) or 0) + int(amount or 0)

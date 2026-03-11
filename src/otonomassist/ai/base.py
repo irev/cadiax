@@ -50,6 +50,16 @@ class AIProvider(ABC):
         """Simple chat completion with a single prompt."""
         pass
 
+    async def chat_completion_response(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        **kwargs: Any,
+    ) -> AIResponse:
+        """Simple chat completion that preserves response metadata."""
+        messages = self._prepare_messages(prompt, system_prompt)
+        return await self.chat(messages, **kwargs)
+
     @abstractmethod
     def get_model_name(self) -> str:
         """Get the model name being used."""
