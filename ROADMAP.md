@@ -2,11 +2,30 @@
 
 Roadmap ini memetakan evolusi OtonomAssist dari fondasi semi-otonom yang sudah ada menuju autonomous agent platform yang lebih matang.
 
-Fokusnya dibagi ke tiga fase:
+Dokumen acuan utama sekarang adalah `autonomous_ai_system_spec_extended.md`.
+
+Jika ada perbedaan arah antara roadmap ini dan spec tersebut, maka spec yang menjadi referensi utama. Roadmap ini berfungsi sebagai urutan delivery untuk mencapai target rilis `v1.0.0`.
+
+## Target Release v1.0.0
+
+Target resmi `v1.0.0` adalah menuntaskan seluruh capability inti yang didefinisikan pada `autonomous_ai_system_spec_extended.md`, termasuk:
+
+- arsitektur modular dan scalable
+- skill management terstandar
+- communication interfaces utama
+- scheduler dan automation rutin
+- personality layer yang konsisten
+- preference dan habit understanding yang aman
+- token cost control
+- observability, privacy, dan security boundary yang layak produksi
+
+Baseline maturity roadmap tetap dibagi ke tiga fase:
 
 - `Phase 1: Semi-Production Hardening`
 - `Phase 2: Autonomous Runtime`
 - `Phase 3: Production Agent Platform`
+
+Untuk eksekusi target `v1.0.0`, breakdown implementasi operasional memakai `Phase A-D` di bagian bawah dokumen ini.
 
 Prinsip umum:
 
@@ -279,6 +298,8 @@ Scheduler, admin API, metrics dasar, dan external approval sudah ada. Yang belum
 
 Dokumen target detail untuk fase berikutnya ada di `TARGET_ARCHITECTURE_V2.md`.
 
+Phase A-D di bawah ini adalah breakdown implementasi langsung dari `autonomous_ai_system_spec_extended.md` untuk menuntaskan scope `v1.0.0`.
+
 ### Phase A: Service Boundary dan Durable Runtime
 
 Assessment:
@@ -389,3 +410,39 @@ Roadmap jangka panjang:
 2. bangun outbound/inbound adapter framework lintas channel
 3. tambahkan event bus untuk automation dan notification
 4. perluas admin/ops surface ke observability yang siap operasi berkelanjutan
+
+### Phase D: Advanced Personal Assistant Maturity
+
+Assessment:
+
+- sistem belum punya episodic learning yang matang, structured habit model, atau cross-channel continuity yang kuat
+- privacy controls sudah mulai ada di secrets dan policy dasar, tetapi belum menjadi governance penuh untuk retention, export, delete, dan consent-driven personalization
+
+Evaluasi terhadap tujuan:
+
+- menutup target `assistant pribadi yang memahami preferensi dan kebiasaan pengguna`
+- menutup target `personality layer yang konsisten` pada level jangka panjang
+- menutup target `personal assistant` yang benar-benar berkelanjutan, bukan sekadar agent task runner
+
+Modul jangka panjang:
+
+- `episodic learning service`
+- `habit model`
+- `personal knowledge graph`
+- `consent and retention policy`
+- `cross-channel continuity service`
+- `user memory controls`
+
+Risks:
+
+- personalisasi yang agresif dapat melampaui ekspektasi privasi user
+- model habit/preference dapat menjadi bias atau salah inferensi
+- kompleksitas data lifecycle meningkat saat memory menjadi lebih kaya
+
+Roadmap jangka panjang:
+
+1. tambahkan consent-aware preference learning
+2. bangun episodic learning dan habit modeling
+3. sediakan export/delete/retention controls untuk memory personal
+4. tambah continuity lintas channel berbasis identity/session layer
+5. validasi bahwa personalization tetap tunduk pada policy, audit, dan user override

@@ -2,6 +2,10 @@
 
 Dokumen ini mendeskripsikan arsitektur target setelah fondasi phase akhir selesai. Fokusnya bukan mengganti semua komponen saat ini, tetapi memisahkan boundary yang masih bercampur dan menyiapkan sistem agar benar-benar berkembang menjadi `Autonomous Personal AI Assistant`.
 
+Dokumen ini adalah turunan arsitektural dari `autonomous_ai_system_spec_extended.md`.
+
+Semua boundary, service, dan modul target di dokumen ini termasuk scope target `v1.0.0`, bukan backlog opsional pasca-1.0.
+
 ## Sasaran V2
 
 V2 diarahkan untuk memenuhi sasaran inti berikut:

@@ -12,6 +12,18 @@ Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
 - structured result + universal formatter lintas skill inti
 - secret storage lintas-OS untuk menjaga service utama tetap portable
 
+## Acuan Produk
+
+Dokumen acuan utama terbaru adalah `autonomous_ai_system_spec_extended.md`.
+
+Dokumen pendukung:
+
+- `ROADMAP.md`: urutan delivery menuju target rilis `v1.0.0`
+- `TARGET_ARCHITECTURE_V2.md`: target boundary dan module architecture
+- `ARCHITECTURE.md`: snapshot arsitektur implementasi saat ini
+
+Target resmi repo adalah menuntaskan seluruh spesifikasi inti pada `v1.0.0`.
+
 ## Fondasi yang Sudah Jadi
 
 Tiga lapisan capability yang sekarang sudah terbentuk:
