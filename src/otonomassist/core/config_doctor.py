@@ -14,6 +14,7 @@ from otonomassist.core.external_assets import build_external_asset_audit_summary
 from otonomassist.core.job_runtime import get_job_queue_summary
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
 from otonomassist.core.scheduler_runtime import get_scheduler_summary
+from otonomassist.interfaces.email import EmailInterfaceService
 from otonomassist.interfaces.telegram import TelegramAuthService
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
@@ -61,6 +62,7 @@ def get_config_status_data() -> dict[str, object]:
     identity_state = agent_context.load_identity_state()
     session_state = agent_context.load_session_state()
     notifications = NotificationDispatcher().get_snapshot()
+    email = EmailInterfaceService().get_snapshot()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -154,6 +156,7 @@ def get_config_status_data() -> dict[str, object]:
             "latest_session_id": str(session_state.get("sessions", [])[-1].get("id", "")) if session_state.get("sessions") else "",
         },
         "notifications": notifications,
+        "email": email,
         "external_assets": {
             "asset_count": external_assets["asset_count"],
             "event_count": external_assets["event_count"],
@@ -379,6 +382,17 @@ def get_config_status_report() -> str:
     )
     for channel, count in data["notifications"]["by_channel"].items():
         lines.append(f"- channel {channel}: {count}")
+    lines.extend(
+        [
+            "",
+            "[Email]",
+            f"- message_count: {data['email']['message_count']}",
+            f"- inbound_count: {data['email']['inbound_count']}",
+            f"- outbound_count: {data['email']['outbound_count']}",
+            f"- latest_subject: {str(data['email']['latest_message'].get('subject', '') or '-')}",
+            f"- latest_direction: {str(data['email']['latest_message'].get('direction', '') or '-')}",
+        ]
+    )
     lines.extend(
         [
             "",

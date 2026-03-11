@@ -34,6 +34,7 @@ from otonomassist.platform import (
     run_named_service_target,
     write_service_wrapper_artifacts,
 )
+from otonomassist.interfaces.email import EmailInterfaceService
 from otonomassist.services.interactions import ConversationService, NotificationDispatcher, run_conversation_api
 from otonomassist.telegram_cli import run_telegram_transport
 
@@ -360,6 +361,30 @@ def notify_send_command(message: str, channel: str, title: str, target: str) -> 
     click.echo(
         f"Notification #{payload['id']} dispatched via {payload['channel']} "
         f"to {payload['target'] or '-'}"
+    )
+
+
+@main.group("email")
+def email_group() -> None:
+    """Email interface commands."""
+
+
+@email_group.command("send")
+@click.argument("message", required=True)
+@click.option("--to", "to_address", required=True, help="Destination email address")
+@click.option("--subject", default="Notification", show_default=True, help="Email subject")
+@click.option("--from", "from_address", default="", help="Optional sender address label")
+def email_send_command(message: str, to_address: str, subject: str, from_address: str) -> None:
+    """Dispatch one outbound email-shaped notification."""
+    payload = EmailInterfaceService().send(
+        to_address=to_address,
+        from_address=from_address,
+        subject=subject,
+        body=message,
+    )
+    click.echo(
+        f"Email #{payload['id']} queued to {payload['to_address']} "
+        f"with subject {payload['subject'] or '-'}"
     )
 
 

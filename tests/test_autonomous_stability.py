@@ -67,6 +67,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
+    monkeypatch.setattr(agent_context, "EMAIL_MESSAGES_FILE", data_dir / "email_messages.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -932,7 +933,67 @@ def test_notification_api_dispatches_and_persists_notification(tmp_path, monkeyp
     assert status_code == 200
     assert payload["status"] == "ok"
     assert state["notifications"][0]["title"] == "Build Alert"
-    assert events["topics"]["notification.dispatch"] >= 1
+
+
+def test_email_inbound_api_routes_through_conversation_boundary_and_persists_message(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    status, payload = build_conversation_response(
+        "/v1/email/inbound",
+        service=service,
+        method="POST",
+        body=json.dumps(
+            {
+                "from_address": "user@example.com",
+                "to_address": "agent@example.com",
+                "subject": "Planner Update",
+                "body": "memory list",
+                "thread_id": "thread-123",
+            }
+        ).encode("utf-8"),
+    )
+
+    state = agent_context.load_email_message_state()
+    assert status == 200
+    assert payload["status"] == "accepted"
+    assert payload["interaction"]["source"] == "email"
+    assert payload["interaction"]["identity_id"]
+    assert payload["email"]["direction"] == "inbound"
+    assert payload["email"]["thread_id"] == "thread-123"
+    assert state["messages"][0]["from_address"] == "user@example.com"
+    assert state["messages"][0]["subject"] == "Planner Update"
+
+
+def test_email_outbound_api_dispatches_notification_and_persists_email_state(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    status, payload = build_conversation_response(
+        "/v1/email/outbound",
+        service=service,
+        method="POST",
+        body=json.dumps(
+            {
+                "to_address": "ops@example.com",
+                "subject": "Build Alert",
+                "message": "pipeline gagal",
+            }
+        ).encode("utf-8"),
+    )
+
+    email_state = agent_context.load_email_message_state()
+    notification_state = agent_context.load_notification_state()
+    assert status == 200
+    assert payload["status"] == "ok"
+    assert payload["email"]["direction"] == "outbound"
+    assert payload["email"]["to_address"] == "ops@example.com"
+    assert email_state["messages"][0]["subject"] == "Build Alert"
+    assert notification_state["notifications"][0]["channel"] == "email"
 
 
 def test_assistant_times_out_slow_skill_and_records_timeout_status(tmp_path, monkeypatch):

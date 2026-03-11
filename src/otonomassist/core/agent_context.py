@@ -24,6 +24,7 @@ MEMORY_SUMMARIES_FILE = DATA_DIR / "memory_summaries.json"
 IDENTITIES_FILE = DATA_DIR / "identities.json"
 SESSIONS_FILE = DATA_DIR / "sessions.json"
 NOTIFICATIONS_FILE = DATA_DIR / "notifications.json"
+EMAIL_MESSAGES_FILE = DATA_DIR / "email_messages.json"
 LESSONS_FILE = DATA_DIR / "lessons.md"
 SECRETS_FILE = DATA_DIR / "secrets.json"
 EXECUTION_HISTORY_FILE = DATA_DIR / "execution_history.jsonl"
@@ -72,6 +73,7 @@ MEMORY_SUMMARY_STATE_KEY = "memory_summaries"
 IDENTITY_STATE_KEY = "identities"
 SESSION_STATE_KEY = "sessions"
 NOTIFICATION_STATE_KEY = "notifications"
+EMAIL_MESSAGE_STATE_KEY = "email_messages"
 
 DEFAULT_PLANNER_STATE = {"goal": "", "tasks": []}
 DEFAULT_METRICS_STATE = {"counters": {}, "timings": {}, "updated_at": ""}
@@ -83,6 +85,7 @@ DEFAULT_MEMORY_SUMMARY_STATE = {"summaries": [], "updated_at": "", "prune_candid
 DEFAULT_IDENTITY_STATE = {"identities": [], "updated_at": ""}
 DEFAULT_SESSION_STATE = {"sessions": [], "updated_at": ""}
 DEFAULT_NOTIFICATION_STATE = {"notifications": [], "updated_at": ""}
+DEFAULT_EMAIL_MESSAGE_STATE = {"messages": [], "updated_at": ""}
 
 
 def ensure_agent_storage() -> None:
@@ -116,6 +119,9 @@ def ensure_agent_storage() -> None:
     if not NOTIFICATIONS_FILE.exists():
         ensure_internal_state_write_allowed(NOTIFICATIONS_FILE)
         NOTIFICATIONS_FILE.write_text(json.dumps(DEFAULT_NOTIFICATION_STATE, indent=2), encoding="utf-8")
+    if not EMAIL_MESSAGES_FILE.exists():
+        ensure_internal_state_write_allowed(EMAIL_MESSAGES_FILE)
+        EMAIL_MESSAGES_FILE.write_text(json.dumps(DEFAULT_EMAIL_MESSAGE_STATE, indent=2), encoding="utf-8")
     if not LESSONS_FILE.exists():
         ensure_internal_state_write_allowed(LESSONS_FILE)
         LESSONS_FILE.write_text(DEFAULT_LESSONS, encoding="utf-8")
@@ -228,6 +234,20 @@ def load_notification_state() -> dict[str, Any]:
 def save_notification_state(state: dict[str, Any]) -> None:
     """Persist notification dispatch state."""
     _save_durable_json_state(NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, state)
+
+
+def load_email_message_state() -> dict[str, Any]:
+    """Load email interface message history state."""
+    return _load_durable_json_state(
+        EMAIL_MESSAGE_STATE_KEY,
+        EMAIL_MESSAGES_FILE,
+        DEFAULT_EMAIL_MESSAGE_STATE,
+    )
+
+
+def save_email_message_state(state: dict[str, Any]) -> None:
+    """Persist email interface message history state."""
+    _save_durable_json_state(EMAIL_MESSAGE_STATE_KEY, EMAIL_MESSAGES_FILE, state)
 
 
 def build_agent_context_block(query: str | None = None) -> str:
@@ -633,6 +653,7 @@ def _bootstrap_durable_state() -> None:
     _ensure_state_in_store(store, IDENTITY_STATE_KEY, IDENTITIES_FILE, DEFAULT_IDENTITY_STATE)
     _ensure_state_in_store(store, SESSION_STATE_KEY, SESSIONS_FILE, DEFAULT_SESSION_STATE)
     _ensure_state_in_store(store, NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, DEFAULT_NOTIFICATION_STATE)
+    _ensure_state_in_store(store, EMAIL_MESSAGE_STATE_KEY, EMAIL_MESSAGES_FILE, DEFAULT_EMAIL_MESSAGE_STATE)
     _ensure_preference_state_in_store(store)
 
 

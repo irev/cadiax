@@ -54,6 +54,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
+    monkeypatch.setattr(agent_context, "EMAIL_MESSAGES_FILE", data_dir / "email_messages.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -169,6 +170,23 @@ def test_cli_notify_send_dispatches_notification(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "Notification #1 dispatched via operator" in result.output
     assert state["notifications"][0]["message"] == "halo operator"
+
+
+def test_cli_email_send_dispatches_email_notification(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["email", "send", "laporan siap", "--to", "ops@example.com", "--subject", "Daily Report"],
+    )
+
+    email_state = agent_context.load_email_message_state()
+    notification_state = agent_context.load_notification_state()
+    assert result.exit_code == 0
+    assert "Email #1 queued to ops@example.com" in result.output
+    assert email_state["messages"][0]["subject"] == "Daily Report"
+    assert notification_state["notifications"][0]["channel"] == "email"
 
 
 def test_cli_service_status_reports_wrapper_targets(tmp_path, monkeypatch):
@@ -534,6 +552,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "event_bus" in payload
     assert "identity" in payload
     assert "notifications" in payload
+    assert "email" in payload
     assert "preference_count" in payload["storage"]
     assert "habit_count" in payload["storage"]
     assert "identity_count" in payload["storage"]
@@ -541,6 +560,50 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "topics" in payload["event_bus"]
     assert "provider_latency" in payload["metrics"]
     assert "queue_depth" in payload["metrics"]
+
+
+def test_cli_doctor_report_exposes_email_interface_snapshot(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_email_message_state(
+        {
+            "messages": [
+                {
+                    "id": 1,
+                    "direction": "outbound",
+                    "subject": "Ops Digest",
+                    "from_address": "",
+                    "to_address": "ops@example.com",
+                    "body": "siap",
+                    "created_at": "2026-03-12T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+        }
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "[Email]" in result.output
+    assert "- message_count: 1" in result.output
+    assert "- latest_subject: Ops Digest" in result.output
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
@@ -767,6 +830,7 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
+    monkeypatch.setattr(agent_context, "EMAIL_MESSAGES_FILE", data_dir / "email_messages.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")

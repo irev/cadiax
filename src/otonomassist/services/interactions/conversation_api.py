@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from otonomassist.core.event_bus import publish_event
+from otonomassist.interfaces.email import EmailInterfaceService
 from otonomassist.services.interactions.conversation_service import ConversationService
 from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
 from otonomassist.services.interactions.models import InteractionRequest
@@ -129,6 +130,65 @@ def build_conversation_response(
             metadata=metadata if isinstance(metadata, dict) else {},
         )
         return 200, {"status": "ok", "notification": dispatched}
+
+    if route in {"/email/inbound", "/v1/email/inbound"}:
+        if method != "POST":
+            return 405, {"error": "method_not_allowed", "allowed": ["POST"]}
+        try:
+            payload = _load_json_body(body)
+        except json.JSONDecodeError:
+            return 400, {"error": "invalid_json"}
+        except ValueError as exc:
+            return 400, {"error": "invalid_request", "detail": str(exc)}
+        from_address = str(payload.get("from_address") or "").strip()
+        message = str(payload.get("message") or payload.get("body") or "").strip()
+        if not from_address:
+            return 400, {"error": "invalid_request", "detail": "field `from_address` is required"}
+        if not message:
+            return 400, {"error": "invalid_request", "detail": "field `message` is required"}
+        metadata = payload.get("metadata")
+        email = EmailInterfaceService(conversation_service=service)
+        try:
+            handled = email.receive(
+                from_address=from_address,
+                to_address=str(payload.get("to_address") or "").strip(),
+                subject=str(payload.get("subject") or "").strip(),
+                body=message,
+                email_id=str(payload.get("email_id") or "").strip(),
+                thread_id=str(payload.get("thread_id") or "").strip(),
+                trace_id=str(payload.get("trace_id") or "").strip(),
+                metadata=metadata if isinstance(metadata, dict) else {},
+            )
+        except Exception as exc:
+            return 500, {"error": "execution_failed", "detail": str(exc)}
+        return 200, {"status": "accepted", **handled}
+
+    if route in {"/email/outbound", "/v1/email/outbound"}:
+        if method != "POST":
+            return 405, {"error": "method_not_allowed", "allowed": ["POST"]}
+        try:
+            payload = _load_json_body(body)
+        except json.JSONDecodeError:
+            return 400, {"error": "invalid_json"}
+        except ValueError as exc:
+            return 400, {"error": "invalid_request", "detail": str(exc)}
+        to_address = str(payload.get("to_address") or "").strip()
+        message = str(payload.get("message") or payload.get("body") or "").strip()
+        if not to_address:
+            return 400, {"error": "invalid_request", "detail": "field `to_address` is required"}
+        if not message:
+            return 400, {"error": "invalid_request", "detail": "field `message` is required"}
+        metadata = payload.get("metadata")
+        email = EmailInterfaceService()
+        dispatched = email.send(
+            to_address=to_address,
+            from_address=str(payload.get("from_address") or "").strip(),
+            subject=str(payload.get("subject") or "Notification").strip(),
+            body=message,
+            trace_id=str(payload.get("trace_id") or "").strip(),
+            metadata=metadata if isinstance(metadata, dict) else {},
+        )
+        return 200, {"status": "ok", "email": dispatched}
 
     return 404, {"error": "not_found", "path": route}
 
