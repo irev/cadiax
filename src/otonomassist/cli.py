@@ -351,9 +351,45 @@ def notify_group() -> None:
 @click.option("--channel", default="internal", show_default=True, help="Notification channel label")
 @click.option("--title", default="Notification", show_default=True, help="Notification title")
 @click.option("--target", default="", help="Optional target descriptor")
-def notify_send_command(message: str, channel: str, title: str, target: str) -> None:
+@click.option(
+    "--delivery",
+    "deliveries",
+    multiple=True,
+    help="Multi-channel delivery in format channel:target, repeatable",
+)
+def notify_send_command(
+    message: str,
+    channel: str,
+    title: str,
+    target: str,
+    deliveries: tuple[str, ...],
+) -> None:
     """Dispatch one durable notification entry."""
-    payload = NotificationDispatcher().dispatch(
+    dispatcher = NotificationDispatcher()
+    if deliveries:
+        normalized: list[dict[str, str]] = []
+        for raw in deliveries:
+            item = raw.strip()
+            if not item:
+                continue
+            channel_name, _, delivery_target = item.partition(":")
+            normalized.append(
+                {
+                    "channel": channel_name.strip() or "internal",
+                    "target": delivery_target.strip(),
+                }
+            )
+        batch = dispatcher.dispatch_many(
+            title=title,
+            message=message,
+            deliveries=normalized,
+        )
+        click.echo(
+            f"Notification batch {batch['batch_id']} dispatched "
+            f"to {batch['delivery_count']} delivery target(s)"
+        )
+        return
+    payload = dispatcher.dispatch(
         channel=channel,
         title=title,
         message=message,

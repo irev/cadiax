@@ -936,6 +936,44 @@ def test_notification_api_dispatches_and_persists_notification(tmp_path, monkeyp
     assert state["notifications"][0]["title"] == "Build Alert"
 
 
+def test_notification_api_dispatches_multichannel_batch(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    status_code, payload = build_conversation_response(
+        "/v1/notifications",
+        service=service,
+        method="POST",
+        body=json.dumps(
+            {
+                "title": "Build Alert",
+                "message": "pipeline selesai",
+                "deliveries": [
+                    {"channel": "email", "target": "ops@example.com"},
+                    {"channel": "whatsapp", "target": "+628123456789", "metadata": {"display_name": "Budi"}},
+                    {"channel": "webhook", "target": "build-hook"},
+                ],
+            }
+        ).encode("utf-8"),
+    )
+
+    notification_state = agent_context.load_notification_state()
+    email_state = agent_context.load_email_message_state()
+    whatsapp_state = agent_context.load_whatsapp_message_state()
+    events = build_admin_snapshot("/events?limit=50")[1]
+    assert status_code == 200
+    assert payload["status"] == "ok"
+    assert payload["batch"]["delivery_count"] == 3
+    assert len(notification_state["notifications"]) == 3
+    assert notification_state["notifications"][0]["metadata"]["notification_batch_id"]
+    assert email_state["messages"][0]["to_address"] == "ops@example.com"
+    assert whatsapp_state["messages"][0]["phone_number"] == "+628123456789"
+    assert any(event["topic"] == "notification.webhook" for event in events["events"])
+
+
 def test_email_inbound_api_routes_through_conversation_boundary_and_persists_message(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     assistant = Assistant(skills_dir=ROOT / "skills")

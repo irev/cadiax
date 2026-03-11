@@ -122,6 +122,16 @@ def build_conversation_response(
             return 400, {"error": "invalid_request", "detail": "field `message` is required"}
         metadata = payload.get("metadata")
         dispatcher = NotificationDispatcher()
+        deliveries = payload.get("deliveries")
+        if isinstance(deliveries, list) and deliveries:
+            dispatched = dispatcher.dispatch_many(
+                title=str(payload.get("title") or "Notification"),
+                message=message,
+                deliveries=[item for item in deliveries if isinstance(item, dict)],
+                trace_id=str(payload.get("trace_id") or ""),
+                metadata=metadata if isinstance(metadata, dict) else {},
+            )
+            return 200, {"status": "ok", "batch": dispatched}
         dispatched = dispatcher.dispatch(
             channel=str(payload.get("channel") or "internal"),
             title=str(payload.get("title") or "Notification"),

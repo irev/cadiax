@@ -173,6 +173,38 @@ def test_cli_notify_send_dispatches_notification(tmp_path, monkeypatch):
     assert state["notifications"][0]["message"] == "halo operator"
 
 
+def test_cli_notify_send_supports_multichannel_delivery_batch(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "notify",
+            "send",
+            "halo operator",
+            "--title",
+            "Alert",
+            "--delivery",
+            "email:ops@example.com",
+            "--delivery",
+            "whatsapp:+628123456789",
+            "--delivery",
+            "webhook:deploy-hook",
+        ],
+    )
+
+    notification_state = agent_context.load_notification_state()
+    email_state = agent_context.load_email_message_state()
+    whatsapp_state = agent_context.load_whatsapp_message_state()
+    assert result.exit_code == 0
+    assert "Notification batch" in result.output
+    assert len(notification_state["notifications"]) == 3
+    assert notification_state["notifications"][0]["metadata"]["notification_batch_id"]
+    assert email_state["messages"][0]["to_address"] == "ops@example.com"
+    assert whatsapp_state["messages"][0]["phone_number"] == "+628123456789"
+
+
 def test_cli_email_send_dispatches_email_notification(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 
@@ -572,6 +604,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "notifications" in payload
     assert "email" in payload
     assert "whatsapp" in payload
+    assert "delivery_batch_count" in payload["notifications"]
     assert "preference_count" in payload["storage"]
     assert "habit_count" in payload["storage"]
     assert "identity_count" in payload["storage"]

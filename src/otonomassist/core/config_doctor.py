@@ -379,6 +379,7 @@ def get_config_status_report() -> str:
             "",
             "[Notifications]",
             f"- notification_count: {data['notifications']['notification_count']}",
+            f"- delivery_batch_count: {data['notifications']['delivery_batch_count']}",
             f"- latest_channel: {str(data['notifications']['latest_notification'].get('channel', '') or '-')}",
             f"- latest_title: {str(data['notifications']['latest_notification'].get('title', '') or '-')}",
         ]

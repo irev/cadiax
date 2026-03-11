@@ -103,20 +103,28 @@ class EmailInterfaceService:
         from_address: str = "",
         trace_id: str = "",
         metadata: dict[str, Any] | None = None,
+        record_notification: bool = True,
+        notification_id: int | None = None,
     ) -> dict[str, Any]:
         """Dispatch one outbound email-shaped notification."""
         payload_metadata = dict(metadata or {})
         if from_address.strip():
             payload_metadata.setdefault("from_address", from_address.strip())
         payload_metadata.setdefault("interface", "email")
-        notification = self.dispatcher.dispatch(
-            channel="email",
-            title=subject.strip() or "Notification",
-            message=body.strip(),
-            trace_id=trace_id.strip(),
-            target=to_address.strip(),
-            metadata=payload_metadata,
-        )
+        if record_notification:
+            notification = self.dispatcher.dispatch(
+                channel="email",
+                title=subject.strip() or "Notification",
+                message=body.strip(),
+                trace_id=trace_id.strip(),
+                target=to_address.strip(),
+                metadata=payload_metadata,
+            )
+            recorded_notification_id = int(notification["id"])
+            recorded_trace_id = notification["trace_id"]
+        else:
+            recorded_notification_id = int(notification_id or 0)
+            recorded_trace_id = trace_id.strip()
         entry = self._append_message(
             {
                 "direction": "outbound",
@@ -126,21 +134,21 @@ class EmailInterfaceService:
                 "body": body.strip(),
                 "email_id": "",
                 "thread_id": "",
-                "trace_id": notification["trace_id"],
+                "trace_id": recorded_trace_id,
                 "identity_id": "",
                 "status": "queued",
-                "notification_id": notification["id"],
+                "notification_id": recorded_notification_id,
                 "metadata": payload_metadata,
             }
         )
         publish_event(
             "email.outbound",
             event_type="email_dispatched",
-            trace_id=notification["trace_id"],
+            trace_id=recorded_trace_id,
             source="email",
             data={
                 "email_message_id": entry["id"],
-                "notification_id": notification["id"],
+                "notification_id": recorded_notification_id,
                 "to_address": entry["to_address"],
                 "subject": entry["subject"],
             },

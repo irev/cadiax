@@ -98,20 +98,28 @@ class WhatsAppInterfaceService:
         display_name: str = "",
         trace_id: str = "",
         metadata: dict[str, Any] | None = None,
+        record_notification: bool = True,
+        notification_id: int | None = None,
     ) -> dict[str, Any]:
         """Dispatch one outbound WhatsApp-shaped notification."""
         payload_metadata = dict(metadata or {})
         if display_name.strip():
             payload_metadata.setdefault("display_name", display_name.strip())
         payload_metadata.setdefault("interface", "whatsapp")
-        notification = self.dispatcher.dispatch(
-            channel="whatsapp",
-            title=display_name.strip() or "WhatsApp",
-            message=body.strip(),
-            trace_id=trace_id.strip(),
-            target=phone_number.strip(),
-            metadata=payload_metadata,
-        )
+        if record_notification:
+            notification = self.dispatcher.dispatch(
+                channel="whatsapp",
+                title=display_name.strip() or "WhatsApp",
+                message=body.strip(),
+                trace_id=trace_id.strip(),
+                target=phone_number.strip(),
+                metadata=payload_metadata,
+            )
+            recorded_notification_id = int(notification["id"])
+            recorded_trace_id = notification["trace_id"]
+        else:
+            recorded_notification_id = int(notification_id or 0)
+            recorded_trace_id = trace_id.strip()
         entry = self._append_message(
             {
                 "direction": "outbound",
@@ -120,21 +128,21 @@ class WhatsAppInterfaceService:
                 "body": body.strip(),
                 "wa_id": "",
                 "thread_id": "",
-                "trace_id": notification["trace_id"],
+                "trace_id": recorded_trace_id,
                 "identity_id": "",
                 "status": "queued",
-                "notification_id": notification["id"],
+                "notification_id": recorded_notification_id,
                 "metadata": payload_metadata,
             }
         )
         publish_event(
             "whatsapp.outbound",
             event_type="whatsapp_dispatched",
-            trace_id=notification["trace_id"],
+            trace_id=recorded_trace_id,
             source="whatsapp",
             data={
                 "whatsapp_message_id": entry["id"],
-                "notification_id": notification["id"],
+                "notification_id": recorded_notification_id,
                 "phone_number": entry["phone_number"],
             },
         )
