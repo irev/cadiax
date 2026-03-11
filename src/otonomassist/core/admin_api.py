@@ -40,6 +40,10 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
     if route == "/events":
         limit = _int_query(query, "limit", 20, minimum=1, maximum=200)
         return 200, get_event_bus_snapshot(limit=limit)
+    if route == "/privacy":
+        from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+        return 200, {"privacy_controls": PrivacyControlService().get_diagnostics()}
     return 404, {"error": "not_found", "path": route}
 
 

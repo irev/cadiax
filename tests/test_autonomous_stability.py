@@ -27,9 +27,11 @@ from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
 from otonomassist.interfaces.telegram import TelegramPollingTransport as InterfaceTelegramPollingTransport  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
 from otonomassist.services import BudgetManager, ContextBudgeter, HabitModelService, ModelRouter, PersonalityService, PolicyService, RedactionPolicy  # noqa: E402
+from otonomassist.services.privacy.privacy_control_service import PrivacyControlService  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
     ConversationService,
     InteractionRequest,
+    NotificationDispatcher,
     build_conversation_response,
 )
 from otonomassist.transports.telegram import TelegramPollingTransport  # noqa: E402
@@ -69,6 +71,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
     monkeypatch.setattr(agent_context, "EMAIL_MESSAGES_FILE", data_dir / "email_messages.json")
     monkeypatch.setattr(agent_context, "WHATSAPP_MESSAGES_FILE", data_dir / "whatsapp_messages.json")
+    monkeypatch.setattr(agent_context, "PRIVACY_CONTROLS_FILE", data_dir / "privacy_controls.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -974,6 +977,27 @@ def test_notification_api_dispatches_multichannel_batch(tmp_path, monkeypatch):
     assert any(event["topic"] == "notification.webhook" for event in events["events"])
 
 
+def test_notification_dispatcher_defers_proactive_delivery_without_consent_during_quiet_hours(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    PrivacyControlService().set_quiet_hours(start="22:00", end="07:00", enabled=True)
+
+    dispatcher = NotificationDispatcher()
+    payload = dispatcher.dispatch(
+        channel="email",
+        title="Night Summary",
+        message="ringkasan proaktif",
+        target="ops@example.com",
+        metadata={"proactive": True},
+    )
+
+    email_state = agent_context.load_email_message_state()
+    notification_state = agent_context.load_notification_state()
+    assert payload["status"] == "deferred"
+    assert payload["metadata"]["deferred_reason"] == "proactive_consent_required"
+    assert email_state["messages"] == []
+    assert notification_state["notifications"][0]["status"] == "deferred"
+
+
 def test_email_inbound_api_routes_through_conversation_boundary_and_persists_message(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     assistant = Assistant(skills_dir=ROOT / "skills")
@@ -1137,6 +1161,26 @@ def test_assistant_times_out_slow_skill_and_records_timeout_status(tmp_path, mon
     assert "slowpoke" in result
     assert any(event["event_type"] == "skill_completed" and event["status"] == "timeout" for event in events)
     assert any(event["event_type"] == "command_completed" and event["status"] == "timeout" for event in events)
+
+
+def test_scheduler_skips_cycles_during_quiet_hours(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    PrivacyControlService().set_quiet_hours(start="00:00", end="23:59", enabled=True)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = run_scheduler(assistant, cycles=2, max_jobs_per_cycle=2)
+
+    scheduler = agent_context.load_scheduler_state()
+    events = load_execution_events(limit=10)
+    assert result["status"] == "quiet_hours"
+    assert result["processed"] == 0
+    assert "quiet hours active" in result["output"]
+    assert scheduler["last_status"] == "quiet_hours"
+    assert any(
+        event["event_type"] == "scheduler_run_completed" and event["status"] == "quiet_hours"
+        for event in events
+    )
 
 
 def test_memory_search_uses_hybrid_retrieval_for_relevant_entries(tmp_path, monkeypatch):

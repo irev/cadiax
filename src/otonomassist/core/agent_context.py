@@ -26,6 +26,7 @@ SESSIONS_FILE = DATA_DIR / "sessions.json"
 NOTIFICATIONS_FILE = DATA_DIR / "notifications.json"
 EMAIL_MESSAGES_FILE = DATA_DIR / "email_messages.json"
 WHATSAPP_MESSAGES_FILE = DATA_DIR / "whatsapp_messages.json"
+PRIVACY_CONTROLS_FILE = DATA_DIR / "privacy_controls.json"
 LESSONS_FILE = DATA_DIR / "lessons.md"
 SECRETS_FILE = DATA_DIR / "secrets.json"
 EXECUTION_HISTORY_FILE = DATA_DIR / "execution_history.jsonl"
@@ -76,6 +77,7 @@ SESSION_STATE_KEY = "sessions"
 NOTIFICATION_STATE_KEY = "notifications"
 EMAIL_MESSAGE_STATE_KEY = "email_messages"
 WHATSAPP_MESSAGE_STATE_KEY = "whatsapp_messages"
+PRIVACY_CONTROL_STATE_KEY = "privacy_controls"
 
 DEFAULT_PLANNER_STATE = {"goal": "", "tasks": []}
 DEFAULT_METRICS_STATE = {"counters": {}, "timings": {}, "updated_at": ""}
@@ -89,6 +91,13 @@ DEFAULT_SESSION_STATE = {"sessions": [], "updated_at": ""}
 DEFAULT_NOTIFICATION_STATE = {"notifications": [], "updated_at": ""}
 DEFAULT_EMAIL_MESSAGE_STATE = {"messages": [], "updated_at": ""}
 DEFAULT_WHATSAPP_MESSAGE_STATE = {"messages": [], "updated_at": ""}
+DEFAULT_PRIVACY_CONTROL_STATE = {
+    "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00"},
+    "consent_required_for_proactive": True,
+    "proactive_assistance_enabled": True,
+    "memory_retention_days": 365,
+    "updated_at": "",
+}
 
 
 def ensure_agent_storage() -> None:
@@ -128,6 +137,9 @@ def ensure_agent_storage() -> None:
     if not WHATSAPP_MESSAGES_FILE.exists():
         ensure_internal_state_write_allowed(WHATSAPP_MESSAGES_FILE)
         WHATSAPP_MESSAGES_FILE.write_text(json.dumps(DEFAULT_WHATSAPP_MESSAGE_STATE, indent=2), encoding="utf-8")
+    if not PRIVACY_CONTROLS_FILE.exists():
+        ensure_internal_state_write_allowed(PRIVACY_CONTROLS_FILE)
+        PRIVACY_CONTROLS_FILE.write_text(json.dumps(DEFAULT_PRIVACY_CONTROL_STATE, indent=2), encoding="utf-8")
     if not LESSONS_FILE.exists():
         ensure_internal_state_write_allowed(LESSONS_FILE)
         LESSONS_FILE.write_text(DEFAULT_LESSONS, encoding="utf-8")
@@ -202,6 +214,22 @@ def load_recent_memories(limit: int = 8) -> list[dict[str, Any]]:
     return entries[-limit:]
 
 
+def load_all_memories() -> list[dict[str, Any]]:
+    """Load the full memory journal."""
+    return load_recent_memories(limit=10_000)
+
+
+def replace_memory_entries(entries: list[dict[str, Any]]) -> None:
+    """Replace the full memory journal with normalized entries."""
+    ensure_agent_storage()
+    ensure_internal_state_write_allowed(MEMORY_FILE)
+    lines = [json.dumps(entry, ensure_ascii=True) for entry in entries if isinstance(entry, dict)]
+    text = "\n".join(lines)
+    if text:
+        text += "\n"
+    _write_text_atomic(MEMORY_FILE, text)
+
+
 def load_planner_state() -> dict[str, Any]:
     """Load planner state."""
     return _load_durable_json_state(PLANNER_STATE_KEY, PLANNER_FILE, DEFAULT_PLANNER_STATE)
@@ -271,6 +299,36 @@ def save_whatsapp_message_state(state: dict[str, Any]) -> None:
         WHATSAPP_MESSAGE_STATE_KEY,
         WHATSAPP_MESSAGES_FILE,
         state,
+    )
+
+
+def load_privacy_control_state() -> dict[str, Any]:
+    """Load privacy governance and quiet-hours controls."""
+    return _load_durable_json_state(
+        PRIVACY_CONTROL_STATE_KEY,
+        PRIVACY_CONTROLS_FILE,
+        DEFAULT_PRIVACY_CONTROL_STATE,
+    )
+
+
+def save_privacy_control_state(state: dict[str, Any]) -> None:
+    """Persist privacy governance and quiet-hours controls."""
+    quiet_hours = state.get("quiet_hours", {})
+    normalized = {
+        "quiet_hours": {
+            "enabled": bool(quiet_hours.get("enabled", False)),
+            "start": str(quiet_hours.get("start", "22:00") or "22:00"),
+            "end": str(quiet_hours.get("end", "07:00") or "07:00"),
+        },
+        "consent_required_for_proactive": bool(state.get("consent_required_for_proactive", True)),
+        "proactive_assistance_enabled": bool(state.get("proactive_assistance_enabled", True)),
+        "memory_retention_days": int(state.get("memory_retention_days", 365) or 365),
+        "updated_at": str(state.get("updated_at", "")),
+    }
+    _save_durable_json_state(
+        PRIVACY_CONTROL_STATE_KEY,
+        PRIVACY_CONTROLS_FILE,
+        normalized,
     )
 
 
@@ -679,6 +737,7 @@ def _bootstrap_durable_state() -> None:
     _ensure_state_in_store(store, NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, DEFAULT_NOTIFICATION_STATE)
     _ensure_state_in_store(store, EMAIL_MESSAGE_STATE_KEY, EMAIL_MESSAGES_FILE, DEFAULT_EMAIL_MESSAGE_STATE)
     _ensure_state_in_store(store, WHATSAPP_MESSAGE_STATE_KEY, WHATSAPP_MESSAGES_FILE, DEFAULT_WHATSAPP_MESSAGE_STATE)
+    _ensure_state_in_store(store, PRIVACY_CONTROL_STATE_KEY, PRIVACY_CONTROLS_FILE, DEFAULT_PRIVACY_CONTROL_STATE)
     _ensure_preference_state_in_store(store)
 
 

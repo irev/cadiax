@@ -447,6 +447,82 @@ def whatsapp_send_command(message: str, phone_number: str, display_name: str) ->
     )
 
 
+@main.group("privacy")
+def privacy_group() -> None:
+    """Privacy controls and user data commands."""
+
+
+@privacy_group.command("show")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON privacy controls")
+def privacy_show_command(as_json: bool) -> None:
+    """Show privacy governance controls."""
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+    payload = PrivacyControlService().get_diagnostics()
+    if as_json:
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(
+        "\n".join(
+            [
+                "Privacy Controls",
+                "",
+                f"- quiet_hours_enabled: {'yes' if payload['quiet_hours'].get('enabled') else 'no'}",
+                f"- quiet_hours_start: {payload['quiet_hours'].get('start', '-')}",
+                f"- quiet_hours_end: {payload['quiet_hours'].get('end', '-')}",
+                f"- quiet_hours_active: {'yes' if payload['quiet_hours_active'] else 'no'}",
+                f"- consent_required_for_proactive: {'yes' if payload['consent_required_for_proactive'] else 'no'}",
+                f"- proactive_assistance_enabled: {'yes' if payload['proactive_assistance_enabled'] else 'no'}",
+                f"- memory_retention_days: {payload['memory_retention_days']}",
+                f"- memory_entry_count: {payload['memory_entry_count']}",
+            ]
+        )
+    )
+
+
+@privacy_group.command("quiet-hours")
+@click.option("--start", required=True, help="Start time in HH:MM")
+@click.option("--end", required=True, help="End time in HH:MM")
+@click.option("--disable", is_flag=True, help="Disable quiet hours after updating the configured window")
+def privacy_quiet_hours_command(start: str, end: str, disable: bool) -> None:
+    """Configure quiet-hours controls."""
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+    state = PrivacyControlService().set_quiet_hours(start=start, end=end, enabled=not disable)
+    click.echo(
+        f"Quiet hours updated: enabled={'yes' if state['quiet_hours']['enabled'] else 'no'} "
+        f"{state['quiet_hours']['start']}-{state['quiet_hours']['end']}"
+    )
+
+
+@privacy_group.command("export")
+@click.option(
+    "--output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=Path(".otonomassist") / "privacy_export.json",
+    show_default=True,
+    help="Destination JSON file",
+)
+def privacy_export_command(output: Path) -> None:
+    """Export privacy-relevant local user data."""
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+    written = PrivacyControlService().export_user_data_to_path(output)
+    click.echo(f"Privacy export written to {written}")
+
+
+@privacy_group.command("delete-memory")
+def privacy_delete_memory_command() -> None:
+    """Delete stored memory journal and summaries."""
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+    result = PrivacyControlService().delete_memory_data()
+    click.echo(
+        f"Deleted {result['deleted_memory_entries']} memory entry(ies) and "
+        f"{result['deleted_memory_summaries']} memory summary chunk(s)"
+    )
+
+
 @main.group("service")
 def service_group() -> None:
     """Foreground service runtime and wrapper commands."""

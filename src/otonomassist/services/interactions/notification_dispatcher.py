@@ -24,6 +24,31 @@ class NotificationDispatcher:
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Record and publish one notification dispatch."""
+        from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+        should_defer, reason = PrivacyControlService().should_defer_proactive(metadata)
+        if should_defer:
+            payload = self._record_notification(
+                channel=channel,
+                title=title,
+                message=message,
+                trace_id=trace_id,
+                target=target,
+                metadata={**(metadata or {}), "deferred_reason": reason},
+                status="deferred",
+            )
+            publish_event(
+                "notification.deferred",
+                event_type="notification_deferred",
+                trace_id=trace_id,
+                source=payload["channel"],
+                data={
+                    "notification_id": payload["id"],
+                    "target": payload["target"],
+                    "reason": reason,
+                },
+            )
+            return payload
         return self._record_notification(
             channel=channel,
             title=title,
@@ -55,23 +80,43 @@ class NotificationDispatcher:
             if isinstance(raw_metadata, dict):
                 delivery_metadata.update(raw_metadata)
             delivery_metadata["delivery_index"] = index
+            from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+            should_defer, reason = PrivacyControlService().should_defer_proactive(delivery_metadata)
             notification = self._record_notification(
                 channel=channel,
                 title=str(delivery.get("title") or title).strip() or "Notification",
                 message=str(delivery.get("message") or message).strip(),
                 trace_id=trace_id,
                 target=target,
-                metadata=delivery_metadata,
+                metadata={
+                    **delivery_metadata,
+                    **({"deferred_reason": reason} if should_defer else {}),
+                },
+                status="deferred" if should_defer else "queued",
             )
-            self._project_delivery(
-                channel=channel,
-                target=target,
-                title=notification["title"],
-                message=notification["message"],
-                trace_id=trace_id,
-                metadata=delivery_metadata,
-                notification_id=int(notification["id"]),
-            )
+            if should_defer:
+                publish_event(
+                    "notification.deferred",
+                    event_type="notification_deferred",
+                    trace_id=trace_id,
+                    source=channel,
+                    data={
+                        "notification_id": notification["id"],
+                        "target": target,
+                        "reason": reason,
+                    },
+                )
+            else:
+                self._project_delivery(
+                    channel=channel,
+                    target=target,
+                    title=notification["title"],
+                    message=notification["message"],
+                    trace_id=trace_id,
+                    metadata=delivery_metadata,
+                    notification_id=int(notification["id"]),
+                )
             results.append(notification)
         publish_event(
             "notification.batch",
@@ -119,6 +164,7 @@ class NotificationDispatcher:
         trace_id: str = "",
         target: str = "",
         metadata: dict[str, Any] | None = None,
+        status: str = "queued",
     ) -> dict[str, Any]:
         state = agent_context.load_notification_state()
         notifications = state.setdefault("notifications", [])
@@ -129,6 +175,7 @@ class NotificationDispatcher:
             "message": message.strip(),
             "target": target.strip(),
             "trace_id": trace_id.strip(),
+            "status": status.strip() or "queued",
             "metadata": metadata or {},
             "created_at": _utc_now_iso(),
         }

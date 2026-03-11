@@ -65,6 +65,9 @@ def get_config_status_data() -> dict[str, object]:
     notifications = NotificationDispatcher().get_snapshot()
     email = EmailInterfaceService().get_snapshot()
     whatsapp = WhatsAppInterfaceService().get_snapshot()
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+    privacy_controls = PrivacyControlService().get_diagnostics()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -160,6 +163,7 @@ def get_config_status_data() -> dict[str, object]:
         "notifications": notifications,
         "email": email,
         "whatsapp": whatsapp,
+        "privacy_controls": privacy_controls,
         "external_assets": {
             "asset_count": external_assets["asset_count"],
             "event_count": external_assets["event_count"],
@@ -291,6 +295,20 @@ def get_config_status_report() -> str:
             f"- redaction_enabled: {'yes' if data['privacy']['redaction_enabled'] else 'no'}",
             f"- replacement_label: {data['privacy']['replacement_label']}",
             f"- pattern_count: {data['privacy']['pattern_count']}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[Privacy Controls]",
+            f"- quiet_hours_enabled: {'yes' if data['privacy_controls']['quiet_hours'].get('enabled') else 'no'}",
+            f"- quiet_hours_start: {data['privacy_controls']['quiet_hours'].get('start', '-')}",
+            f"- quiet_hours_end: {data['privacy_controls']['quiet_hours'].get('end', '-')}",
+            f"- quiet_hours_active: {'yes' if data['privacy_controls']['quiet_hours_active'] else 'no'}",
+            f"- consent_required_for_proactive: {'yes' if data['privacy_controls']['consent_required_for_proactive'] else 'no'}",
+            f"- proactive_assistance_enabled: {'yes' if data['privacy_controls']['proactive_assistance_enabled'] else 'no'}",
+            f"- memory_retention_days: {data['privacy_controls']['memory_retention_days']}",
+            f"- memory_entry_count: {data['privacy_controls']['memory_entry_count']}",
         ]
     )
 

@@ -56,6 +56,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
     monkeypatch.setattr(agent_context, "EMAIL_MESSAGES_FILE", data_dir / "email_messages.json")
     monkeypatch.setattr(agent_context, "WHATSAPP_MESSAGES_FILE", data_dir / "whatsapp_messages.json")
+    monkeypatch.setattr(agent_context, "PRIVACY_CONTROLS_FILE", data_dir / "privacy_controls.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -237,6 +238,49 @@ def test_cli_whatsapp_send_dispatches_whatsapp_notification(tmp_path, monkeypatc
     assert "WhatsApp #1 queued to +628123456789" in result.output
     assert whatsapp_state["messages"][0]["display_name"] == "Budi"
     assert notification_state["notifications"][0]["channel"] == "whatsapp"
+
+
+def test_cli_privacy_export_and_delete_memory_controls(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.append_memory_entry("catatan privat satu", source="manual")
+    agent_context.save_memory_summary_state(
+        {
+            "summaries": [{"topic": "planner", "summary": "ringkasan"}],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "prune_candidates": 0,
+        }
+    )
+    export_path = tmp_path / "privacy-export.json"
+
+    runner = CliRunner()
+    export_result = runner.invoke(main, ["privacy", "export", "--output", str(export_path)])
+    delete_result = runner.invoke(main, ["privacy", "delete-memory"])
+
+    assert export_result.exit_code == 0
+    assert export_path.exists()
+    exported = json.loads(export_path.read_text(encoding="utf-8"))
+    assert exported["memory_entries"][0]["text"] == "catatan privat satu"
+    assert delete_result.exit_code == 0
+    assert agent_context.load_all_memories() == []
+    assert agent_context.load_memory_summary_state()["summaries"] == []
+
+
+def test_cli_privacy_show_and_quiet_hours_configuration(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    update_result = runner.invoke(main, ["privacy", "quiet-hours", "--start", "21:30", "--end", "06:30"])
+    show_result = runner.invoke(main, ["privacy", "show"])
+    json_result = runner.invoke(main, ["privacy", "show", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert update_result.exit_code == 0
+    assert "Quiet hours updated" in update_result.output
+    assert show_result.exit_code == 0
+    assert "Privacy Controls" in show_result.output
+    assert "- quiet_hours_start: 21:30" in show_result.output
+    assert payload["quiet_hours"]["start"] == "21:30"
+    assert payload["quiet_hours"]["end"] == "06:30"
 
 
 def test_cli_service_status_reports_wrapper_targets(tmp_path, monkeypatch):
@@ -604,6 +648,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "notifications" in payload
     assert "email" in payload
     assert "whatsapp" in payload
+    assert "privacy_controls" in payload
     assert "delivery_batch_count" in payload["notifications"]
     assert "preference_count" in payload["storage"]
     assert "habit_count" in payload["storage"]
@@ -699,6 +744,7 @@ def test_cli_doctor_report_exposes_whatsapp_interface_snapshot(tmp_path, monkeyp
     assert "[WhatsApp]" in result.output
     assert "- message_count: 1" in result.output
     assert "- latest_phone_number: +628123456789" in result.output
+    assert "[Privacy Controls]" in result.output
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
@@ -927,6 +973,7 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
     monkeypatch.setattr(agent_context, "EMAIL_MESSAGES_FILE", data_dir / "email_messages.json")
     monkeypatch.setattr(agent_context, "WHATSAPP_MESSAGES_FILE", data_dir / "whatsapp_messages.json")
+    monkeypatch.setattr(agent_context, "PRIVACY_CONTROLS_FILE", data_dir / "privacy_controls.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")

@@ -48,6 +48,41 @@ def run_scheduler(
             "until_idle": until_idle,
         },
     )
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+    if PrivacyControlService().is_quiet_hours():
+        save_scheduler_state(
+            {
+                "last_run_at": datetime.now(timezone.utc).isoformat(),
+                "last_status": "quiet_hours",
+                "last_cycles": 0,
+                "last_processed": 0,
+                "last_trace_id": scheduler_trace_id,
+            }
+        )
+        append_execution_event(
+            "scheduler_run_completed",
+            trace_id=scheduler_trace_id,
+            status="quiet_hours",
+            source=source,
+            command="scheduler",
+            duration_ms=int((time.perf_counter() - scheduler_started) * 1000),
+            data={"reason": "quiet_hours_active", "cycles": 0, "processed": 0},
+        )
+        record_execution_metric(
+            "scheduler_run_completed",
+            status="quiet_hours",
+            source=source,
+            duration_ms=int((time.perf_counter() - scheduler_started) * 1000),
+        )
+        lines.append("- skipped: quiet hours active")
+        return {
+            "cycles": 0,
+            "processed": 0,
+            "status": "quiet_hours",
+            "trace_id": scheduler_trace_id,
+            "output": "\n".join(lines),
+        }
 
     for cycle_index in range(max(1, cycles)):
         cycle_trace_id = new_trace_id()
