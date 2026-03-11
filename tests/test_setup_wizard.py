@@ -438,6 +438,8 @@ def test_cli_doctor_reports_platform_runtime_capabilities(tmp_path, monkeypatch)
     assert "[Runtime]" in result.output
     assert "[Context Budget]" in result.output
     assert "- total_budget_chars: 4321" in result.output
+    assert "[Privacy]" in result.output
+    assert "- redaction_enabled: yes" in result.output
     assert "- python:" in result.output
     assert "- skill_timeout_seconds: 12.50" in result.output
 
@@ -499,6 +501,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "policy" in payload
     assert "budget" in payload
     assert "context_budget" in payload
+    assert "privacy" in payload
     assert "runtime" in payload
     assert "storage" in payload
     assert "preference_count" in payload["storage"]

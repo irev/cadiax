@@ -9,7 +9,7 @@ from otonomassist.services.interactions import (
 )
 from otonomassist.services.personality import PersonalityService
 from otonomassist.services.policy import PolicyDecision, PolicyService
-from otonomassist.services.runtime import BudgetManager, ContextBudgeter, ExecutionService, InteractionOrchestrator, ModelRouter
+from otonomassist.services.runtime import BudgetManager, ContextBudgeter, ExecutionService, InteractionOrchestrator, ModelRouter, RedactionPolicy
 
 __all__ = [
     "BudgetManager",
@@ -23,6 +23,7 @@ __all__ = [
     "PersonalityService",
     "PolicyDecision",
     "PolicyService",
+    "RedactionPolicy",
     "build_conversation_response",
     "run_conversation_api",
 ]

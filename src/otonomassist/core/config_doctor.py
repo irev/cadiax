@@ -18,7 +18,9 @@ from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_stora
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
 from otonomassist.services.personality import PersonalityService
 from otonomassist.services.policy.policy_service import PolicyService
-from otonomassist.services.runtime import BudgetManager, ContextBudgeter
+from otonomassist.services.runtime.budget_manager import BudgetManager
+from otonomassist.services.runtime.context_budgeter import ContextBudgeter
+from otonomassist.services.runtime.redaction_policy import RedactionPolicy
 
 
 ENV_FILE = agent_context.PROJECT_ROOT / ".env"
@@ -40,6 +42,7 @@ def get_config_status_data() -> dict[str, object]:
     policy = _get_policy_status(env_values)
     budget = BudgetManager(env_values).get_diagnostics()
     context_budget = ContextBudgeter(env_values).get_diagnostics()
+    privacy = RedactionPolicy(env_values).get_diagnostics()
     secret_storage = get_secret_storage_info()
     process_manager = get_process_manager_info()
     service_runtime = get_service_runtime_info()
@@ -89,6 +92,7 @@ def get_config_status_data() -> dict[str, object]:
         "policy": policy,
         "budget": budget,
         "context_budget": context_budget,
+        "privacy": privacy,
         "platform": {
             "status": platform_status,
             "os": os.name,
@@ -222,6 +226,17 @@ def get_config_status_report() -> str:
             f"- personality_max_chars: {data['context_budget']['personality_max_chars']}",
             f"- profile_max_chars: {data['context_budget']['profile_max_chars']}",
             f"- runtime_max_chars: {data['context_budget']['runtime_max_chars']}",
+            f"- redaction_enabled: {'yes' if data['context_budget']['redaction_enabled'] else 'no'}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[Privacy]",
+            f"- status: {data['privacy']['status']}",
+            f"- redaction_enabled: {'yes' if data['privacy']['redaction_enabled'] else 'no'}",
+            f"- replacement_label: {data['privacy']['replacement_label']}",
+            f"- pattern_count: {data['privacy']['pattern_count']}",
         ]
     )
 

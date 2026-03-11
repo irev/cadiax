@@ -6,6 +6,7 @@ import os
 
 from otonomassist.core.agent_context import build_runtime_context_block
 from otonomassist.services.personality import PersonalityService
+from otonomassist.services.runtime.redaction_policy import RedactionPolicy, SECRET_PATTERNS
 
 
 class ContextBudgeter:
@@ -13,6 +14,7 @@ class ContextBudgeter:
 
     def __init__(self, env: dict[str, str] | None = None) -> None:
         self.env = env or dict(os.environ)
+        self.redaction_policy = RedactionPolicy(self.env)
 
     def build_orchestration_context(
         self,
@@ -51,9 +53,9 @@ class ContextBudgeter:
         """Compose prompt sections while enforcing a total context budget."""
         total_budget = self.get_total_budget_chars()
         sections = [
-            _truncate(skills_context.strip(), self.get_skills_max_chars()),
-            _truncate(personality_context.strip(), self.get_personality_max_chars()),
-            _truncate(runtime_context.strip(), self.get_runtime_max_chars()),
+            _truncate(self.redaction_policy.redact_text(skills_context.strip()), self.get_skills_max_chars()),
+            _truncate(self.redaction_policy.redact_text(personality_context.strip()), self.get_personality_max_chars()),
+            _truncate(self.redaction_policy.redact_text(runtime_context.strip()), self.get_runtime_max_chars()),
         ]
         text = "\n\n".join(section for section in sections if section)
         return _truncate(text, total_budget)
@@ -66,6 +68,8 @@ class ContextBudgeter:
             "personality_max_chars": self.get_personality_max_chars(),
             "profile_max_chars": self.get_profile_max_chars(),
             "runtime_max_chars": self.get_runtime_max_chars(),
+            "redaction_enabled": 1 if self.redaction_policy.is_enabled() else 0,
+            "redaction_pattern_count": len(SECRET_PATTERNS),
         }
 
     def get_total_budget_chars(self) -> int:

@@ -26,7 +26,7 @@ from otonomassist.core.job_runtime import process_job_queue  # noqa: E402
 from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
 from otonomassist.interfaces.telegram import TelegramPollingTransport as InterfaceTelegramPollingTransport  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
-from otonomassist.services import BudgetManager, ContextBudgeter, ModelRouter, PersonalityService, PolicyService  # noqa: E402
+from otonomassist.services import BudgetManager, ContextBudgeter, ModelRouter, PersonalityService, PolicyService, RedactionPolicy  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
     ConversationService,
     InteractionRequest,
@@ -211,6 +211,30 @@ def test_context_budgeter_truncates_large_prompt_sections(tmp_path, monkeypatch)
 
     assert "... (context budget truncated)" in prompt
     assert len(prompt) <= 640
+
+
+def test_context_budgeter_redacts_secret_like_values_from_prompt_context(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    PersonalityService().add_context("api_key=sk-live-1234567890abcdefgh")
+    agent_context.append_memory_entry("Bearer secret-token-abcdef123456 harus dirahasiakan", source="manual")
+
+    prompt = ContextBudgeter().build_general_reasoning_context(
+        query="rahasia runtime",
+        personality_service=PersonalityService(),
+    )
+
+    assert "sk-live-1234567890abcdefgh" not in prompt
+    assert "secret-token-abcdef123456" not in prompt
+    assert "[REDACTED]" in prompt
+
+
+def test_redaction_policy_can_be_disabled_for_local_debugging(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("OTONOMASSIST_PROMPT_REDACTION", "0")
+
+    text = RedactionPolicy().redact_text("token=abc123456789")
+
+    assert text == "token=abc123456789"
 
 
 def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypatch):
