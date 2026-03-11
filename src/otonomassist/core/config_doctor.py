@@ -16,6 +16,7 @@ from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
 from otonomassist.core.scheduler_runtime import get_scheduler_summary
 from otonomassist.interfaces.email import EmailInterfaceService
 from otonomassist.interfaces.telegram import TelegramAuthService
+from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
 from otonomassist.services.personality import HabitModelService, PersonalityService
@@ -63,6 +64,7 @@ def get_config_status_data() -> dict[str, object]:
     session_state = agent_context.load_session_state()
     notifications = NotificationDispatcher().get_snapshot()
     email = EmailInterfaceService().get_snapshot()
+    whatsapp = WhatsAppInterfaceService().get_snapshot()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -157,6 +159,7 @@ def get_config_status_data() -> dict[str, object]:
         },
         "notifications": notifications,
         "email": email,
+        "whatsapp": whatsapp,
         "external_assets": {
             "asset_count": external_assets["asset_count"],
             "event_count": external_assets["event_count"],
@@ -391,6 +394,17 @@ def get_config_status_report() -> str:
             f"- outbound_count: {data['email']['outbound_count']}",
             f"- latest_subject: {str(data['email']['latest_message'].get('subject', '') or '-')}",
             f"- latest_direction: {str(data['email']['latest_message'].get('direction', '') or '-')}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[WhatsApp]",
+            f"- message_count: {data['whatsapp']['message_count']}",
+            f"- inbound_count: {data['whatsapp']['inbound_count']}",
+            f"- outbound_count: {data['whatsapp']['outbound_count']}",
+            f"- latest_phone_number: {str(data['whatsapp']['latest_message'].get('phone_number', '') or '-')}",
+            f"- latest_direction: {str(data['whatsapp']['latest_message'].get('direction', '') or '-')}",
         ]
     )
     lines.extend(

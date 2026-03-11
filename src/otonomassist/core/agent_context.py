@@ -25,6 +25,7 @@ IDENTITIES_FILE = DATA_DIR / "identities.json"
 SESSIONS_FILE = DATA_DIR / "sessions.json"
 NOTIFICATIONS_FILE = DATA_DIR / "notifications.json"
 EMAIL_MESSAGES_FILE = DATA_DIR / "email_messages.json"
+WHATSAPP_MESSAGES_FILE = DATA_DIR / "whatsapp_messages.json"
 LESSONS_FILE = DATA_DIR / "lessons.md"
 SECRETS_FILE = DATA_DIR / "secrets.json"
 EXECUTION_HISTORY_FILE = DATA_DIR / "execution_history.jsonl"
@@ -74,6 +75,7 @@ IDENTITY_STATE_KEY = "identities"
 SESSION_STATE_KEY = "sessions"
 NOTIFICATION_STATE_KEY = "notifications"
 EMAIL_MESSAGE_STATE_KEY = "email_messages"
+WHATSAPP_MESSAGE_STATE_KEY = "whatsapp_messages"
 
 DEFAULT_PLANNER_STATE = {"goal": "", "tasks": []}
 DEFAULT_METRICS_STATE = {"counters": {}, "timings": {}, "updated_at": ""}
@@ -86,6 +88,7 @@ DEFAULT_IDENTITY_STATE = {"identities": [], "updated_at": ""}
 DEFAULT_SESSION_STATE = {"sessions": [], "updated_at": ""}
 DEFAULT_NOTIFICATION_STATE = {"notifications": [], "updated_at": ""}
 DEFAULT_EMAIL_MESSAGE_STATE = {"messages": [], "updated_at": ""}
+DEFAULT_WHATSAPP_MESSAGE_STATE = {"messages": [], "updated_at": ""}
 
 
 def ensure_agent_storage() -> None:
@@ -122,6 +125,9 @@ def ensure_agent_storage() -> None:
     if not EMAIL_MESSAGES_FILE.exists():
         ensure_internal_state_write_allowed(EMAIL_MESSAGES_FILE)
         EMAIL_MESSAGES_FILE.write_text(json.dumps(DEFAULT_EMAIL_MESSAGE_STATE, indent=2), encoding="utf-8")
+    if not WHATSAPP_MESSAGES_FILE.exists():
+        ensure_internal_state_write_allowed(WHATSAPP_MESSAGES_FILE)
+        WHATSAPP_MESSAGES_FILE.write_text(json.dumps(DEFAULT_WHATSAPP_MESSAGE_STATE, indent=2), encoding="utf-8")
     if not LESSONS_FILE.exists():
         ensure_internal_state_write_allowed(LESSONS_FILE)
         LESSONS_FILE.write_text(DEFAULT_LESSONS, encoding="utf-8")
@@ -248,6 +254,24 @@ def load_email_message_state() -> dict[str, Any]:
 def save_email_message_state(state: dict[str, Any]) -> None:
     """Persist email interface message history state."""
     _save_durable_json_state(EMAIL_MESSAGE_STATE_KEY, EMAIL_MESSAGES_FILE, state)
+
+
+def load_whatsapp_message_state() -> dict[str, Any]:
+    """Load WhatsApp interface message history state."""
+    return _load_durable_json_state(
+        WHATSAPP_MESSAGE_STATE_KEY,
+        WHATSAPP_MESSAGES_FILE,
+        DEFAULT_WHATSAPP_MESSAGE_STATE,
+    )
+
+
+def save_whatsapp_message_state(state: dict[str, Any]) -> None:
+    """Persist WhatsApp interface message history state."""
+    _save_durable_json_state(
+        WHATSAPP_MESSAGE_STATE_KEY,
+        WHATSAPP_MESSAGES_FILE,
+        state,
+    )
 
 
 def build_agent_context_block(query: str | None = None) -> str:
@@ -654,6 +678,7 @@ def _bootstrap_durable_state() -> None:
     _ensure_state_in_store(store, SESSION_STATE_KEY, SESSIONS_FILE, DEFAULT_SESSION_STATE)
     _ensure_state_in_store(store, NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, DEFAULT_NOTIFICATION_STATE)
     _ensure_state_in_store(store, EMAIL_MESSAGE_STATE_KEY, EMAIL_MESSAGES_FILE, DEFAULT_EMAIL_MESSAGE_STATE)
+    _ensure_state_in_store(store, WHATSAPP_MESSAGE_STATE_KEY, WHATSAPP_MESSAGES_FILE, DEFAULT_WHATSAPP_MESSAGE_STATE)
     _ensure_preference_state_in_store(store)
 
 

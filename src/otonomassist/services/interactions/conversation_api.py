@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from otonomassist.core.event_bus import publish_event
 from otonomassist.interfaces.email import EmailInterfaceService
+from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 from otonomassist.services.interactions.conversation_service import ConversationService
 from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
 from otonomassist.services.interactions.models import InteractionRequest
@@ -189,6 +190,63 @@ def build_conversation_response(
             metadata=metadata if isinstance(metadata, dict) else {},
         )
         return 200, {"status": "ok", "email": dispatched}
+
+    if route in {"/whatsapp/inbound", "/v1/whatsapp/inbound"}:
+        if method != "POST":
+            return 405, {"error": "method_not_allowed", "allowed": ["POST"]}
+        try:
+            payload = _load_json_body(body)
+        except json.JSONDecodeError:
+            return 400, {"error": "invalid_json"}
+        except ValueError as exc:
+            return 400, {"error": "invalid_request", "detail": str(exc)}
+        phone_number = str(payload.get("phone_number") or "").strip()
+        message = str(payload.get("message") or payload.get("body") or "").strip()
+        if not phone_number:
+            return 400, {"error": "invalid_request", "detail": "field `phone_number` is required"}
+        if not message:
+            return 400, {"error": "invalid_request", "detail": "field `message` is required"}
+        metadata = payload.get("metadata")
+        whatsapp = WhatsAppInterfaceService(conversation_service=service)
+        try:
+            handled = whatsapp.receive(
+                phone_number=phone_number,
+                body=message,
+                display_name=str(payload.get("display_name") or "").strip(),
+                wa_id=str(payload.get("wa_id") or "").strip(),
+                thread_id=str(payload.get("thread_id") or "").strip(),
+                trace_id=str(payload.get("trace_id") or "").strip(),
+                metadata=metadata if isinstance(metadata, dict) else {},
+            )
+        except Exception as exc:
+            return 500, {"error": "execution_failed", "detail": str(exc)}
+        return 200, {"status": "accepted", **handled}
+
+    if route in {"/whatsapp/outbound", "/v1/whatsapp/outbound"}:
+        if method != "POST":
+            return 405, {"error": "method_not_allowed", "allowed": ["POST"]}
+        try:
+            payload = _load_json_body(body)
+        except json.JSONDecodeError:
+            return 400, {"error": "invalid_json"}
+        except ValueError as exc:
+            return 400, {"error": "invalid_request", "detail": str(exc)}
+        phone_number = str(payload.get("phone_number") or "").strip()
+        message = str(payload.get("message") or payload.get("body") or "").strip()
+        if not phone_number:
+            return 400, {"error": "invalid_request", "detail": "field `phone_number` is required"}
+        if not message:
+            return 400, {"error": "invalid_request", "detail": "field `message` is required"}
+        metadata = payload.get("metadata")
+        whatsapp = WhatsAppInterfaceService()
+        dispatched = whatsapp.send(
+            phone_number=phone_number,
+            body=message,
+            display_name=str(payload.get("display_name") or "").strip(),
+            trace_id=str(payload.get("trace_id") or "").strip(),
+            metadata=metadata if isinstance(metadata, dict) else {},
+        )
+        return 200, {"status": "ok", "whatsapp": dispatched}
 
     return 404, {"error": "not_found", "path": route}
 

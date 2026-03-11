@@ -68,6 +68,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
     monkeypatch.setattr(agent_context, "EMAIL_MESSAGES_FILE", data_dir / "email_messages.json")
+    monkeypatch.setattr(agent_context, "WHATSAPP_MESSAGES_FILE", data_dir / "whatsapp_messages.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -994,6 +995,66 @@ def test_email_outbound_api_dispatches_notification_and_persists_email_state(tmp
     assert payload["email"]["to_address"] == "ops@example.com"
     assert email_state["messages"][0]["subject"] == "Build Alert"
     assert notification_state["notifications"][0]["channel"] == "email"
+
+
+def test_whatsapp_inbound_api_routes_through_conversation_boundary_and_persists_message(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    status, payload = build_conversation_response(
+        "/v1/whatsapp/inbound",
+        service=service,
+        method="POST",
+        body=json.dumps(
+            {
+                "phone_number": "+628123456789",
+                "display_name": "Budi",
+                "body": "memory list",
+                "thread_id": "wa-thread-1",
+            }
+        ).encode("utf-8"),
+    )
+
+    state = agent_context.load_whatsapp_message_state()
+    assert status == 200
+    assert payload["status"] == "accepted"
+    assert payload["interaction"]["source"] == "whatsapp"
+    assert payload["interaction"]["identity_id"]
+    assert payload["whatsapp"]["direction"] == "inbound"
+    assert payload["whatsapp"]["thread_id"] == "wa-thread-1"
+    assert state["messages"][0]["phone_number"] == "+628123456789"
+    assert state["messages"][0]["display_name"] == "Budi"
+
+
+def test_whatsapp_outbound_api_dispatches_notification_and_persists_state(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    status, payload = build_conversation_response(
+        "/v1/whatsapp/outbound",
+        service=service,
+        method="POST",
+        body=json.dumps(
+            {
+                "phone_number": "+628123456789",
+                "display_name": "Budi",
+                "message": "build selesai",
+            }
+        ).encode("utf-8"),
+    )
+
+    whatsapp_state = agent_context.load_whatsapp_message_state()
+    notification_state = agent_context.load_notification_state()
+    assert status == 200
+    assert payload["status"] == "ok"
+    assert payload["whatsapp"]["direction"] == "outbound"
+    assert payload["whatsapp"]["phone_number"] == "+628123456789"
+    assert whatsapp_state["messages"][0]["display_name"] == "Budi"
+    assert notification_state["notifications"][0]["channel"] == "whatsapp"
 
 
 def test_assistant_times_out_slow_skill_and_records_timeout_status(tmp_path, monkeypatch):

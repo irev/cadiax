@@ -35,6 +35,7 @@ from otonomassist.platform import (
     write_service_wrapper_artifacts,
 )
 from otonomassist.interfaces.email import EmailInterfaceService
+from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 from otonomassist.services.interactions import ConversationService, NotificationDispatcher, run_conversation_api
 from otonomassist.telegram_cli import run_telegram_transport
 
@@ -385,6 +386,28 @@ def email_send_command(message: str, to_address: str, subject: str, from_address
     click.echo(
         f"Email #{payload['id']} queued to {payload['to_address']} "
         f"with subject {payload['subject'] or '-'}"
+    )
+
+
+@main.group("whatsapp")
+def whatsapp_group() -> None:
+    """WhatsApp interface commands."""
+
+
+@whatsapp_group.command("send")
+@click.argument("message", required=True)
+@click.option("--to", "phone_number", required=True, help="Destination WhatsApp number")
+@click.option("--name", "display_name", default="", help="Optional display name")
+def whatsapp_send_command(message: str, phone_number: str, display_name: str) -> None:
+    """Dispatch one outbound WhatsApp-shaped notification."""
+    payload = WhatsAppInterfaceService().send(
+        phone_number=phone_number,
+        body=message,
+        display_name=display_name,
+    )
+    click.echo(
+        f"WhatsApp #{payload['id']} queued to {payload['phone_number']} "
+        f"for {payload['display_name'] or '-'}"
     )
 
 
