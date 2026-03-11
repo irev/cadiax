@@ -9,11 +9,12 @@ from otonomassist.services.interactions import (
 )
 from otonomassist.services.personality import PersonalityService
 from otonomassist.services.policy import PolicyDecision, PolicyService
-from otonomassist.services.runtime import BudgetManager, ExecutionService, InteractionOrchestrator, ModelRouter
+from otonomassist.services.runtime import BudgetManager, ContextBudgeter, ExecutionService, InteractionOrchestrator, ModelRouter
 
 __all__ = [
     "BudgetManager",
     "ConversationService",
+    "ContextBudgeter",
     "ExecutionService",
     "InteractionRequest",
     "InteractionResponse",

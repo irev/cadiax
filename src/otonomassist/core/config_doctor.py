@@ -18,7 +18,7 @@ from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_stora
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
 from otonomassist.services.personality import PersonalityService
 from otonomassist.services.policy.policy_service import PolicyService
-from otonomassist.services.runtime import BudgetManager
+from otonomassist.services.runtime import BudgetManager, ContextBudgeter
 
 
 ENV_FILE = agent_context.PROJECT_ROOT / ".env"
@@ -39,6 +39,7 @@ def get_config_status_data() -> dict[str, object]:
     telegram = _get_telegram_status(env_values, telegram_auth)
     policy = _get_policy_status(env_values)
     budget = BudgetManager(env_values).get_diagnostics()
+    context_budget = ContextBudgeter(env_values).get_diagnostics()
     secret_storage = get_secret_storage_info()
     process_manager = get_process_manager_info()
     service_runtime = get_service_runtime_info()
@@ -87,6 +88,7 @@ def get_config_status_data() -> dict[str, object]:
         },
         "policy": policy,
         "budget": budget,
+        "context_budget": context_budget,
         "platform": {
             "status": platform_status,
             "os": os.name,
@@ -209,6 +211,17 @@ def get_config_status_report() -> str:
             f"- remote_ai_total_tokens: {data['budget']['remote_ai_total_tokens']}",
             f"- remote_providers: {', '.join(data['budget']['remote_providers']) or '-'}",
             f"- local_providers: {', '.join(data['budget']['local_providers']) or '-'}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[Context Budget]",
+            f"- total_budget_chars: {data['context_budget']['total_budget_chars']}",
+            f"- skills_max_chars: {data['context_budget']['skills_max_chars']}",
+            f"- personality_max_chars: {data['context_budget']['personality_max_chars']}",
+            f"- profile_max_chars: {data['context_budget']['profile_max_chars']}",
+            f"- runtime_max_chars: {data['context_budget']['runtime_max_chars']}",
         ]
     )
 

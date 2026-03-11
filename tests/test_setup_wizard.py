@@ -298,6 +298,7 @@ def test_assistant_supports_doctor_and_config_status_commands(tmp_path, monkeypa
                 "AI_PROVIDER=ollama",
                 f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
                 "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+                "OTONOMASSIST_CONTEXT_BUDGET_CHARS=4321",
             ]
         )
         + "\n",
@@ -407,6 +408,7 @@ def test_cli_doctor_reads_openai_api_key_from_env_file(tmp_path, monkeypatch):
 def test_cli_doctor_reports_platform_runtime_capabilities(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setenv("OTONOMASSIST_SKILL_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setenv("OTONOMASSIST_CONTEXT_BUDGET_CHARS", "4321")
     env_file = tmp_path / ".env"
     env_file.write_text(
         "\n".join(
@@ -414,6 +416,7 @@ def test_cli_doctor_reports_platform_runtime_capabilities(tmp_path, monkeypatch)
                 "AI_PROVIDER=ollama",
                 f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
                 "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+                "OTONOMASSIST_CONTEXT_BUDGET_CHARS=4321",
             ]
         )
         + "\n",
@@ -433,6 +436,8 @@ def test_cli_doctor_reports_platform_runtime_capabilities(tmp_path, monkeypatch)
     assert "- service_runtime:" in result.output
     assert "[Toolchains]" in result.output
     assert "[Runtime]" in result.output
+    assert "[Context Budget]" in result.output
+    assert "- total_budget_chars: 4321" in result.output
     assert "- python:" in result.output
     assert "- skill_timeout_seconds: 12.50" in result.output
 
@@ -493,6 +498,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert payload["ai"]["provider"] == "ollama"
     assert "policy" in payload
     assert "budget" in payload
+    assert "context_budget" in payload
     assert "runtime" in payload
     assert "storage" in payload
     assert "preference_count" in payload["storage"]

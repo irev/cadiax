@@ -23,7 +23,7 @@ from otonomassist.core.skill_registry import SkillRegistry
 from otonomassist.core.transport import TransportContext
 from otonomassist.services.personality import PersonalityService
 from otonomassist.services.policy import PolicyService
-from otonomassist.services.runtime import BudgetManager, ExecutionService, InteractionOrchestrator, ModelRouter
+from otonomassist.services.runtime import BudgetManager, ContextBudgeter, ExecutionService, InteractionOrchestrator, ModelRouter
 
 if TYPE_CHECKING:
     from otonomassist.models import Skill
@@ -46,6 +46,7 @@ class Assistant:
         self.personality_service = PersonalityService()
         self.policy_service = PolicyService()
         self.budget_manager = BudgetManager()
+        self.context_budgeter = ContextBudgeter()
         self.model_router = ModelRouter(self.budget_manager)
         self.execution_service = ExecutionService(
             self.registry,
@@ -121,13 +122,14 @@ class Assistant:
 
     def _get_orchestration_system_prompt(self, command: str) -> str:
         """Build system prompt for AI orchestration."""
+        context_block = self.context_budgeter.build_orchestration_context(
+            command=command,
+            skills_context=self._build_skills_context(),
+            personality_service=self.personality_service,
+        )
         return f"""Anda adalah asisten yang menentukan skill mana yang akan digunakan berdasarkan input user.
 
-{self._build_skills_context()}
-
-{self.personality_service.build_prompt_block()}
-
-{build_runtime_context_block(command)}
+{context_block}
 
 Petunjuk:
 1. Analisis input user untuk menentukan skill yang tepat

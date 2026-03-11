@@ -11,7 +11,6 @@ from otonomassist.core.agent_context import (
     add_planner_note,
     append_lesson,
     append_memory_entry,
-    build_runtime_context_block,
     get_planner_task,
     get_next_planner_task,
     update_planner_task_fields,
@@ -20,6 +19,7 @@ from otonomassist.core.agent_context import (
 from otonomassist.core.assistant import Assistant
 from otonomassist.core.execution_control import classify_error_kind, classify_result_status
 from otonomassist.services.personality import PersonalityService
+from otonomassist.services.runtime import ContextBudgeter
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -186,8 +186,7 @@ def _resolve_command(task_text: str) -> str:
         return task_text
 
     prompt = (
-        f"{PersonalityService().build_prompt_block()}\n\n"
-        f"{build_runtime_context_block()}\n\n"
+        f"{ContextBudgeter().build_general_reasoning_context(query=task_text, personality_service=PersonalityService())}\n\n"
         f"Task backlog: {task_text}\n\n"
         "Ubah task backlog ini menjadi SATU command internal yang executable.\n"
         "Gunakan salah satu prefix berikut: "

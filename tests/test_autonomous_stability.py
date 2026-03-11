@@ -26,7 +26,7 @@ from otonomassist.core.job_runtime import process_job_queue  # noqa: E402
 from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
 from otonomassist.interfaces.telegram import TelegramPollingTransport as InterfaceTelegramPollingTransport  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
-from otonomassist.services import BudgetManager, ModelRouter, PersonalityService, PolicyService  # noqa: E402
+from otonomassist.services import BudgetManager, ContextBudgeter, ModelRouter, PersonalityService, PolicyService  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
     ConversationService,
     InteractionRequest,
@@ -191,6 +191,26 @@ def test_personality_service_bootstraps_structured_preferences_from_profile(tmp_
 
     assert service.list_preferences() == ["ringkas", "fokus outcome"]
     assert "- ringkas" in service.build_prompt_block()
+
+
+def test_context_budgeter_truncates_large_prompt_sections(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    service = PersonalityService()
+    service.add_context("x" * 1200)
+    monkeypatch.setenv("OTONOMASSIST_CONTEXT_BUDGET_CHARS", "600")
+    monkeypatch.setenv("OTONOMASSIST_CONTEXT_PERSONALITY_MAX_CHARS", "300")
+    monkeypatch.setenv("OTONOMASSIST_CONTEXT_RUNTIME_MAX_CHARS", "300")
+    monkeypatch.setenv("OTONOMASSIST_CONTEXT_SKILLS_MAX_CHARS", "260")
+    monkeypatch.setenv("OTONOMASSIST_CONTEXT_PROFILE_MAX_CHARS", "220")
+
+    prompt = ContextBudgeter().build_orchestration_context(
+        command="dependency runtime planner",
+        skills_context="Available skills:\n" + ("- skill panjang sekali\n" * 40),
+        personality_service=service,
+    )
+
+    assert "... (context budget truncated)" in prompt
+    assert len(prompt) <= 640
 
 
 def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypatch):
