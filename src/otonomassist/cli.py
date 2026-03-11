@@ -5,7 +5,7 @@ from pathlib import Path
 
 import click
 
-from otonomassist.core import Assistant
+from otonomassist.core import Assistant, TransportContext
 
 
 @click.command()
@@ -30,7 +30,7 @@ def main(skills_dir: Path, interactive: bool, command: str | None) -> None:
     if interactive or command is None:
         run_interactive(assistant)
     else:
-        result = assistant.execute(command)
+        result = assistant.handle_message(command, TransportContext(source="cli"))
         click.echo(result)
 
 
@@ -51,7 +51,7 @@ def run_interactive(assistant: Assistant) -> None:
                 click.echo("Goodbye!")
                 break
 
-            result = assistant.execute(user_input)
+            result = assistant.handle_message(user_input, TransportContext(source="cli"))
             click.echo(result)
 
         except KeyboardInterrupt:

@@ -33,10 +33,8 @@ class SkillRegistry:
 
     def find_by_command(self, command: str) -> tuple[Skill | None, str]:
         """Find a skill that matches the command."""
-        cmd_lower = command.lower().strip()
-
         for skill in self._skills.values():
-            matched, args = skill.definition.match_command(cmd_lower)
+            matched, args = skill.definition.match_command(command)
             if matched:
                 return skill, args
 

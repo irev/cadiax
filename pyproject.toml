@@ -43,6 +43,7 @@ dev = [
 
 [project.scripts]
 otonomassist = "otonomassist.cli:main"
+otonomassist-telegram = "otonomassist.telegram_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

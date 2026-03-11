@@ -1,31 +1,187 @@
 # Skill Format Specification
 
-Dokumentasi format untuk membuat skill baru dalam bentuk file markdown.
+Dokumentasi ini menjelaskan format skill yang digunakan oleh OtonomAssist saat ini.
 
-## Struktur File
+Format utama bukan lagi satu file markdown yang berisi kode handler. Format aktual adalah direktori skill yang berisi metadata markdown dan file Python handler terpisah.
+
+## Struktur Skill
+
+Setiap skill disimpan dalam folder sendiri:
+
+```text
+skills/
+  <skill_name>/
+    SKILL.md
+    script/
+      handler.py
+```
+
+Contoh:
+
+```text
+skills/echo/
+├── SKILL.md
+└── script/
+    └── handler.py
+```
+
+## Struktur `SKILL.md`
+
+`SKILL.md` berisi metadata, trigger, dan instruksi untuk AI routing.
+
+Contoh minimal:
 
 ```markdown
-# Nama Skill
+# Echo
 
 ## Metadata
-- name: [nama skill]
-- description: [deskripsi singkat]
-- aliases: [alias1, alias2]
-- category: [kategori]
+- name: echo
+- description: Mengulang pesan yang diberikan pengguna
+- aliases: [repeat, ulang]
+- category: utility
 
 ## Triggers
-- "trigger1 "
-- "trigger2 "
+- echo
+- repeat
+- ulang
 
-## Handler
+## AI Instructions
+Gunakan skill ini ketika user ingin pesannya diulang.
+```
+
+## Struktur `script/handler.py`
+
+Handler harus menyediakan fungsi `handle(args: str)`.
+
+Contoh:
+
 ```python
 def handle(args: str) -> str:
-    # Kode handler
-    return hasil
+    if not args:
+        return "Usage: echo <text>"
+    return args
 ```
+
+Async handler juga didukung:
+
+```python
+async def handle(args: str) -> str:
+    return f"Hasil async: {args}"
+```
+
+Handler juga boleh mengembalikan structured result envelope (`dict`) bila skill ingin mendukung formatter universal.
+
+## Structured Result Envelope
+
+Untuk skill yang ingin mendukung tampilan universal seperti `table`, `summary`, `short`, `markdown`, atau `json`, handler sebaiknya mengembalikan envelope berikut:
+
+```python
+{
+    "type": "my_skill_result",
+    "status": "ok",
+    "data": {...},
+    "meta": {
+        "source_skill": "my-skill",
+        "default_view": "summary",
+    },
+}
+```
+
+Cara yang direkomendasikan adalah memakai helper core:
+
+```python
+from otonomassist.core.result_builder import build_result
+
+
+def handle(args: str):
+    return build_result(
+        "my_skill_result",
+        {
+            "summary": "Ringkasan hasil",
+            "items": [{"name": "contoh"}],
+        },
+        source_skill="my-skill",
+        default_view="summary",
+    )
+```
+
+Prinsip desain:
+
+- `type` menjelaskan jenis hasil domain
+- `status` biasanya `ok` atau `degraded`
+- `data` berisi payload utama
+- `meta.source_skill` wajib diisi
+- `meta.default_view` menentukan tampilan bawaan jika user tidak meminta format tertentu
+
+Jika skill hanya butuh output sederhana, return string tetap valid. Envelope direkomendasikan khususnya untuk skill yang:
+
+- mengembalikan list
+- mengembalikan hasil pencarian
+- mengembalikan summary data
+- berpotensi ditampilkan dalam beberapa view
+
+## Section yang Diparse Loader
+
+Loader saat ini membaca section berikut dari `SKILL.md`:
+
+### 1. `## Metadata`
+
+Field yang didukung:
+
+- `name`: nama skill runtime
+- `description`: deskripsi singkat skill
+- `aliases`: daftar alias dalam format `[a, b, c]`
+- `category`: kategori skill
+
+Contoh:
+
+```markdown
+## Metadata
+- name: calc
+- description: Kalkulator sederhana
+- aliases: [calculator, hitung]
+- category: utility
+```
+
+### 2. `## Triggers`
+
+Setiap baris trigger diawali `- `.
+
+Contoh:
+
+```markdown
+## Triggers
+- calc
+- calculator
+- hitung
+```
+
+Trigger dipakai untuk prefix matching. Args akan diambil dari sisa input setelah trigger yang cocok.
+
+Contoh:
+
+- Trigger: `calc`
+- Input: `calc 10 + 5`
+- Args yang dikirim ke handler: `10 + 5`
+
+### 3. `## AI Instructions`
+
+Section ini dipakai sebagai konteks tambahan untuk AI orchestration.
+
+Contoh:
+
+```markdown
+## AI Instructions
+Gunakan skill ini ketika user meminta perhitungan matematika sederhana.
+
+Contoh:
+- "10 + 5" -> `calc 10 + 5`
+- "berapa 20 dibagi 4" -> `calc 20 / 4`
 ```
 
 ## Contoh Skill Lengkap
+
+### `SKILL.md`
 
 ```markdown
 # Reminder
@@ -36,50 +192,83 @@ def handle(args: str) -> str:
 - aliases: [remind, ingat]
 - category: productivity
 
-## Triggers
-- "reminder "
-- "remind "
-- "ingat "
+## Description
+Skill ini membuat pengingat berbasis input teks.
 
-## Handler
+## Triggers
+- reminder
+- remind
+- ingat
+
+## AI Instructions
+Gunakan skill ini ketika user ingin membuat pengingat.
+
+Contoh:
+- "ingatkan saya meeting jam 3" -> `reminder meeting jam 3`
+```
+
+### `script/handler.py`
+
 ```python
 def handle(args: str) -> str:
-    parts = args.split("|")
-    if len(parts) < 2:
-        return "Format: reminder <waktu> | <tugas>\nContoh: reminder 1 jam | belikan kopi"
-    
-    waktu = parts[0].strip()
-    tugas = parts[1].strip()
-    
-    return f"Pengingat dibuat: '{tugas}' pada {waktu}"
-```
+    if not args:
+        return "Usage: reminder <pesan>"
+
+    return f"Pengingat dibuat: {args}"
 ```
 
-## Panduan Membuat Skill
+## Aturan Penting
 
-### 1. Metadata
-- **name**: Nama unik skill (wajib)
-- **description**: Penjelasan singkat (wajib)
-- **aliases**: Nama alternatif yang bisa dipakai (opsional)
-- **category**: Kategori skill (opsional, default: "general")
+1. Nama folder skill tidak harus sama dengan `name`, tetapi sebaiknya tetap konsisten agar mudah dipelihara.
+2. Loader mencari file `SKILL.md` di dalam folder skill.
+3. Loader mencari handler di `script/handler.py`.
+4. Fungsi `handle` wajib ada dan callable.
+5. Return value handler boleh string atau structured result envelope.
+6. Trigger tidak wajib memakai tanda kutip.
+7. Trigger biasanya ditulis tanpa placeholder seperti `<text>` karena loader hanya melakukan prefix matching sederhana.
+8. Untuk skill baru yang bersifat read-heavy atau data-heavy, lebih baik gunakan `build_result(...)` daripada string mentah.
 
-### 2. Triggers
-- Pola yang memicu skill dijalankan
-- Supports prefix matching (menggunakan spasi setelah trigger)
-- Args akan diberikan ke handler function
-- Jangan gunakan tanda kutip
+## Catatan Tentang Parsing
 
-### 3. Handler
-- Kode Python yang dijalankan
-- Menerima satu parameter: `args` (string)
-- Wajib mengembalikan string
+Implementasi loader saat ini:
 
-## Catatan Penting
+- mem-parse markdown dengan pendekatan sederhana berbasis baris
+- tidak memakai parser markdown penuh
+- mendukung fallback untuk format legacy `.md` flat
 
-1. **Trigger tanpa tanda kutip**: Gunakan `echo ` bukan `"echo "`
-2. **Spasi penting**: Trigger harus memiliki spasi di akhir untuk prefix matching
-3. **Nama file**: Nama file .md akan digunakan sebagai fallback jika name tidak ada
+Artinya:
 
-## Daftar Skill yang Tersedia
+- heading harus ditulis persis seperti `## Metadata`, `## Triggers`, dan `## AI Instructions`
+- field metadata harus diawali `- `
+- format alias terbaik adalah `[alias1, alias2]`
 
-Lihat folder `skills/` untuk melihat skill yang sudah ada.
+## Legacy Format
+
+Project masih memiliki fallback untuk format lama berupa satu file markdown yang mengandung code block Python. Namun format ini hanya dipertahankan untuk kompatibilitas dan tidak direkomendasikan untuk skill baru.
+
+Gunakan format direktori:
+
+```text
+skills/<skill_name>/SKILL.md
+skills/<skill_name>/script/handler.py
+```
+
+## Checklist Skill Baru
+
+Sebelum menambahkan skill baru, pastikan:
+
+- folder skill dibuat di dalam `skills/`
+- `SKILL.md` ada
+- `script/handler.py` ada
+- metadata `name` dan `description` terisi
+- trigger sudah didefinisikan
+- fungsi `handle(args: str)` tersedia
+- contoh penggunaan di `AI Instructions` cukup jelas untuk AI router
+- jika skill menghasilkan data/list/search result, pertimbangkan memakai structured result envelope
+- set `default_view` yang masuk akal, misalnya `summary` atau `table`
+
+## Referensi
+
+- Contoh implementasi: `skills/echo/`, `skills/calculator/`, `skills/ai-chat/`
+- Contoh structured result: `skills/research/`, `skills/workspace/`, `skills/planner/`, `skills/memory/`, `skills/self-review/`
+- Arsitektur runtime: `ARCHITECTURE.md`

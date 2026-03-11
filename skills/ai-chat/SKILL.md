@@ -2,16 +2,12 @@
 
 ## Metadata
 - name: ai
-- description: Chat dengan AI (mendukung OpenAI, Anthropic, Ollama, LM Studio)
+- description: Chat umum dan reasoning fallback ketika tidak ada skill inti private AI yang lebih spesifik
 - aliases: [chat, ask, gpt]
-- category: ai
+- category: capability
 
 ## Description
-Skill ini memungkinkan asisten untuk berkomunikasi dengan berbagai AI providers:
-- OpenAI (GPT-4, GPT-3.5)
-- Anthropic (Claude)
-- Ollama (local models)
-- LM Studio (local models)
+Skill ini adalah fallback untuk percakapan umum, reasoning terbuka, dan pertanyaan yang tidak cocok ke skill `memory`, `planner`, `workspace`, atau `self-review`.
 
 ## Triggers
 - ai 
@@ -20,7 +16,7 @@ Skill ini memungkinkan asisten untuk berkomunikasi dengan berbagai AI providers:
 - gpt 
 
 ## AI Instructions
-Ketika user ingin chatting dengan AI atau bertanya sesuatu, gunakan skill ini.
+Ketika user ingin chatting umum, brainstorming, atau bertanya sesuatu yang tidak butuh skill spesifik, gunakan skill ini.
 
 Contoh:
 - "halo" → `ai halo`

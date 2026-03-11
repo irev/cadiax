@@ -45,7 +45,7 @@ class SkillLoader:
 
         # Check for directory-based skills first
         for entry in self.skills_dir.iterdir():
-            if entry.is_dir():
+            if entry.is_dir() and not entry.name.startswith("__"):
                 skill = self._load_skill_from_directory(entry)
                 if skill:
                     registry.register(skill)

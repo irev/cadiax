@@ -8,6 +8,7 @@ from otonomassist.ai.lmstudio import LMStudioProvider
 from otonomassist.ai.ollama import OllamaProvider
 from otonomassist.ai.openai import OpenAIProvider
 from otonomassist.ai.claude import ClaudeProvider
+from otonomassist.core.agent_context import get_env_or_secret
 
 
 class AIProviderFactory:
@@ -53,22 +54,29 @@ class AIProviderFactory:
         }
 
         if provider == "openai":
-            api_key = os.getenv("OPENAI_API_KEY")
+            api_key = get_env_or_secret("OPENAI_API_KEY")
             base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
             model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            fallback_model = os.getenv("OPENAI_FALLBACK_MODEL")
             info["config"] = {"base_url": base_url, "model": model}
+            if api_key:
+                info["config"]["api_key"] = api_key
+            if fallback_model:
+                info["config"]["fallback_model"] = fallback_model
             if not api_key:
-                info["issues"].append("OPENAI_API_KEY tidak ditemukan di .env")
+                info["issues"].append("OPENAI_API_KEY tidak ditemukan di .env atau secrets")
             elif len(api_key) < 20:
                 info["issues"].append("OPENAI_API_KEY tampak tidak valid (terlalu pendek)")
 
         elif provider == "claude":
-            api_key = os.getenv("ANTHROPIC_API_KEY")
+            api_key = get_env_or_secret("ANTHROPIC_API_KEY")
             base_url = os.getenv("CLAUDE_BASE_URL", "https://api.anthropic.com")
             model = os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307")
             info["config"] = {"base_url": base_url, "model": model}
+            if api_key:
+                info["config"]["api_key"] = api_key
             if not api_key:
-                info["issues"].append("ANTHROPIC_API_KEY tidak ditemukan di .env")
+                info["issues"].append("ANTHROPIC_API_KEY tidak ditemukan di .env atau secrets")
 
         elif provider == "ollama":
             base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -111,7 +119,7 @@ class AIProviderFactory:
                 lines.append(f"  - {issue}")
 
         lines.append("")
-        lines.append("Tip: Cek file .env untuk konfigurasi lengkap.")
+        lines.append("Tip: Cek file .env atau secrets lokal untuk konfigurasi lengkap.")
 
         return "\n".join(lines)
 
@@ -133,3 +141,26 @@ class AIProviderFactory:
                 continue
 
         return None
+
+    @classmethod
+    def get_model_listing(cls) -> str:
+        """Get visible models for the current provider if supported."""
+        provider_name = cls.get_current_provider_name()
+        provider = cls.create(provider_name)
+
+        if provider_name != "openai" or not hasattr(provider, "list_models"):
+            return (
+                f"Listing models is not supported for provider '{provider_name}' "
+                "in this CLI."
+            )
+
+        import asyncio
+
+        models = asyncio.run(provider.list_models())
+        if not models:
+            return "No models returned by the API."
+
+        lines = [f"Models visible to provider '{provider_name}':"]
+        for model in models:
+            lines.append(f"- {model}")
+        return "\n".join(lines)

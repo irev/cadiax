@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from otonomassist.ai.base import AIProvider, AIResponse, ChatMessage
+from otonomassist.core.agent_context import get_env_or_secret
 
 
 class ClaudeProvider(AIProvider):
@@ -13,7 +14,7 @@ class ClaudeProvider(AIProvider):
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
-        api_key = config.get("api_key") or os.getenv("ANTHROPIC_API_KEY")
+        api_key = config.get("api_key") or get_env_or_secret("ANTHROPIC_API_KEY")
         base_url = config.get("base_url") or os.getenv("CLAUDE_BASE_URL", "https://api.anthropic.com")
         model = config.get("model") or os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307")
 
@@ -93,4 +94,4 @@ class ClaudeProvider(AIProvider):
 
     def is_available(self) -> bool:
         """Check if Claude is available."""
-        return bool(self._api_key or os.getenv("ANTHROPIC_API_KEY"))
+        return bool(self._api_key or get_env_or_secret("ANTHROPIC_API_KEY"))
