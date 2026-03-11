@@ -11,19 +11,18 @@ from dotenv import load_dotenv
 
 from otonomassist.ai.factory import AIProviderFactory
 from otonomassist.core.agent_context import build_agent_context_block, ensure_agent_storage
-from otonomassist.core.execution_control import classify_result_status, get_skill_timeout_seconds, run_with_timeout
+from otonomassist.core.execution_control import classify_result_status, get_skill_timeout_seconds
 from otonomassist.core.execution_history import append_execution_event, new_trace_id, render_execution_history
 from otonomassist.core.execution_metrics import record_execution_metric, render_execution_metrics
 from otonomassist.core.external_assets import (
     ensure_external_asset_layout,
     get_external_skills_dir,
 )
-from otonomassist.core.result_formatter import extract_presentation_request, format_result
 from otonomassist.core.skill_loader import SkillLoader
 from otonomassist.core.skill_registry import SkillRegistry
 from otonomassist.core.transport import TransportContext
 from otonomassist.services.policy import PolicyService
-from otonomassist.services.runtime import InteractionOrchestrator
+from otonomassist.services.runtime import ExecutionService, InteractionOrchestrator
 
 if TYPE_CHECKING:
     from otonomassist.models import Skill
@@ -31,11 +30,6 @@ if TYPE_CHECKING:
 
 class Assistant:
     """Core assistant that manages skills and command execution."""
-
-    SKILL_RESPONSE_PATTERN = re.compile(
-        r"^SKILL:\s*(\w+)\s*\|\s*ARGS:\s*(.*)$",
-        re.IGNORECASE | re.MULTILINE
-    )
     FACT_VALIDATION_PATTERN = re.compile(
         r"\b(20\d{2}|kapan|tanggal|bulan apa|jadwal|schedule|hari raya|idul fitri|lebaran|"
         r"terbaru|latest|hari ini|today|saat ini|current|presiden|ceo|harga|"
@@ -49,7 +43,16 @@ class Assistant:
         self.registry = SkillRegistry()
         self.loader = SkillLoader(skills_dir)
         self.policy_service = PolicyService()
-        self.orchestrator = InteractionOrchestrator(self, self.policy_service)
+        self.execution_service = ExecutionService(
+            self.registry,
+            self.policy_service,
+            provider_getter=self._get_provider,
+            system_prompt_builder=self._get_orchestration_system_prompt,
+            error_formatter=self._format_error,
+            async_runner=self._run_async,
+            help_renderer=self.get_help,
+        )
+        self.orchestrator = InteractionOrchestrator(self, self.policy_service, self.execution_service)
         self._initialized = False
 
     def initialize(self) -> None:
@@ -188,30 +191,6 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 
         return self._execute_with_context(text, context)
 
-    def route_via_ai(self, command: str, context: TransportContext | None = None) -> str:
-        """Route command through AI to determine which skill to use."""
-        provider = self._get_provider()
-
-        if not provider:
-            return self._format_error(
-                error_type="no_provider",
-                message="Tidak ada AI provider tersedia. Cek konfigurasi di .env"
-            )
-
-        try:
-            response = self._run_async(provider.chat_completion(
-                prompt=command,
-                system_prompt=self._get_orchestration_system_prompt(command)
-            ))
-
-            return self._parse_and_execute(response, command, context=context)
-
-        except Exception as e:
-            return self._format_error(
-                error_type="api_error",
-                message=str(e)
-            )
-
     def _run_async(self, coro):
         """Run coroutine safely, handling existing event loops."""
         try:
@@ -247,104 +226,6 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
                 return future.result()
         else:
             return asyncio.run(coro)
-
-    def _parse_and_execute(
-        self,
-        ai_response: str,
-        original_command: str,
-        context: TransportContext | None = None,
-    ) -> str:
-        """Parse AI response and execute the determined skill."""
-        match = self.SKILL_RESPONSE_PATTERN.match(ai_response.strip())
-
-        if not match:
-            # AI didn't return expected format, fallback to direct response
-            return ai_response
-
-        skill_name = match.group(1).strip().lower()
-        skill_args = match.group(2).strip()
-
-        # Find skill in registry
-        skill = self.registry.get(skill_name)
-
-        if not skill:
-            return self._format_error(
-                error_type="skill_not_found",
-                message=f"Skill '{skill_name}' tidak ditemukan. Available: {', '.join(s.name for s in self.registry)}"
-            )
-
-        try:
-            decision = self.policy_service.authorize_command(skill.name.lower(), skill_args, context)
-            if not decision.allowed:
-                return decision.message or f"Command/skill `{skill.name.lower()}` ditolak oleh policy."
-            return self.execute_skill(
-                skill,
-                skill_args,
-                original_command=original_command,
-                trace_id=context.trace_id if context else "",
-            )
-        except Exception as e:
-            return f"Error executing skill '{skill_name}': {str(e)}"
-
-    def execute_skill(
-        self,
-        skill: "Skill",
-        args: str,
-        original_command: str | None = None,
-        trace_id: str = "",
-    ) -> str:
-        """Execute a skill with assistant-level special cases."""
-        if skill.name.lower() == "help":
-            return self.get_help()
-
-        skill_started = time.perf_counter()
-        if trace_id:
-            append_execution_event(
-                "skill_started",
-                trace_id=trace_id,
-                status="started",
-                skill_name=skill.name,
-                command=original_command or args,
-                data={
-                    "args": args,
-                },
-            )
-        cleaned_args, presentation = extract_presentation_request(original_command or args, args)
-        timeout_seconds = get_skill_timeout_seconds()
-        raw_result, timed_out = run_with_timeout(
-            lambda: skill.run(cleaned_args),
-            timeout_seconds=timeout_seconds,
-        )
-        if timed_out:
-            formatted = (
-                f"[ERROR] TIMEOUT\n"
-                f"Skill `{skill.name}` melebihi batas waktu {timeout_seconds:.2f} detik."
-            )
-        else:
-            formatted = format_result(raw_result, presentation)
-        if trace_id:
-            status = classify_result_status(formatted)
-            append_execution_event(
-                "skill_completed",
-                trace_id=trace_id,
-                status=status,
-                skill_name=skill.name,
-                command=original_command or args,
-                duration_ms=int((time.perf_counter() - skill_started) * 1000),
-                data={
-                    "result_preview": formatted[:240],
-                    "view": presentation.view,
-                    "timed_out": timed_out,
-                    "timeout_seconds": timeout_seconds,
-                },
-            )
-            record_execution_metric(
-                "skill_completed",
-                status=status,
-                skill_name=skill.name,
-                duration_ms=int((time.perf_counter() - skill_started) * 1000),
-            )
-        return formatted
 
     def _format_error(self, error_type: str, message: str) -> str:
         """Format error message with diagnostic info."""
@@ -455,3 +336,22 @@ Skills are loaded from the skills/ directory."""
     def should_force_research(self, command: str) -> bool:
         """Expose fact-validation detection through the orchestration boundary."""
         return self._should_force_research(command)
+
+    def route_via_ai(self, command: str, context: TransportContext | None = None) -> str:
+        """Expose AI routing through the execution service boundary."""
+        return self.execution_service.route_via_ai(command, context=context)
+
+    def execute_skill(
+        self,
+        skill: "Skill",
+        args: str,
+        original_command: str | None = None,
+        trace_id: str = "",
+    ) -> str:
+        """Expose skill execution through the execution service boundary."""
+        return self.execution_service.execute_skill(
+            skill,
+            args,
+            original_command=original_command,
+            trace_id=trace_id,
+        )

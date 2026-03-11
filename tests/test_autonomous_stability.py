@@ -89,6 +89,14 @@ class _BrokenProvider:
         raise RuntimeError("provider boom")
 
 
+class _StructuredRouteProvider:
+    def __init__(self, response: str) -> None:
+        self.response = response
+
+    async def chat_completion(self, prompt, system_prompt=None, **kwargs):
+        return self.response
+
+
 def test_append_lesson_deduplicates_recent_entry(tmp_path, monkeypatch):
     lessons_file = tmp_path / "lessons.md"
     lessons_file.write_text("# Learned Lessons\n", encoding="utf-8")
@@ -836,6 +844,70 @@ def test_assistant_blocks_owner_only_executor_for_approved_telegram_user(tmp_pat
 
     result = assistant.handle_message(
         "executor next",
+        context=telegram_module.TransportContext(
+            source="telegram",
+            user_id="200",
+            chat_id="300",
+            roles=("telegram", "approved"),
+        ),
+    )
+
+    assert "dibatasi untuk owner Telegram" in result
+    assert "`executor`" in result
+
+
+def test_assistant_allows_read_only_jobs_view_for_approved_telegram_user(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.handle_message(
+        "jobs",
+        context=telegram_module.TransportContext(
+            source="telegram",
+            user_id="200",
+            chat_id="300",
+            roles=("telegram", "approved"),
+        ),
+    )
+
+    assert result.startswith("Job Queue")
+
+
+def test_assistant_blocks_jobs_enqueue_for_approved_telegram_user(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.handle_message(
+        "jobs enqueue",
+        context=telegram_module.TransportContext(
+            source="telegram",
+            user_id="200",
+            chat_id="300",
+            roles=("telegram", "approved"),
+        ),
+    )
+
+    assert "runtime job Telegram dibatasi untuk owner" in result
+    assert agent_context.load_job_queue_state()["jobs"] == []
+
+
+def test_assistant_ai_route_still_applies_policy_for_owner_only_skill(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        AIProviderFactory,
+        "auto_detect",
+        staticmethod(lambda: _StructuredRouteProvider("SKILL: executor | ARGS: next")),
+    )
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.handle_message(
+        "tolong jalankan task berikutnya",
         context=telegram_module.TransportContext(
             source="telegram",
             user_id="200",

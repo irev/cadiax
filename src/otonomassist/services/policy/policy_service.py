@@ -65,13 +65,17 @@ class PolicyService:
 
         owner_only = _parse_prefix_set(
             "TELEGRAM_OWNER_ONLY_PREFIXES",
-            {"debug-config", "list-models", "secrets", "executor", "runner"},
+            {"admin", "debug-config", "doctor", "external", "list-models", "secrets", "executor", "runner"},
         )
         approved = _parse_prefix_set(
             "TELEGRAM_APPROVED_PREFIXES",
             {
                 "help",
+                "history",
                 "list",
+                "metrics",
+                "jobs",
+                "skills",
                 "ai",
                 "research",
                 "memory",
@@ -144,7 +148,11 @@ class PolicyService:
         """Apply finer-grained action checks for approved Telegram users."""
         read_only_actions: dict[str, set[str]] = {
             "help": {""},
+            "history": {"", "recent"},
             "list": {""},
+            "metrics": {"", "summary"},
+            "jobs": {"", "list", "queue"},
+            "skills": {"audit"},
             "ai": {"*"},
             "research": {"*"},
             "workspace": {"tree", "read", "find", "files", "summary"},
@@ -153,6 +161,7 @@ class PolicyService:
             "profile": {"show"},
         }
         mutate_denial: dict[str, str] = {
+            "jobs": "Operasi runtime job Telegram dibatasi untuk owner.",
             "memory": "Operasi ubah memory Telegram dibatasi untuk owner.",
             "planner": "Operasi ubah planner Telegram dibatasi untuk owner.",
             "profile": "Operasi ubah profile Telegram dibatasi untuk owner.",

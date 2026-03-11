@@ -8,10 +8,11 @@ from otonomassist.services.interactions import (
     run_conversation_api,
 )
 from otonomassist.services.policy import PolicyDecision, PolicyService
-from otonomassist.services.runtime import InteractionOrchestrator
+from otonomassist.services.runtime import ExecutionService, InteractionOrchestrator
 
 __all__ = [
     "ConversationService",
+    "ExecutionService",
     "InteractionRequest",
     "InteractionResponse",
     "InteractionOrchestrator",
