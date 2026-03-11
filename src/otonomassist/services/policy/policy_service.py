@@ -6,6 +6,7 @@ import os
 from typing import Mapping
 
 from otonomassist.core.execution_history import append_execution_event, new_trace_id
+from otonomassist.core.event_bus import get_event_bus_snapshot
 from otonomassist.core.transport import TransportContext
 from otonomassist.services.policy.models import PolicyDecision
 
@@ -78,6 +79,24 @@ class PolicyService:
                 env_values=env_values,
             )
         )
+        event_bus = get_event_bus_snapshot()
+        policy_topic_count = int(event_bus.get("topics", {}).get("policy.decision", 0) or 0)
+        recent_policy_events = [
+            event
+            for event in event_bus.get("events", [])
+            if str(event.get("topic", "")) == "policy.decision"
+        ]
+        allowed_count = sum(
+            1 for event in recent_policy_events
+            if str((event.get("data") or {}).get("status", "")).strip().lower() == "allowed"
+        )
+        denied_count = sum(
+            1 for event in recent_policy_events
+            if str((event.get("data") or {}).get("status", "")).strip().lower() == "denied"
+        )
+        last_reason = ""
+        if recent_policy_events:
+            last_reason = str((recent_policy_events[-1].get("data") or {}).get("reason", ""))
         return {
             "telegram_owner_only_prefixes": owner_only,
             "telegram_approved_prefixes": approved,
@@ -87,6 +106,10 @@ class PolicyService:
                 key: sorted(actions)
                 for key, actions in sorted(APPROVED_READ_ONLY_ACTIONS.items())
             },
+            "policy_event_count": policy_topic_count,
+            "policy_denied_count": denied_count,
+            "policy_allowed_count": allowed_count,
+            "last_policy_reason": last_reason,
         }
 
     def authorize_command(

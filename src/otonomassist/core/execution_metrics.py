@@ -51,6 +51,47 @@ def record_execution_metric(
     save_metrics_state(state)
 
 
+def record_provider_latency_metric(
+    *,
+    provider: str,
+    model: str,
+    duration_ms: int,
+    status: str = "ok",
+) -> None:
+    """Record provider latency for AI route calls."""
+    state = load_metrics_state()
+    counters = state.setdefault("counters", {})
+    provider_latency = state.setdefault("provider_latency", {})
+
+    _bump(counters, "ai_provider_latency_total")
+    if status:
+        _bump(counters, f"ai_provider_latency_status_{status}")
+
+    bucket_key = f"{provider}:{model}" if provider or model else "unknown"
+    bucket = provider_latency.setdefault(
+        bucket_key,
+        {
+            "provider": provider,
+            "model": model,
+            "count": 0,
+            "total_ms": 0,
+            "max_ms": 0,
+            "avg_ms": 0.0,
+            "last_ms": 0,
+            "last_status": "",
+        },
+    )
+    bucket["count"] = int(bucket.get("count", 0) or 0) + 1
+    bucket["total_ms"] = int(bucket.get("total_ms", 0) or 0) + int(duration_ms)
+    bucket["max_ms"] = max(int(bucket.get("max_ms", 0) or 0), int(duration_ms))
+    bucket["avg_ms"] = round(bucket["total_ms"] / max(1, bucket["count"]), 2)
+    bucket["last_ms"] = int(duration_ms)
+    bucket["last_status"] = status
+
+    state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    save_metrics_state(state)
+
+
 def record_ai_usage_metric(
     *,
     provider: str,
@@ -101,6 +142,45 @@ def record_ai_usage_metric(
     save_metrics_state(state)
 
 
+def record_queue_depth_metric(
+    *,
+    queue_name: str,
+    queued: int,
+    leased: int = 0,
+    done: int = 0,
+    failed: int = 0,
+    requeued: int = 0,
+) -> None:
+    """Record queue depth and watermark metrics for runtime observability."""
+    state = load_metrics_state()
+    queue_depth = state.setdefault("queue_depth", {})
+    snapshot = queue_depth.setdefault(
+        queue_name,
+        {
+            "queued": 0,
+            "leased": 0,
+            "done": 0,
+            "failed": 0,
+            "requeued": 0,
+            "current_depth": 0,
+            "high_watermark": 0,
+            "samples": 0,
+        },
+    )
+    current_depth = max(0, int(queued or 0) + int(leased or 0))
+    snapshot["queued"] = int(queued or 0)
+    snapshot["leased"] = int(leased or 0)
+    snapshot["done"] = int(done or 0)
+    snapshot["failed"] = int(failed or 0)
+    snapshot["requeued"] = int(requeued or 0)
+    snapshot["current_depth"] = current_depth
+    snapshot["high_watermark"] = max(int(snapshot.get("high_watermark", 0) or 0), current_depth)
+    snapshot["samples"] = int(snapshot.get("samples", 0) or 0) + 1
+
+    state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    save_metrics_state(state)
+
+
 def get_execution_metrics_snapshot() -> dict[str, Any]:
     """Return a machine-readable snapshot of aggregated metrics."""
     state = load_metrics_state()
@@ -111,6 +191,8 @@ def get_execution_metrics_snapshot() -> dict[str, Any]:
         "counters": counters,
         "timings": timings,
         "token_usage": state.get("token_usage", {}),
+        "provider_latency": state.get("provider_latency", {}),
+        "queue_depth": state.get("queue_depth", {}),
         "summary": {
             "events_total": int(counters.get("events_total", 0) or 0),
             "commands_total": int(counters.get("command_completed_total", 0) or 0),
@@ -120,6 +202,7 @@ def get_execution_metrics_snapshot() -> dict[str, Any]:
             + int(counters.get("skill_completed_status_error", 0) or 0),
             "ai_requests_total": int(counters.get("ai_requests_total", 0) or 0),
             "ai_total_tokens": int(counters.get("ai_total_tokens_total", 0) or 0),
+            "provider_latency_samples": int(counters.get("ai_provider_latency_total", 0) or 0),
         },
     }
 
@@ -150,6 +233,27 @@ def render_execution_metrics() -> str:
                 f"prompt_tokens={summary.get('prompt_tokens', 0)}, "
                 f"completion_tokens={summary.get('completion_tokens', 0)}, "
                 f"total_tokens={summary.get('total_tokens', 0)}"
+            )
+    provider_latency = snapshot.get("provider_latency", {})
+    if provider_latency:
+        lines.extend(["", "[Provider Latency]"])
+        for _, summary in sorted(provider_latency.items()):
+            lines.append(
+                f"- {summary.get('provider') or '-'} / {summary.get('model') or '-'}: "
+                f"avg_ms={summary.get('avg_ms', 0)}, "
+                f"max_ms={summary.get('max_ms', 0)}, "
+                f"last_ms={summary.get('last_ms', 0)}, "
+                f"count={summary.get('count', 0)}, "
+                f"last_status={summary.get('last_status') or '-'}"
+            )
+    queue_depth = snapshot.get("queue_depth", {})
+    if queue_depth:
+        lines.extend(["", "[Queue Depth]"])
+        for name, summary in sorted(queue_depth.items()):
+            lines.append(
+                f"- {name}: current_depth={summary.get('current_depth', 0)}, "
+                f"high_watermark={summary.get('high_watermark', 0)}, "
+                f"queued={summary.get('queued', 0)}, leased={summary.get('leased', 0)}"
             )
     timings = snapshot.get("timings", {})
     if timings:

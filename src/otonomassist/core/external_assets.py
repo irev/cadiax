@@ -494,8 +494,11 @@ def build_external_asset_audit_summary() -> dict[str, Any]:
     undeclared_capability_count = 0
     blocked_capability_count = 0
     isolated_skill_count = 0
+    approval_by_state: dict[str, int] = {}
     for item in assets:
         by_type[item.get("type", "unknown")] = by_type.get(item.get("type", "unknown"), 0) + 1
+        approval_state = str(item.get("approval_state", "pending") or "pending")
+        approval_by_state[approval_state] = approval_by_state.get(approval_state, 0) + 1
         if item.get("compatibility_status") != "ready":
             incompatible_count += 1
         if item.get("approval_state") != "approved":
@@ -507,6 +510,12 @@ def build_external_asset_audit_summary() -> dict[str, Any]:
         if item.get("type") == "skill" and item.get("execution_mode") == "subprocess-isolated":
             isolated_skill_count += 1
     registry = load_external_asset_registry()
+    approval_events = [
+        event
+        for event in registry.get("events", [])
+        if str(event.get("action", "")).startswith("approval-")
+    ]
+    latest_approval_event = approval_events[-1] if approval_events else {}
     return {
         "layout": get_external_asset_layout(),
         "asset_count": len(assets),
@@ -516,6 +525,14 @@ def build_external_asset_audit_summary() -> dict[str, Any]:
         "undeclared_capability_count": undeclared_capability_count,
         "blocked_capability_count": blocked_capability_count,
         "isolated_skill_count": isolated_skill_count,
+        "approval_by_state": approval_by_state,
+        "approval_event_count": len(approval_events),
+        "latest_approval_event": {
+            "action": str(latest_approval_event.get("action", "")),
+            "name": str(latest_approval_event.get("name", "")),
+            "actor": str(latest_approval_event.get("actor", "")),
+            "created_at": str(latest_approval_event.get("created_at", "")),
+        },
         "trust_policy": get_external_skill_trust_policy(),
         "allowed_capabilities": sorted(get_allowed_external_capabilities()),
         "by_type": by_type,
@@ -544,9 +561,12 @@ def render_external_asset_audit() -> str:
         f"- undeclared_capability_count: {summary['undeclared_capability_count']}",
         f"- blocked_capability_count: {summary['blocked_capability_count']}",
         f"- isolated_skill_count: {summary['isolated_skill_count']}",
+        f"- approval_event_count: {summary['approval_event_count']}",
         f"- trust_policy: {summary['trust_policy']}",
         f"- allowed_capabilities: {', '.join(summary['allowed_capabilities']) or '-'}",
     ]
+    for state, count in sorted(summary["approval_by_state"].items()):
+        lines.append(f"- approval_{state}: {count}")
     for key, value in sorted(summary["by_type"].items()):
         lines.append(f"- {key}: {value}")
 

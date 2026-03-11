@@ -38,12 +38,15 @@ def publish_event(
 
 def publish_execution_event(event: dict[str, Any]) -> dict[str, Any]:
     """Project one execution-history event onto the internal event bus."""
+    payload_data = dict(event.get("data") or {})
+    if event.get("status") is not None:
+        payload_data.setdefault("status", str(event.get("status") or ""))
     return publish_event(
         _derive_topic(str(event.get("event_type") or "")),
         event_type=str(event.get("event_type") or ""),
         trace_id=str(event.get("trace_id") or ""),
         source=str(event.get("source") or ""),
-        data=dict(event.get("data") or {}),
+        data=payload_data,
         timestamp=str(event.get("timestamp") or ""),
         bus_event_id=str(event.get("event_id") or "") or None,
     )

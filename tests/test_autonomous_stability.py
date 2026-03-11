@@ -714,12 +714,16 @@ def test_admin_api_snapshot_exposes_status_metrics_and_history(tmp_path, monkeyp
     status_code, metrics_payload = build_admin_snapshot("/metrics")
     history_code, history_payload = build_admin_snapshot("/history?limit=5")
     jobs_code, jobs_payload = build_admin_snapshot("/jobs")
+    events_code, events_payload = build_admin_snapshot("/events?limit=5")
 
     assert status_code == 200
     assert history_code == 200
     assert jobs_code == 200
+    assert events_code == 200
     assert metrics_payload["summary"]["commands_total"] >= 1
+    assert "queue_depth" in metrics_payload
     assert len(history_payload["events"]) >= 1
+    assert events_payload["total_events"] >= 1
     assert "summary" in jobs_payload
 
 
@@ -1032,13 +1036,18 @@ def test_ai_route_records_token_usage_in_trace_and_metrics(tmp_path, monkeypatch
     metrics = get_execution_metrics_snapshot()
     assert metrics["summary"]["ai_requests_total"] == 1
     assert metrics["summary"]["ai_total_tokens"] == 18
+    assert metrics["summary"]["provider_latency_samples"] == 1
     token_usage = metrics["token_usage"]["_usageroute:test-model-1"]
     assert token_usage["prompt_tokens"] == 11
     assert token_usage["completion_tokens"] == 7
+    latency = metrics["provider_latency"]["_usageroute:test-model-1"]
+    assert latency["count"] == 1
+    assert latency["last_status"] == "ok"
     events = load_execution_events(limit=10)
     ai_event = next(event for event in events if event["event_type"] == "ai_route_completed")
     assert ai_event["data"]["model"] == "test-model-1"
     assert ai_event["data"]["usage"]["total_tokens"] == 18
+    assert ai_event["duration_ms"] is not None
 
 
 def test_model_router_falls_back_to_local_provider_when_remote_budget_is_hard_blocked(tmp_path, monkeypatch):

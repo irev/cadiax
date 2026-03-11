@@ -366,6 +366,8 @@ def test_cli_doctor_marks_warning_for_rw_workspace_and_pending_telegram(tmp_path
     monkeypatch.setattr(agent_context, "get_secret_value", lambda name: None)
 
     runner = CliRunner()
+    runner.invoke(main, ["run", "help"])
+    runner.invoke(main, ["run", "external audit"])
     result = runner.invoke(main, ["status"])
 
     assert result.exit_code == 0
@@ -376,6 +378,7 @@ def test_cli_doctor_marks_warning_for_rw_workspace_and_pending_telegram(tmp_path
     assert "- pending_requests: 1" in result.output
     assert "[Policy]" in result.output
     assert "- telegram_owner_only_prefixes: external, workspace" in result.output
+    assert "- policy_event_count:" in result.output
 
 
 def test_cli_doctor_reads_openai_api_key_from_env_file(tmp_path, monkeypatch):
@@ -514,6 +517,8 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "preference_count" in payload["storage"]
     assert "habit_count" in payload["storage"]
     assert "topics" in payload["event_bus"]
+    assert "provider_latency" in payload["metrics"]
+    assert "queue_depth" in payload["metrics"]
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
@@ -586,6 +591,38 @@ def test_event_bus_tracks_external_asset_audit_events(tmp_path, monkeypatch):
     assert "external.asset" in snapshot["topics"]
 
 
+def test_external_audit_and_doctor_show_approval_audit_summary(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+
+    source_skill_dir = tmp_path / "approval-skill"
+    (source_skill_dir / "script").mkdir(parents=True, exist_ok=True)
+    (source_skill_dir / "SKILL.md").write_text(
+        "# Approval Skill\n\n## Metadata\n- name: approval-skill\n- description: Approval skill\n\n## Triggers\n- approval-skill\n",
+        encoding="utf-8",
+    )
+    (source_skill_dir / "script" / "handler.py").write_text(
+        "def handle(args: str) -> str:\n    return 'ok'\n",
+        encoding="utf-8",
+    )
+    (source_skill_dir / "asset.json").write_text(
+        json.dumps({"name": "approval-skill", "capabilities": ["workspace_read"]}, indent=2),
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    runner.invoke(main, ["external", "install", str(source_skill_dir)])
+    runner.invoke(main, ["external", "approve", "approval-skill"])
+    audit_result = runner.invoke(main, ["external", "audit"])
+    doctor_json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(doctor_json_result.output)
+    assert "approval_event_count:" in audit_result.output
+    assert payload["external_assets"]["approval_event_count"] >= 1
+    assert payload["external_assets"]["latest_approval_event"]["action"] == "approval-approved"
+
+
 def test_cli_metrics_reports_aggregated_execution_data(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 
@@ -599,6 +636,7 @@ def test_cli_metrics_reports_aggregated_execution_data(tmp_path, monkeypatch):
     assert metrics_result.exit_code == 0
     assert "Execution Metrics" in metrics_result.output
     assert payload["summary"]["commands_total"] >= 1
+    assert "queue_depth" in payload
 
 
 def test_cli_worker_until_idle_processes_runtime_queue(tmp_path, monkeypatch):

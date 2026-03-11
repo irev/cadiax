@@ -149,6 +149,9 @@ def get_config_status_data() -> dict[str, object]:
             "undeclared_capability_count": external_assets["undeclared_capability_count"],
             "blocked_capability_count": external_assets["blocked_capability_count"],
             "isolated_skill_count": external_assets["isolated_skill_count"],
+            "approval_by_state": external_assets["approval_by_state"],
+            "approval_event_count": external_assets["approval_event_count"],
+            "latest_approval_event": external_assets["latest_approval_event"],
             "trust_policy": external_assets["trust_policy"],
             "allowed_capabilities": external_assets["allowed_capabilities"],
             "layout": external_assets["layout"],
@@ -227,6 +230,10 @@ def get_config_status_report() -> str:
             f"- telegram_approved_prefixes: {', '.join(data['policy']['telegram_approved_prefixes']) or '-'}",
             f"- telegram_read_only_prefixes: {', '.join(data['policy']['telegram_read_only_prefixes']) or '-'}",
             f"- telegram_mutating_prefixes: {', '.join(data['policy']['telegram_mutating_prefixes']) or '-'}",
+            f"- policy_event_count: {data['policy']['policy_event_count']}",
+            f"- policy_allowed_count: {data['policy']['policy_allowed_count']}",
+            f"- policy_denied_count: {data['policy']['policy_denied_count']}",
+            f"- last_policy_reason: {data['policy']['last_policy_reason'] or '-'}",
             f"- admin_api_token_required: {'yes' if data['policy']['admin_api_token_required'] else 'no'}",
             f"- conversation_api_token_required: {'yes' if data['policy']['conversation_api_token_required'] else 'no'}",
         ]
@@ -374,8 +381,14 @@ def get_config_status_report() -> str:
             f"- skills_total: {data['metrics']['summary']['skills_total']}",
             f"- timeouts_total: {data['metrics']['summary']['timeouts_total']}",
             f"- errors_total: {data['metrics']['summary']['errors_total']}",
+            f"- provider_latency_samples: {data['metrics']['summary']['provider_latency_samples']}",
         ]
     )
+    for name, summary in data["metrics"].get("queue_depth", {}).items():
+        lines.append(
+            f"- queue {name}: current_depth={summary.get('current_depth', 0)}, "
+            f"high_watermark={summary.get('high_watermark', 0)}"
+        )
 
     lines.extend(
         [
@@ -388,6 +401,7 @@ def get_config_status_report() -> str:
             f"- undeclared_capability_count: {data['external_assets']['undeclared_capability_count']}",
             f"- blocked_capability_count: {data['external_assets']['blocked_capability_count']}",
             f"- isolated_skill_count: {data['external_assets']['isolated_skill_count']}",
+            f"- approval_event_count: {data['external_assets']['approval_event_count']}",
             f"- trust_policy: {data['external_assets']['trust_policy']}",
             f"- allowed_capabilities: {', '.join(data['external_assets']['allowed_capabilities']) or '-'}",
             f"- skills_dir: {data['external_assets']['layout']['skills_dir']}",
@@ -395,6 +409,13 @@ def get_config_status_report() -> str:
             f"- packages_dir: {data['external_assets']['layout']['packages_dir']}",
         ]
     )
+    for state, count in data["external_assets"]["approval_by_state"].items():
+        lines.append(f"- approval_{state}: {count}")
+    latest_approval = data["external_assets"]["latest_approval_event"]
+    if latest_approval.get("action"):
+        lines.append(
+            f"- latest_approval: {latest_approval['action']} {latest_approval['name']} by {latest_approval['actor'] or '-'}"
+        )
     lines.extend(
         [
             "",

@@ -13,7 +13,7 @@ from otonomassist.core.agent_context import (
     update_planner_task_fields,
 )
 from otonomassist.core.execution_history import append_execution_event, new_trace_id
-from otonomassist.core.execution_metrics import record_execution_metric
+from otonomassist.core.execution_metrics import record_execution_metric, record_queue_depth_metric
 from otonomassist.core.transport import TransportContext
 
 
@@ -79,6 +79,7 @@ def enqueue_ready_planner_task(
         },
     )
     record_execution_metric("job_enqueued", status="queued", source=source)
+    _record_runtime_queue_depth(state)
     return job
 
 
@@ -151,6 +152,7 @@ def lease_next_job(
         },
     )
     record_execution_metric("job_leased", status="leased", source=source)
+    _record_runtime_queue_depth(state)
     return job
 
 
@@ -206,6 +208,7 @@ def complete_job(
                 source=source,
                 duration_ms=duration_ms,
             )
+            _record_runtime_queue_depth(state)
             return True
     return False
 
@@ -220,6 +223,7 @@ def record_worker_run(processed: int, status: str, *, trace_id: str = "") -> Non
     if trace_id:
         worker["last_trace_id"] = trace_id
     save_job_queue_state(state)
+    _record_runtime_queue_depth(state)
 
 
 def process_job_queue(
@@ -395,3 +399,27 @@ def render_job_queue() -> str:
             f"[status={job.get('status')}, priority={job.get('priority')}] {job.get('task_text')}"
         )
     return "\n".join(lines)
+
+
+def _record_runtime_queue_depth(state: dict[str, Any]) -> None:
+    """Update runtime queue depth metrics from the current queue state."""
+    jobs = state.get("jobs", [])
+    counts = {
+        "queued": 0,
+        "leased": 0,
+        "done": 0,
+        "failed": 0,
+        "requeued": 0,
+    }
+    for job in jobs:
+        status = str(job.get("status", "")).strip().lower()
+        if status in counts:
+            counts[status] += 1
+    record_queue_depth_metric(
+        queue_name="runtime_jobs",
+        queued=counts["queued"],
+        leased=counts["leased"],
+        done=counts["done"],
+        failed=counts["failed"],
+        requeued=counts["requeued"],
+    )

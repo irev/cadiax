@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from otonomassist.core.config_doctor import get_config_status_data
+from otonomassist.core.event_bus import get_event_bus_snapshot
 from otonomassist.core.execution_history import export_execution_events
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
 from otonomassist.core.job_runtime import get_job_queue_summary
@@ -36,6 +37,9 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
     if route == "/history":
         limit = _int_query(query, "limit", 20, minimum=1, maximum=200)
         return 200, {"events": export_execution_events(limit=limit)}
+    if route == "/events":
+        limit = _int_query(query, "limit", 20, minimum=1, maximum=200)
+        return 200, get_event_bus_snapshot(limit=limit)
     return 404, {"error": "not_found", "path": route}
 
 

@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Any, Callable
 from otonomassist.ai.base import AIResponse
 from otonomassist.core.execution_control import classify_result_status, get_skill_timeout_seconds, run_with_timeout
 from otonomassist.core.execution_history import append_execution_event
-from otonomassist.core.execution_metrics import record_ai_usage_metric, record_execution_metric
+from otonomassist.core.execution_metrics import (
+    record_ai_usage_metric,
+    record_execution_metric,
+    record_provider_latency_metric,
+)
 from otonomassist.core.result_formatter import extract_presentation_request, format_result
 from otonomassist.core.transport import TransportContext
 from otonomassist.services.policy import PolicyService
@@ -56,19 +60,30 @@ class ExecutionService:
             )
 
         try:
+            provider_name = provider.__class__.__name__.removesuffix("Provider").lower()
+            route_started = time.perf_counter()
             ai_response = self._run_chat_completion(
                 provider,
                 command,
                 self.system_prompt_builder(command),
             )
+            route_duration_ms = int((time.perf_counter() - route_started) * 1000)
             self._record_ai_route_usage(
-                provider_name=provider.__class__.__name__.removesuffix("Provider").lower(),
+                provider_name=provider_name,
                 response=ai_response,
                 command=command,
                 context=context,
+                duration_ms=route_duration_ms,
             )
             return self.parse_and_execute(ai_response.content, command, context=context)
         except Exception as exc:
+            provider_name = provider.__class__.__name__.removesuffix("Provider").lower()
+            record_provider_latency_metric(
+                provider=provider_name,
+                model=getattr(provider, "get_model_name", lambda: "")() or "",
+                duration_ms=0,
+                status="error",
+            )
             if context and context.trace_id:
                 append_execution_event(
                     "ai_route_failed",
@@ -146,11 +161,18 @@ class ExecutionService:
         response: AIResponse,
         command: str,
         context: TransportContext | None,
+        duration_ms: int,
     ) -> None:
         record_ai_usage_metric(
             provider=provider_name,
             model=response.model,
             usage=response.usage,
+        )
+        record_provider_latency_metric(
+            provider=provider_name,
+            model=response.model,
+            duration_ms=duration_ms,
+            status="ok",
         )
         if context and context.trace_id:
             append_execution_event(
@@ -159,7 +181,7 @@ class ExecutionService:
                 status="ok",
                 source=context.source,
                 command=command,
-                duration_ms=None,
+                duration_ms=duration_ms,
                 data={
                     "model": response.model,
                     "usage": response.usage or {},
