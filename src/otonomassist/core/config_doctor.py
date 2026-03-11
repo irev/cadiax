@@ -18,6 +18,7 @@ from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_stora
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
 from otonomassist.services.personality import PersonalityService
 from otonomassist.services.policy.policy_service import PolicyService
+from otonomassist.services.runtime import BudgetManager
 
 
 ENV_FILE = agent_context.PROJECT_ROOT / ".env"
@@ -37,6 +38,7 @@ def get_config_status_data() -> dict[str, object]:
     )
     telegram = _get_telegram_status(env_values, telegram_auth)
     policy = _get_policy_status(env_values)
+    budget = BudgetManager(env_values).get_diagnostics()
     secret_storage = get_secret_storage_info()
     process_manager = get_process_manager_info()
     service_runtime = get_service_runtime_info()
@@ -59,6 +61,7 @@ def get_config_status_data() -> dict[str, object]:
         workspace_status,
         telegram_status,
         policy["status"],
+        budget["status"],
         storage_status,
         platform_status,
         runtime_status,
@@ -83,6 +86,7 @@ def get_config_status_data() -> dict[str, object]:
             **telegram,
         },
         "policy": policy,
+        "budget": budget,
         "platform": {
             "status": platform_status,
             "os": os.name,
@@ -191,6 +195,20 @@ def get_config_status_report() -> str:
             f"- telegram_mutating_prefixes: {', '.join(data['policy']['telegram_mutating_prefixes']) or '-'}",
             f"- admin_api_token_required: {'yes' if data['policy']['admin_api_token_required'] else 'no'}",
             f"- conversation_api_token_required: {'yes' if data['policy']['conversation_api_token_required'] else 'no'}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[Budget]",
+            f"- status: {data['budget']['status']}",
+            f"- enforcement: {data['budget']['enforcement']}",
+            f"- daily_token_budget: {data['budget']['daily_token_budget'] or '-'}",
+            f"- remote_daily_token_budget: {data['budget']['remote_daily_token_budget'] or '-'}",
+            f"- ai_total_tokens: {data['budget']['ai_total_tokens']}",
+            f"- remote_ai_total_tokens: {data['budget']['remote_ai_total_tokens']}",
+            f"- remote_providers: {', '.join(data['budget']['remote_providers']) or '-'}",
+            f"- local_providers: {', '.join(data['budget']['local_providers']) or '-'}",
         ]
     )
 

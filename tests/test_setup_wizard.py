@@ -492,6 +492,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert payload["overall"]["status"] == "warning"
     assert payload["ai"]["provider"] == "ollama"
     assert "policy" in payload
+    assert "budget" in payload
     assert "runtime" in payload
     assert "storage" in payload
     assert "preference_count" in payload["storage"]

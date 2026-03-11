@@ -26,7 +26,7 @@ from otonomassist.core.job_runtime import process_job_queue  # noqa: E402
 from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
 from otonomassist.interfaces.telegram import TelegramPollingTransport as InterfaceTelegramPollingTransport  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
-from otonomassist.services import PersonalityService, PolicyService  # noqa: E402
+from otonomassist.services import BudgetManager, ModelRouter, PersonalityService, PolicyService  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
     ConversationService,
     InteractionRequest,
@@ -125,6 +125,18 @@ class _UsageRouteProvider:
 
     async def chat_completion(self, prompt, system_prompt=None, **kwargs):
         return "SKILL: profile | ARGS: show"
+
+
+class _NamedProvider:
+    def __init__(self, name: str, available: bool = True) -> None:
+        self._name = name
+        self._available = available
+
+    def is_available(self) -> bool:
+        return self._available
+
+    def get_model_name(self) -> str:
+        return f"{self._name}-model"
 
 
 def test_append_lesson_deduplicates_recent_entry(tmp_path, monkeypatch):
@@ -915,6 +927,96 @@ def test_ai_route_records_token_usage_in_trace_and_metrics(tmp_path, monkeypatch
     ai_event = next(event for event in events if event["event_type"] == "ai_route_completed")
     assert ai_event["data"]["model"] == "test-model-1"
     assert ai_event["data"]["usage"]["total_tokens"] == 18
+
+
+def test_model_router_falls_back_to_local_provider_when_remote_budget_is_hard_blocked(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("OTONOMASSIST_REMOTE_DAILY_TOKEN_BUDGET", "10")
+    monkeypatch.setenv("OTONOMASSIST_BUDGET_ENFORCEMENT", "hard")
+    monkeypatch.setenv("OTONOMASSIST_LOCAL_AI_PROVIDERS", "ollama,lmstudio")
+    monkeypatch.setenv("OTONOMASSIST_REMOTE_AI_PROVIDERS", "openai,claude")
+
+    agent_context.save_metrics_state(
+        {
+            "counters": {
+                "ai_total_tokens_total": 18,
+            },
+            "timings": {},
+            "token_usage": {
+                "openai:test-model": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "requests": 1,
+                    "prompt_tokens": 10,
+                    "completion_tokens": 8,
+                    "total_tokens": 18,
+                }
+            },
+            "updated_at": "",
+        }
+    )
+
+    def fake_create(provider_name: str, config=None):
+        if provider_name == "ollama":
+            return _NamedProvider("ollama")
+        if provider_name == "openai":
+            return _NamedProvider("openai")
+        raise ValueError(provider_name)
+
+    monkeypatch.setattr(AIProviderFactory, "create", staticmethod(fake_create))
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: None))
+    monkeypatch.setattr(AIProviderFactory, "get_current_provider_name", staticmethod(lambda: "openai"))
+
+    router = ModelRouter(BudgetManager())
+    provider = router.get_provider()
+
+    assert provider is not None
+    assert provider.__class__ is _NamedProvider
+    assert provider.get_model_name() == "ollama-model"
+    assert router.get_last_decision()["selected_provider"] == "ollama"
+    assert router.get_last_decision()["budget_reason"] == "remote_daily_token_budget_exceeded"
+
+
+def test_assistant_returns_no_provider_when_budget_hard_blocks_remote_and_no_local_is_available(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("OTONOMASSIST_REMOTE_DAILY_TOKEN_BUDGET", "10")
+    monkeypatch.setenv("OTONOMASSIST_BUDGET_ENFORCEMENT", "hard")
+    monkeypatch.setenv("OTONOMASSIST_LOCAL_AI_PROVIDERS", "ollama")
+    monkeypatch.setenv("OTONOMASSIST_REMOTE_AI_PROVIDERS", "openai,claude")
+
+    agent_context.save_metrics_state(
+        {
+            "counters": {
+                "ai_total_tokens_total": 18,
+            },
+            "timings": {},
+            "token_usage": {
+                "openai:test-model": {
+                    "provider": "openai",
+                    "model": "test-model",
+                    "requests": 1,
+                    "prompt_tokens": 10,
+                    "completion_tokens": 8,
+                    "total_tokens": 18,
+                }
+            },
+            "updated_at": "",
+        }
+    )
+
+    monkeypatch.setattr(AIProviderFactory, "create", staticmethod(lambda provider_name, config=None: _NamedProvider(provider_name, available=False)))
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: None))
+    monkeypatch.setattr(AIProviderFactory, "get_current_provider_name", staticmethod(lambda: "openai"))
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("tolong route-kan command ini lewat AI")
+
+    assert "[ERROR] NO_PROVIDER" in result
+    assert "Tidak ada AI provider tersedia" in result
 
 
 def test_assistant_returns_api_error_when_provider_fails(tmp_path, monkeypatch):

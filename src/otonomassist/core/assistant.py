@@ -23,7 +23,7 @@ from otonomassist.core.skill_registry import SkillRegistry
 from otonomassist.core.transport import TransportContext
 from otonomassist.services.personality import PersonalityService
 from otonomassist.services.policy import PolicyService
-from otonomassist.services.runtime import ExecutionService, InteractionOrchestrator
+from otonomassist.services.runtime import BudgetManager, ExecutionService, InteractionOrchestrator, ModelRouter
 
 if TYPE_CHECKING:
     from otonomassist.models import Skill
@@ -45,6 +45,8 @@ class Assistant:
         self.loader = SkillLoader(skills_dir)
         self.personality_service = PersonalityService()
         self.policy_service = PolicyService()
+        self.budget_manager = BudgetManager()
+        self.model_router = ModelRouter(self.budget_manager)
         self.execution_service = ExecutionService(
             self.registry,
             self.policy_service,
@@ -152,7 +154,7 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
     def _get_provider(self):
         """Get available AI provider."""
         try:
-            return AIProviderFactory.auto_detect()
+            return self.model_router.get_provider()
         except Exception:
             return None
 
