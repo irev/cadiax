@@ -21,6 +21,7 @@ PROFILE_FILE = DATA_DIR / "profile.md"
 PREFERENCES_FILE = DATA_DIR / "preferences.json"
 HABITS_FILE = DATA_DIR / "habits.json"
 MEMORY_SUMMARIES_FILE = DATA_DIR / "memory_summaries.json"
+EPISODES_FILE = DATA_DIR / "episodes.json"
 IDENTITIES_FILE = DATA_DIR / "identities.json"
 SESSIONS_FILE = DATA_DIR / "sessions.json"
 NOTIFICATIONS_FILE = DATA_DIR / "notifications.json"
@@ -72,6 +73,7 @@ SCHEDULER_STATE_KEY = "scheduler"
 PREFERENCE_STATE_KEY = "preferences"
 HABIT_STATE_KEY = "habits"
 MEMORY_SUMMARY_STATE_KEY = "memory_summaries"
+EPISODE_STATE_KEY = "episodes"
 IDENTITY_STATE_KEY = "identities"
 SESSION_STATE_KEY = "sessions"
 NOTIFICATION_STATE_KEY = "notifications"
@@ -95,6 +97,7 @@ DEFAULT_PREFERENCE_STATE = {
 }
 DEFAULT_HABIT_STATE = {"habits": [], "updated_at": "", "signals_analyzed": 0}
 DEFAULT_MEMORY_SUMMARY_STATE = {"summaries": [], "updated_at": "", "prune_candidates": 0}
+DEFAULT_EPISODE_STATE = {"episodes": [], "updated_at": "", "episodes_analyzed": 0}
 DEFAULT_IDENTITY_STATE = {"identities": [], "updated_at": ""}
 DEFAULT_SESSION_STATE = {"sessions": [], "updated_at": ""}
 DEFAULT_NOTIFICATION_STATE = {"notifications": [], "updated_at": ""}
@@ -131,6 +134,9 @@ def ensure_agent_storage() -> None:
     if not MEMORY_SUMMARIES_FILE.exists():
         ensure_internal_state_write_allowed(MEMORY_SUMMARIES_FILE)
         MEMORY_SUMMARIES_FILE.write_text(json.dumps(DEFAULT_MEMORY_SUMMARY_STATE, indent=2), encoding="utf-8")
+    if not EPISODES_FILE.exists():
+        ensure_internal_state_write_allowed(EPISODES_FILE)
+        EPISODES_FILE.write_text(json.dumps(DEFAULT_EPISODE_STATE, indent=2), encoding="utf-8")
     if not IDENTITIES_FILE.exists():
         ensure_internal_state_write_allowed(IDENTITIES_FILE)
         IDENTITIES_FILE.write_text(json.dumps(DEFAULT_IDENTITY_STATE, indent=2), encoding="utf-8")
@@ -339,6 +345,25 @@ def save_privacy_control_state(state: dict[str, Any]) -> None:
         PRIVACY_CONTROLS_FILE,
         normalized,
     )
+
+
+def load_episode_state() -> dict[str, Any]:
+    """Load durable episodic learning state."""
+    return _load_durable_json_state(
+        EPISODE_STATE_KEY,
+        EPISODES_FILE,
+        DEFAULT_EPISODE_STATE,
+    )
+
+
+def save_episode_state(state: dict[str, Any]) -> None:
+    """Persist durable episodic learning state."""
+    normalized = {
+        "episodes": list(state.get("episodes", [])),
+        "updated_at": str(state.get("updated_at", "")),
+        "episodes_analyzed": int(state.get("episodes_analyzed", 0) or 0),
+    }
+    _save_durable_json_state(EPISODE_STATE_KEY, EPISODES_FILE, normalized)
 
 
 def build_agent_context_block(query: str | None = None) -> str:
@@ -743,6 +768,7 @@ def _bootstrap_durable_state() -> None:
     _ensure_state_in_store(store, SCHEDULER_STATE_KEY, SCHEDULER_STATE_FILE, DEFAULT_SCHEDULER_STATE)
     _ensure_state_in_store(store, HABIT_STATE_KEY, HABITS_FILE, DEFAULT_HABIT_STATE)
     _ensure_state_in_store(store, MEMORY_SUMMARY_STATE_KEY, MEMORY_SUMMARIES_FILE, DEFAULT_MEMORY_SUMMARY_STATE)
+    _ensure_state_in_store(store, EPISODE_STATE_KEY, EPISODES_FILE, DEFAULT_EPISODE_STATE)
     _ensure_state_in_store(store, IDENTITY_STATE_KEY, IDENTITIES_FILE, DEFAULT_IDENTITY_STATE)
     _ensure_state_in_store(store, SESSION_STATE_KEY, SESSIONS_FILE, DEFAULT_SESSION_STATE)
     _ensure_state_in_store(store, NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, DEFAULT_NOTIFICATION_STATE)

@@ -51,6 +51,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
     monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
+    monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
@@ -789,6 +790,50 @@ def test_cli_doctor_reports_structured_preference_profile(tmp_path, monkeypatch)
     assert payload["personality"]["preference_profile"]["preferred_brevity"] == "ringkas"
 
 
+def test_cli_doctor_reports_episodic_learning_summary(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_episode_state(
+        {
+            "episodes": [
+                {
+                    "trace_id": "trace-1",
+                    "status": "ok",
+                    "summary": "Episode: command `list` | berakhir `ok` | sumber cli",
+                    "last_timestamp": "2026-03-12T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "episodes_analyzed": 1,
+        }
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "- episode_count: 1" in result.output
+    assert "episode:ok -> Episode: command `list`" in result.output
+    assert payload["personality"]["episodes_analyzed"] == 1
+
+
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 
@@ -1010,6 +1055,7 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
     monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
+    monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")

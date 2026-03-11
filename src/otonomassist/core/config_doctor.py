@@ -19,7 +19,7 @@ from otonomassist.interfaces.telegram import TelegramAuthService
 from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
-from otonomassist.services.personality import HabitModelService, PersonalityService
+from otonomassist.services.personality import EpisodicLearningService, HabitModelService, PersonalityService
 from otonomassist.services.policy.policy_service import PolicyService
 from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
 from otonomassist.services.runtime.budget_manager import BudgetManager
@@ -60,6 +60,7 @@ def get_config_status_data() -> dict[str, object]:
     personality = PersonalityService()
     preference_profile = personality.get_structured_profile()
     habits = HabitModelService().load_or_refresh()
+    episodes = EpisodicLearningService().load_or_refresh()
     memory_summary = agent_context.load_memory_summary_state()
     identity_state = agent_context.load_identity_state()
     session_state = agent_context.load_session_state()
@@ -150,6 +151,9 @@ def get_config_status_data() -> dict[str, object]:
             "habit_signals_analyzed": habits.get("signals_analyzed", 0),
             "habits": habits.get("habits", []),
             "preference_profile": preference_profile,
+            "episode_count": len(episodes.get("episodes", [])),
+            "episodes_analyzed": episodes.get("episodes_analyzed", 0),
+            "episodes": episodes.get("episodes", []),
         },
         "memory": {
             "summary_count": len(memory_summary.get("summaries", [])),
@@ -368,6 +372,8 @@ def get_config_status_report() -> str:
             "[Personality]",
             f"- habit_count: {data['personality']['habit_count']}",
             f"- habit_signals_analyzed: {data['personality']['habit_signals_analyzed']}",
+            f"- episode_count: {data['personality']['episode_count']}",
+            f"- episodes_analyzed: {data['personality']['episodes_analyzed']}",
         ]
     )
     preference_profile = data["personality"].get("preference_profile", {})
@@ -386,6 +392,8 @@ def get_config_status_report() -> str:
             f"- habit:{habit.get('kind')} -> {habit.get('value')} "
             f"(confidence={habit.get('confidence')}, evidence={habit.get('evidence_count')})"
         )
+    for episode in data["personality"].get("episodes", [])[:3]:
+        lines.append(f"- episode:{episode.get('status') or '-'} -> {episode.get('summary')}")
     lines.extend(
         [
             "",

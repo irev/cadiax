@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from otonomassist.core import agent_context
+from otonomassist.services.personality.episodic_learning_service import EpisodicLearningService
 from otonomassist.services.personality.habit_model_service import HabitModelService
 
 
@@ -121,6 +122,12 @@ class PersonalityService:
             parts.extend(f"- {item.get('summary')}" for item in habits)
         else:
             parts.append("- belum ada sinyal kebiasaan yang cukup")
+        episodes = EpisodicLearningService().list_episodes(limit=3)
+        parts.extend(["", "## Episodic Learning"])
+        if episodes:
+            parts.extend(f"- {item.get('summary')}" for item in episodes)
+        else:
+            parts.append("- belum ada insight episode yang cukup")
         parts.extend(
             [
                 "",
