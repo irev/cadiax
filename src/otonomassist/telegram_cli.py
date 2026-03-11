@@ -7,8 +7,8 @@ from pathlib import Path
 import click
 
 from otonomassist.core import Assistant
+from otonomassist.interfaces.telegram import TelegramPollingTransport
 from otonomassist.services.interactions import ConversationService
-from otonomassist.transports import TelegramPollingTransport
 
 
 def run_telegram_transport(skills_dir: Path) -> None:

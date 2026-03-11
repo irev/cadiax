@@ -23,6 +23,7 @@ from otonomassist.ai.factory import AIProviderFactory  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
 from otonomassist.core.job_runtime import process_job_queue  # noqa: E402
 from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
+from otonomassist.interfaces.telegram import TelegramPollingTransport as InterfaceTelegramPollingTransport  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
 from otonomassist.services import PolicyService  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
@@ -746,6 +747,15 @@ def test_telegram_transport_handles_message_without_network(tmp_path, monkeypatc
     assert getattr(captured["context"], "source", None) == "telegram"
     assert chat_actions == [("12345", "typing")]
     assert sent_messages == [("12345", "handled-ok")]
+
+
+def test_interfaces_telegram_exports_polling_transport(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    transport = InterfaceTelegramPollingTransport(token="dummy-token", poll_timeout=1)
+
+    assert transport.auth_file.name == "telegram_auth.json"
+    assert transport.state_file.name == "telegram_state.json"
 
 
 def test_telegram_transport_refreshes_typing_for_long_running_message(tmp_path, monkeypatch):
