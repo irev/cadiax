@@ -26,7 +26,7 @@ from otonomassist.core.job_runtime import process_job_queue  # noqa: E402
 from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
 from otonomassist.interfaces.telegram import TelegramPollingTransport as InterfaceTelegramPollingTransport  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
-from otonomassist.services import BudgetManager, ContextBudgeter, ModelRouter, PersonalityService, PolicyService, RedactionPolicy  # noqa: E402
+from otonomassist.services import BudgetManager, ContextBudgeter, HabitModelService, ModelRouter, PersonalityService, PolicyService, RedactionPolicy  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
     ConversationService,
     InteractionRequest,
@@ -62,6 +62,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "LESSONS_FILE", data_dir / "lessons.md")
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
     monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
+    monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -237,6 +238,25 @@ def test_redaction_policy_can_be_disabled_for_local_debugging(tmp_path, monkeypa
     assert text == "token=abc123456789"
 
 
+def test_habit_model_derives_frequent_source_and_command_prefix(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    assistant.handle_message("list", context=telegram_module.TransportContext(source="telegram", user_id="1", chat_id="1", roles=("telegram", "owner")))
+    assistant.handle_message("list", context=telegram_module.TransportContext(source="telegram", user_id="1", chat_id="1", roles=("telegram", "owner")))
+    assistant.handle_message("metrics", context=telegram_module.TransportContext(source="telegram", user_id="1", chat_id="1", roles=("telegram", "owner")))
+    assistant.execute("list")
+
+    habits = HabitModelService().refresh(limit=50)
+    summaries = [item["summary"] for item in habits["habits"]]
+
+    assert any("telegram" in summary for summary in summaries)
+    assert any("`list`" in summary for summary in summaries)
+    assert habits["signals_analyzed"] >= 4
+    assert "## Habit Signals" in PersonalityService().build_prompt_block()
+
+
 def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypatch):
     secrets_file = tmp_path / "secrets.json"
     secrets_file.write_text(
@@ -305,6 +325,7 @@ def test_self_review_skips_duplicate_follow_up_tasks(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "MEMORY_FILE", tmp_path / "memory.jsonl")
     monkeypatch.setattr(agent_context, "LESSONS_FILE", tmp_path / "lessons.md")
     monkeypatch.setattr(agent_context, "PROFILE_FILE", tmp_path / "profile.md")
+    monkeypatch.setattr(agent_context, "HABITS_FILE", tmp_path / "habits.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", tmp_path / "secrets.json")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
@@ -312,6 +333,7 @@ def test_self_review_skips_duplicate_follow_up_tasks(tmp_path, monkeypatch):
     (tmp_path / "memory.jsonl").write_text("", encoding="utf-8")
     (tmp_path / "lessons.md").write_text("# Learned Lessons\n", encoding="utf-8")
     (tmp_path / "profile.md").write_text("# Agent Profile\n", encoding="utf-8")
+    (tmp_path / "habits.json").write_text(json.dumps({"habits": [], "updated_at": "", "signals_analyzed": 0}, indent=2), encoding="utf-8")
     (tmp_path / "secrets.json").write_text(json.dumps({"secrets": {}}, indent=2), encoding="utf-8")
 
     result = module.handle("text TODO dan api_key")

@@ -16,7 +16,7 @@ from otonomassist.core.scheduler_runtime import get_scheduler_summary
 from otonomassist.interfaces.telegram import TelegramAuthService
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
-from otonomassist.services.personality import PersonalityService
+from otonomassist.services.personality import HabitModelService, PersonalityService
 from otonomassist.services.policy.policy_service import PolicyService
 from otonomassist.services.runtime.budget_manager import BudgetManager
 from otonomassist.services.runtime.context_budgeter import ContextBudgeter
@@ -53,6 +53,7 @@ def get_config_status_data() -> dict[str, object]:
     scheduler = get_scheduler_summary()
     state_storage = agent_context.get_state_storage_info()
     personality = PersonalityService()
+    habits = HabitModelService().load_or_refresh()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -123,8 +124,14 @@ def get_config_status_data() -> dict[str, object]:
             "state_backend": state_storage["backend"],
             "state_db_file": state_storage["path"],
             "preference_count": len(personality.list_preferences()),
+            "habit_count": len(habits.get("habits", [])),
             "portable_key_file": str(PORTABLE_KEY_FILE),
             "skill_timeout_seconds": get_skill_timeout_seconds(),
+        },
+        "personality": {
+            "habit_count": len(habits.get("habits", [])),
+            "habit_signals_analyzed": habits.get("signals_analyzed", 0),
+            "habits": habits.get("habits", []),
         },
         "external_assets": {
             "asset_count": external_assets["asset_count"],
@@ -281,10 +288,24 @@ def get_config_status_report() -> str:
             f"- state_backend: {data['storage']['state_backend']}",
             f"- state_db_file: {data['storage']['state_db_file']}",
             f"- preference_count: {data['storage']['preference_count']}",
+            f"- habit_count: {data['storage']['habit_count']}",
             f"- portable_key_file: {data['storage']['portable_key_file']}",
             f"- skill_timeout_seconds: {data['storage']['skill_timeout_seconds']:.2f}",
         ]
     )
+    lines.extend(
+        [
+            "",
+            "[Personality]",
+            f"- habit_count: {data['personality']['habit_count']}",
+            f"- habit_signals_analyzed: {data['personality']['habit_signals_analyzed']}",
+        ]
+    )
+    for habit in data["personality"].get("habits", [])[:3]:
+        lines.append(
+            f"- habit:{habit.get('kind')} -> {habit.get('value')} "
+            f"(confidence={habit.get('confidence')}, evidence={habit.get('evidence_count')})"
+        )
     lines.extend(
         [
             "",

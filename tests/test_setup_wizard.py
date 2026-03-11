@@ -47,6 +47,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "LESSONS_FILE", data_dir / "lessons.md")
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
     monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
+    monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -502,9 +503,11 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "budget" in payload
     assert "context_budget" in payload
     assert "privacy" in payload
+    assert "personality" in payload
     assert "runtime" in payload
     assert "storage" in payload
     assert "preference_count" in payload["storage"]
+    assert "habit_count" in payload["storage"]
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
@@ -647,6 +650,7 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     monkeypatch.setattr(agent_context, "LESSONS_FILE", data_dir / "lessons.md")
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
     monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
+    monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")

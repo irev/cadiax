@@ -19,6 +19,7 @@ MEMORY_FILE = DATA_DIR / "memory.jsonl"
 PLANNER_FILE = DATA_DIR / "planner.json"
 PROFILE_FILE = DATA_DIR / "profile.md"
 PREFERENCES_FILE = DATA_DIR / "preferences.json"
+HABITS_FILE = DATA_DIR / "habits.json"
 LESSONS_FILE = DATA_DIR / "lessons.md"
 SECRETS_FILE = DATA_DIR / "secrets.json"
 EXECUTION_HISTORY_FILE = DATA_DIR / "execution_history.jsonl"
@@ -62,12 +63,14 @@ JOB_QUEUE_STATE_KEY = "job_queue"
 METRICS_STATE_KEY = "metrics"
 SCHEDULER_STATE_KEY = "scheduler"
 PREFERENCE_STATE_KEY = "preferences"
+HABIT_STATE_KEY = "habits"
 
 DEFAULT_PLANNER_STATE = {"goal": "", "tasks": []}
 DEFAULT_METRICS_STATE = {"counters": {}, "timings": {}, "updated_at": ""}
 DEFAULT_JOB_QUEUE_STATE = {"jobs": []}
 DEFAULT_SCHEDULER_STATE = {"last_run_at": "", "last_status": "", "last_cycles": 0, "last_processed": 0}
 DEFAULT_PREFERENCE_STATE = {"preferences": []}
+DEFAULT_HABIT_STATE = {"habits": [], "updated_at": "", "signals_analyzed": 0}
 
 
 def ensure_agent_storage() -> None:
@@ -86,6 +89,9 @@ def ensure_agent_storage() -> None:
     if not PREFERENCES_FILE.exists():
         ensure_internal_state_write_allowed(PREFERENCES_FILE)
         PREFERENCES_FILE.write_text(json.dumps(DEFAULT_PREFERENCE_STATE, indent=2), encoding="utf-8")
+    if not HABITS_FILE.exists():
+        ensure_internal_state_write_allowed(HABITS_FILE)
+        HABITS_FILE.write_text(json.dumps(DEFAULT_HABIT_STATE, indent=2), encoding="utf-8")
     if not LESSONS_FILE.exists():
         ensure_internal_state_write_allowed(LESSONS_FILE)
         LESSONS_FILE.write_text(DEFAULT_LESSONS, encoding="utf-8")
@@ -448,6 +454,21 @@ def save_preference_state(state: dict[str, Any]) -> None:
     _save_durable_json_state(PREFERENCE_STATE_KEY, PREFERENCES_FILE, normalized)
 
 
+def load_habit_state() -> dict[str, Any]:
+    """Load structured habit model state."""
+    return _load_durable_json_state(HABIT_STATE_KEY, HABITS_FILE, DEFAULT_HABIT_STATE)
+
+
+def save_habit_state(state: dict[str, Any]) -> None:
+    """Persist structured habit model state."""
+    normalized = {
+        "habits": list(state.get("habits", [])),
+        "updated_at": str(state.get("updated_at", "")),
+        "signals_analyzed": int(state.get("signals_analyzed", 0) or 0),
+    }
+    _save_durable_json_state(HABIT_STATE_KEY, HABITS_FILE, normalized)
+
+
 def list_preferences() -> list[str]:
     """Return normalized preference items."""
     state = load_preference_state()
@@ -538,6 +559,7 @@ def _bootstrap_durable_state() -> None:
     _ensure_state_in_store(store, JOB_QUEUE_STATE_KEY, JOB_QUEUE_FILE, DEFAULT_JOB_QUEUE_STATE)
     _ensure_state_in_store(store, METRICS_STATE_KEY, METRICS_FILE, DEFAULT_METRICS_STATE)
     _ensure_state_in_store(store, SCHEDULER_STATE_KEY, SCHEDULER_STATE_FILE, DEFAULT_SCHEDULER_STATE)
+    _ensure_state_in_store(store, HABIT_STATE_KEY, HABITS_FILE, DEFAULT_HABIT_STATE)
     _ensure_preference_state_in_store(store)
 
 

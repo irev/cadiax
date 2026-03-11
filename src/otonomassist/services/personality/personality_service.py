@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from otonomassist.core import agent_context
+from otonomassist.services.personality.habit_model_service import HabitModelService
 
 
 class PersonalityService:
@@ -54,6 +55,12 @@ class PersonalityService:
             parts.extend(f"- {item}" for item in preferences[:8])
         else:
             parts.append("- belum ada preference terstruktur")
+        habits = HabitModelService().list_habits(limit=3)
+        parts.extend(["", "## Habit Signals"])
+        if habits:
+            parts.extend(f"- {item.get('summary')}" for item in habits)
+        else:
+            parts.append("- belum ada sinyal kebiasaan yang cukup")
         parts.extend(
             [
                 "",
