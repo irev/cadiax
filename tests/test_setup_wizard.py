@@ -52,6 +52,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
+    monkeypatch.setattr(agent_context, "PROACTIVE_INSIGHTS_FILE", data_dir / "proactive_insights.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
@@ -282,6 +283,39 @@ def test_cli_privacy_show_and_quiet_hours_configuration(tmp_path, monkeypatch):
     assert "- quiet_hours_start: 21:30" in show_result.output
     assert payload["quiet_hours"]["start"] == "21:30"
     assert payload["quiet_hours"]["end"] == "06:30"
+
+
+def test_cli_proactive_show_and_notify_respects_consent_boundary(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "next_task_focus",
+                    "confidence": "high",
+                    "summary": "Task berikutnya sudah siap: #1 memory add tindak lanjut",
+                    "suggested_action": "jobs enqueue",
+                    "reason": "planner_ready_task_detected",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "insights_generated": 1,
+        }
+    )
+
+    runner = CliRunner()
+    show_result = runner.invoke(main, ["proactive", "show"])
+    json_result = runner.invoke(main, ["proactive", "show", "--json"])
+    notify_result = runner.invoke(main, ["proactive", "notify", "--channel", "email", "--target", "ops@example.com"])
+
+    payload = json.loads(json_result.output)
+    notifications = agent_context.load_notification_state()
+    assert show_result.exit_code == 0
+    assert "Proactive Assistance" in show_result.output
+    assert payload["insights_generated"] == 1
+    assert notify_result.exit_code == 0
+    assert "status=deferred" in notify_result.output
+    assert notifications["notifications"][0]["status"] == "deferred"
 
 
 def test_cli_service_status_reports_wrapper_targets(tmp_path, monkeypatch):
@@ -650,6 +684,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "email" in payload
     assert "whatsapp" in payload
     assert "privacy_controls" in payload
+    assert "proactive_insight_count" in payload["personality"]
     assert "delivery_batch_count" in payload["notifications"]
     assert "preference_count" in payload["storage"]
     assert "habit_count" in payload["storage"]
@@ -832,6 +867,51 @@ def test_cli_doctor_reports_episodic_learning_summary(tmp_path, monkeypatch):
     assert "- episode_count: 1" in result.output
     assert "episode:ok -> Episode: command `list`" in result.output
     assert payload["personality"]["episodes_analyzed"] == 1
+
+
+def test_cli_doctor_reports_proactive_insights(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "runtime_follow_up",
+                    "confidence": "medium",
+                    "summary": "Ada 1 job queued yang bisa diproses.",
+                    "suggested_action": "worker --until-idle",
+                    "reason": "queued_jobs_detected",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "insights_generated": 1,
+        }
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "- proactive_insight_count: 1" in result.output
+    assert "proactive:medium -> Ada 1 job queued yang bisa diproses." in result.output
+    assert payload["personality"]["proactive_insights_generated"] == 1
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
@@ -1056,6 +1136,7 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
+    monkeypatch.setattr(agent_context, "PROACTIVE_INSIGHTS_FILE", data_dir / "proactive_insights.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")

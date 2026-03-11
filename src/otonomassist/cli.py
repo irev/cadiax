@@ -36,6 +36,7 @@ from otonomassist.platform import (
 )
 from otonomassist.interfaces.email import EmailInterfaceService
 from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
+from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 from otonomassist.services.interactions import ConversationService, NotificationDispatcher, run_conversation_api
 from otonomassist.telegram_cli import run_telegram_transport
 
@@ -520,6 +521,47 @@ def privacy_delete_memory_command() -> None:
     click.echo(
         f"Deleted {result['deleted_memory_entries']} memory entry(ies) and "
         f"{result['deleted_memory_summaries']} memory summary chunk(s)"
+    )
+
+
+@main.group("proactive")
+def proactive_group() -> None:
+    """Contextual proactive assistance commands."""
+
+
+@proactive_group.command("show")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON proactive insights")
+def proactive_show_command(as_json: bool) -> None:
+    """Show current proactive assistance recommendations."""
+    payload = ProactiveAssistanceService().load_or_refresh()
+    if as_json:
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(ProactiveAssistanceService().render_report())
+
+
+@proactive_group.command("notify")
+@click.option("--channel", default="internal", show_default=True, help="Notification channel label")
+@click.option("--target", default="", help="Delivery target")
+@click.option("--consented/--no-consented", default=False, show_default=True, help="Mark that the user consented to proactive delivery")
+def proactive_notify_command(channel: str, target: str, consented: bool) -> None:
+    """Dispatch the top proactive insight as a proactive notification."""
+    service = ProactiveAssistanceService()
+    insights = service.list_insights(limit=1)
+    if not insights:
+        click.echo("Belum ada proactive insight untuk dikirim.")
+        return
+    top = insights[0]
+    payload = NotificationDispatcher().dispatch(
+        channel=channel,
+        title="Proactive Suggestion",
+        message=top["summary"],
+        target=target,
+        metadata={"proactive": True, "user_consented": consented, "reason": top.get("reason", "")},
+    )
+    click.echo(
+        f"Proactive notification #{payload['id']} status={payload['status']} "
+        f"via {payload['channel']} to {payload['target'] or '-'}"
     )
 
 

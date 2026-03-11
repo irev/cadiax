@@ -3,5 +3,6 @@
 from otonomassist.services.personality.episodic_learning_service import EpisodicLearningService
 from otonomassist.services.personality.habit_model_service import HabitModelService
 from otonomassist.services.personality.personality_service import PersonalityService
+from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 
-__all__ = ["EpisodicLearningService", "HabitModelService", "PersonalityService"]
+__all__ = ["EpisodicLearningService", "HabitModelService", "PersonalityService", "ProactiveAssistanceService"]

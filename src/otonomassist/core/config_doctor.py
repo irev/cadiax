@@ -19,7 +19,7 @@ from otonomassist.interfaces.telegram import TelegramAuthService
 from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
-from otonomassist.services.personality import EpisodicLearningService, HabitModelService, PersonalityService
+from otonomassist.services.personality import HabitModelService, PersonalityService
 from otonomassist.services.policy.policy_service import PolicyService
 from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
 from otonomassist.services.runtime.budget_manager import BudgetManager
@@ -60,7 +60,8 @@ def get_config_status_data() -> dict[str, object]:
     personality = PersonalityService()
     preference_profile = personality.get_structured_profile()
     habits = HabitModelService().load_or_refresh()
-    episodes = EpisodicLearningService().load_or_refresh()
+    episodes = agent_context.load_episode_state()
+    proactive = agent_context.load_proactive_insight_state()
     memory_summary = agent_context.load_memory_summary_state()
     identity_state = agent_context.load_identity_state()
     session_state = agent_context.load_session_state()
@@ -154,6 +155,9 @@ def get_config_status_data() -> dict[str, object]:
             "episode_count": len(episodes.get("episodes", [])),
             "episodes_analyzed": episodes.get("episodes_analyzed", 0),
             "episodes": episodes.get("episodes", []),
+            "proactive_insight_count": len(proactive.get("insights", [])),
+            "proactive_insights_generated": proactive.get("insights_generated", 0),
+            "proactive_insights": proactive.get("insights", []),
         },
         "memory": {
             "summary_count": len(memory_summary.get("summaries", [])),
@@ -374,6 +378,8 @@ def get_config_status_report() -> str:
             f"- habit_signals_analyzed: {data['personality']['habit_signals_analyzed']}",
             f"- episode_count: {data['personality']['episode_count']}",
             f"- episodes_analyzed: {data['personality']['episodes_analyzed']}",
+            f"- proactive_insight_count: {data['personality']['proactive_insight_count']}",
+            f"- proactive_insights_generated: {data['personality']['proactive_insights_generated']}",
         ]
     )
     preference_profile = data["personality"].get("preference_profile", {})
@@ -394,6 +400,8 @@ def get_config_status_report() -> str:
         )
     for episode in data["personality"].get("episodes", [])[:3]:
         lines.append(f"- episode:{episode.get('status') or '-'} -> {episode.get('summary')}")
+    for insight in data["personality"].get("proactive_insights", [])[:3]:
+        lines.append(f"- proactive:{insight.get('confidence') or '-'} -> {insight.get('summary')}")
     lines.extend(
         [
             "",

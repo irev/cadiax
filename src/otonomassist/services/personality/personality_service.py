@@ -7,6 +7,7 @@ from pathlib import Path
 from otonomassist.core import agent_context
 from otonomassist.services.personality.episodic_learning_service import EpisodicLearningService
 from otonomassist.services.personality.habit_model_service import HabitModelService
+from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 
 
 class PersonalityService:
@@ -128,6 +129,12 @@ class PersonalityService:
             parts.extend(f"- {item.get('summary')}" for item in episodes)
         else:
             parts.append("- belum ada insight episode yang cukup")
+        proactive = ProactiveAssistanceService().list_insights(limit=2)
+        parts.extend(["", "## Proactive Assistance Hints"])
+        if proactive:
+            parts.extend(f"- {item.get('summary')}" for item in proactive)
+        else:
+            parts.append("- belum ada hint proaktif yang cukup")
         parts.extend(
             [
                 "",

@@ -44,6 +44,10 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
         from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
         return 200, {"privacy_controls": PrivacyControlService().get_diagnostics()}
+    if route == "/proactive":
+        from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
+
+        return 200, {"proactive": ProactiveAssistanceService().load_or_refresh()}
     return 404, {"error": "not_found", "path": route}
 
 

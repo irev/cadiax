@@ -27,6 +27,7 @@ from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
 from otonomassist.interfaces.telegram import TelegramPollingTransport as InterfaceTelegramPollingTransport  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
 from otonomassist.services import BudgetManager, ContextBudgeter, EpisodicLearningService, HabitModelService, ModelRouter, PersonalityService, PolicyService, RedactionPolicy  # noqa: E402
+from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService  # noqa: E402
 from otonomassist.services.privacy.privacy_control_service import PrivacyControlService  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
     ConversationService,
@@ -67,6 +68,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
+    monkeypatch.setattr(agent_context, "PROACTIVE_INSIGHTS_FILE", data_dir / "proactive_insights.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
@@ -320,6 +322,21 @@ def test_episodic_learning_derives_recent_trace_summaries(tmp_path, monkeypatch)
     assert episodes["episodes_analyzed"] >= 2
     assert any("command `list`" in summary or "command `metrics`" in summary for summary in summaries)
     assert "## Episodic Learning" in prompt
+
+
+def test_proactive_assistance_generates_contextual_insights(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    agent_context.add_planner_task("memory add tindak lanjut penting", status="todo")
+    assistant.execute("list")
+
+    state = ProactiveAssistanceService().refresh()
+    prompt = PersonalityService().build_prompt_block()
+
+    assert state["insights_generated"] >= 1
+    assert any(item["reason"] == "planner_ready_task_detected" for item in state["insights"])
+    assert "## Proactive Assistance Hints" in prompt
 
 
 def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypatch):
