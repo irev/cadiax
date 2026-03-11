@@ -13,6 +13,7 @@ from otonomassist.core import (
     TransportContext,
     get_config_status_data,
     get_config_status_report,
+    render_event_bus,
     render_execution_history,
 )
 from otonomassist.core.admin_api import run_admin_api
@@ -159,6 +160,18 @@ def status_command(as_json: bool) -> None:
 def history_command() -> None:
     """Show recent execution history."""    
     click.echo(render_execution_history())
+
+
+@main.command("events")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable event bus snapshot")
+def events_command(as_json: bool) -> None:
+    """Show recent internal event bus activity."""
+    from otonomassist.core.event_bus import get_event_bus_snapshot
+
+    if as_json:
+        click.echo(json.dumps(get_event_bus_snapshot(), ensure_ascii=False, indent=2))
+        return
+    click.echo(render_event_bus())
 
 
 @main.command("metrics")

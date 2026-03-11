@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import otonomassist.core.agent_context as agent_context
+from otonomassist.core.event_bus import publish_execution_event
 from otonomassist.storage import SQLiteStateStore
 from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed
 
@@ -47,6 +48,7 @@ def append_execution_event(
     with agent_context.EXECUTION_HISTORY_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=True) + "\n")
     _get_state_store().append_execution_event(event)
+    publish_execution_event(event)
     return event
 
 

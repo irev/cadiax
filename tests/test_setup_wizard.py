@@ -24,6 +24,7 @@ import otonomassist.core.secure_storage as secure_storage  # noqa: E402
 import otonomassist.core.setup_wizard as setup_wizard  # noqa: E402
 import otonomassist.core.external_assets as external_assets  # noqa: E402
 import otonomassist.core.external_installer as external_installer  # noqa: E402
+from otonomassist.core.event_bus import get_event_bus_snapshot  # noqa: E402
 from otonomassist.platform import run_process  # noqa: E402
 
 
@@ -509,8 +510,10 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "memory" in payload
     assert "runtime" in payload
     assert "storage" in payload
+    assert "event_bus" in payload
     assert "preference_count" in payload["storage"]
     assert "habit_count" in payload["storage"]
+    assert "topics" in payload["event_bus"]
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
@@ -535,6 +538,52 @@ def test_cli_history_shows_recent_execution_events(tmp_path, monkeypatch):
     assert "Execution History" in history_result.output
     assert "command_received" in history_result.output
     assert "command_completed" in history_result.output
+
+
+def test_cli_events_reports_internal_event_bus_activity(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    run_result = runner.invoke(main, ["run", "list"])
+    events_result = runner.invoke(main, ["events"])
+    events_json_result = runner.invoke(main, ["events", "--json"])
+
+    payload = json.loads(events_json_result.output)
+    assert run_result.exit_code == 0
+    assert events_result.exit_code == 0
+    assert "Internal Event Bus" in events_result.output
+    assert "interaction.command" in events_result.output
+    assert payload["total_events"] >= 2
+    assert "interaction.command" in payload["topics"]
+
+
+def test_event_bus_tracks_external_asset_audit_events(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+
+    source_skill_dir = tmp_path / "external-bus-skill"
+    (source_skill_dir / "script").mkdir(parents=True, exist_ok=True)
+    (source_skill_dir / "SKILL.md").write_text(
+        "# External Bus Skill\n\n## Metadata\n- name: external-bus\n- description: External bus\n\n## Triggers\n- external-bus\n",
+        encoding="utf-8",
+    )
+    (source_skill_dir / "script" / "handler.py").write_text(
+        "def handle(args: str) -> str:\n    return 'ok'\n",
+        encoding="utf-8",
+    )
+    (source_skill_dir / "asset.json").write_text(
+        json.dumps({"name": "external-bus", "capabilities": ["workspace_read"]}, indent=2),
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    install_result = runner.invoke(main, ["external", "install", str(source_skill_dir)])
+
+    snapshot = get_event_bus_snapshot()
+    assert install_result.exit_code == 0
+    assert snapshot["external_event_count"] >= 1
+    assert "external.asset" in snapshot["topics"]
 
 
 def test_cli_metrics_reports_aggregated_execution_data(tmp_path, monkeypatch):

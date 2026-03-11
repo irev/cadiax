@@ -10,6 +10,7 @@ from typing import Any
 import re
 
 import otonomassist.core.agent_context as agent_context
+from otonomassist.core.event_bus import publish_event
 from otonomassist.platform import get_toolchain_info
 import otonomassist.core.workspace_guard as workspace_guard
 
@@ -234,6 +235,19 @@ def append_external_asset_event(
     events.append(event)
     state["updated_at"] = event["created_at"]
     save_external_asset_registry(state)
+    publish_event(
+        "external.asset",
+        event_type=f"external_asset_{action}",
+        source=asset_type,
+        data={
+            "name": name,
+            "asset_type": asset_type,
+            "target_path": str(Path(target_path)),
+            "actor": actor,
+            "result": result,
+            "detail": detail,
+        },
+    )
     return event
 
 

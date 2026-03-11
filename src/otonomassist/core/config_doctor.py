@@ -9,6 +9,7 @@ from dotenv import dotenv_values
 
 import otonomassist.core.agent_context as agent_context
 from otonomassist.core.execution_control import get_skill_timeout_seconds
+from otonomassist.core.event_bus import get_event_bus_snapshot
 from otonomassist.core.external_assets import build_external_asset_audit_summary
 from otonomassist.core.job_runtime import get_job_queue_summary
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
@@ -48,6 +49,7 @@ def get_config_status_data() -> dict[str, object]:
     service_runtime = get_service_runtime_info()
     toolchains = get_toolchain_info()
     external_assets = build_external_asset_audit_summary()
+    event_bus = get_event_bus_snapshot()
     runtime = get_job_queue_summary()
     metrics = get_execution_metrics_snapshot()
     scheduler = get_scheduler_summary()
@@ -150,6 +152,18 @@ def get_config_status_data() -> dict[str, object]:
             "trust_policy": external_assets["trust_policy"],
             "allowed_capabilities": external_assets["allowed_capabilities"],
             "layout": external_assets["layout"],
+        },
+        "event_bus": {
+            "status": event_bus["status"],
+            "total_events": event_bus["total_events"],
+            "returned_events": event_bus["returned_events"],
+            "automation_event_count": event_bus["automation_event_count"],
+            "policy_event_count": event_bus["policy_event_count"],
+            "external_event_count": event_bus["external_event_count"],
+            "last_event_at": event_bus["last_event_at"],
+            "last_event_topic": event_bus["last_event_topic"],
+            "last_event_type": event_bus["last_event_type"],
+            "topics": event_bus["topics"],
         },
         "issues": issues,
     }
@@ -381,6 +395,22 @@ def get_config_status_report() -> str:
             f"- packages_dir: {data['external_assets']['layout']['packages_dir']}",
         ]
     )
+    lines.extend(
+        [
+            "",
+            "[Event Bus]",
+            f"- status: {data['event_bus']['status']}",
+            f"- total_events: {data['event_bus']['total_events']}",
+            f"- returned_events: {data['event_bus']['returned_events']}",
+            f"- automation_event_count: {data['event_bus']['automation_event_count']}",
+            f"- policy_event_count: {data['event_bus']['policy_event_count']}",
+            f"- external_event_count: {data['event_bus']['external_event_count']}",
+            f"- last_event_topic: {data['event_bus']['last_event_topic'] or '-'}",
+            f"- last_event_type: {data['event_bus']['last_event_type'] or '-'}",
+        ]
+    )
+    for topic, count in data["event_bus"]["topics"].items():
+        lines.append(f"- topic {topic}: {count}")
 
     if data["issues"]:
         lines.extend(["", "[Issues]"])
