@@ -264,13 +264,128 @@ Workstream ini berjalan lintas fase.
 
 Posisi repo saat ini paling tepat berada di antara:
 
-- akhir fondasi `task automation agent`
-- awal `semi-production hardening`
+- akhir fondasi `Phase 2: Autonomous Runtime`
+- awal `Phase 3: Production Agent Platform`
 
 Artinya, prioritas terdekat tetap:
 
-1. observability minimum
-2. execution safety
-3. planner/runtime maturation
+1. ekstraksi service boundary dan control plane runtime
+2. personality, memory, dan budget control yang lebih eksplisit
+3. sandbox, isolation, dan ekspansi multi-surface
 
-Sebelum masuk agresif ke scheduler dan autonomy background penuh.
+Scheduler, admin API, metrics dasar, dan external approval sudah ada. Yang belum selesai adalah durability, separation of concerns, cost governance, dan isolation.
+
+## Pemetaan Fase Lanjutan Menuju V2
+
+Dokumen target detail untuk fase berikutnya ada di `TARGET_ARCHITECTURE_V2.md`.
+
+### Phase A: Service Boundary dan Durable Runtime
+
+Assessment:
+
+- `Assistant` masih terlalu sentral untuk routing, auth/policy transport, dan orchestration control.
+- runtime queue, scheduler, metrics, dan history sudah ada, tetapi state masih file-based dan belum durable untuk multi-process.
+
+Evaluasi terhadap tujuan:
+
+- menutup target `skalabilitas arsitektur`
+- menutup target `communication interface terpisah dari core agent`
+- menutup target `scheduler dan automation rutin` pada level service runtime, bukan hanya CLI loop
+
+Modul jangka panjang:
+
+- `interaction gateway`
+- `transport policy service`
+- `conversation API`
+- `state store` durable berbasis SQLite lebih dulu
+- `trace backend` yang menyatukan history, metrics, dan job state
+- `service supervisor wrapper`
+
+Risks:
+
+- race condition state lokal
+- kompleksitas tetap menumpuk di `Assistant`
+- background automation sulit dipantau bila tetap bergantung pada foreground process
+
+Roadmap jangka panjang:
+
+1. ekstrak auth/policy transport dari `Assistant`
+2. migrasikan planner/job/metrics/scheduler ke store durable
+3. pisahkan admin API, conversation API, dan worker service secara eksplisit
+4. tambahkan wrapper supervisor lintas OS
+
+### Phase B: Personality, Memory, dan Cost-Aware Intelligence
+
+Assessment:
+
+- personality masih tergabung dengan planner dan execution context
+- retrieval memory baru token-overlap, belum semantic/personal preference aware
+- provider usage sudah tersedia di adapter, tetapi belum dipakai untuk budget control
+
+Evaluasi terhadap tujuan:
+
+- menutup target `personality layer yang konsisten`
+- menutup target `assistant memahami preferensi dan kebiasaan pengguna`
+- menutup target `efisiensi biaya token secara fleksibel`
+
+Modul jangka panjang:
+
+- `personality service`
+- `preference profile store`
+- `semantic memory index`
+- `context ranking service`
+- `model router`
+- `budget manager`
+- `privacy/redaction policy`
+
+Risks:
+
+- prompt membengkak dan identitas agent jadi tidak konsisten
+- preferensi user tercampur dengan planning state
+- biaya provider remote tidak terkendali
+- data personal terlalu mudah ikut terkirim ke model
+
+Roadmap jangka panjang:
+
+1. pisahkan profile, preference, dan working memory
+2. tambahkan retrieval semantik + ranking
+3. propagasikan usage token ke trace dan metrics
+4. bangun routing model berbasis biaya, trust, dan latency
+5. terapkan redaction/classification sebelum prompt assembly
+
+### Phase C: Platform Expansion dan Safe Extensibility
+
+Assessment:
+
+- channel operasional masih terbatas pada CLI, Telegram, dan admin API read-only
+- external skill yang approved masih berjalan in-process
+- observability sudah ada, tetapi belum cukup untuk operasi platform jangka panjang
+
+Evaluasi terhadap tujuan:
+
+- menutup target `communication interface standar`
+- menutup target `skill system modular, scalable, production-ready`
+- menutup target `automation jangka panjang yang bisa dioperasikan sebagai platform`
+
+Modul jangka panjang:
+
+- `webhook/event API`
+- adapter `WhatsApp`
+- adapter `email`
+- `notification dispatcher`
+- `isolated external skill runner`
+- `approval workflow` lintas asset dan action
+- `event bus` internal
+
+Risks:
+
+- privilege escalation dari external skill
+- surface area operasional melebar lebih cepat dari governance
+- integrasi channel baru memperbesar kompleksitas support dan monitoring
+
+Roadmap jangka panjang:
+
+1. tambahkan runtime isolation untuk skill eksternal
+2. bangun outbound/inbound adapter framework lintas channel
+3. tambahkan event bus untuk automation dan notification
+4. perluas admin/ops surface ke observability yang siap operasi berkelanjutan

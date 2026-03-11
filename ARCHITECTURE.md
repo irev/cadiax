@@ -58,7 +58,8 @@ Mapping saat ini:
 ┌──────────────────────────────────────────────────────────────────────┐
 │                              CLI Layer                               │
 │                     src/otonomassist/cli.py                          │
-│  - setup / status / doctor / chat / run / telegram                  │
+│  - setup / status / doctor / chat / run / worker / scheduler        │
+│  - metrics / api / telegram                                         │
 │  - compatibility alias: --setup / --doctor / -i / raw message       │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │
@@ -87,16 +88,24 @@ Mapping saat ini:
 │  - load skills                                                       │
 │  - inject persistent context into prompts                            │
 │  - route direct command / AI fallback / forced research              │
+│  - record execution history + execution metrics                      │
 │  - pilih view presentasi hasil                                       │
 │  - format structured result untuk user                               │
 │  - apply Telegram role-based authorization gate                      │
-└───────────────┬───────────────────────────────┬──────────────────────┘
-                │                               │
-                ▼                               ▼
+└───────────────┬───────────────────────┬───────────────────────────────┘
+                │                       │
+                ▼                       ▼
 ┌──────────────────────────────┐   ┌───────────────────────────────────┐
 │        Skill Runtime         │   │         AI Provider Layer         │
 │  registry + loader           │   │         OpenAI, etc.              │
 └───────────────┬──────────────┘   └───────────────────────────────────┘
+                │
+                ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                  Runtime Control Plane + Ops Surface                  │
+│  execution_history / execution_metrics / job_runtime                 │
+│  scheduler_runtime / admin_api / external_assets                     │
+└───────────────┬──────────────────────────────────────────────────────┘
                 │
                 ▼
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -120,6 +129,11 @@ Mapping saat ini:
 │  .otonomassist/memory.jsonl                                          │
 │  .otonomassist/secrets.json                                          │
 │  .otonomassist/telegram_auth.json                                    │
+│  .otonomassist/job_queue.json                                        │
+│  .otonomassist/execution_history.jsonl                               │
+│  .otonomassist/execution_metrics.json                                │
+│  .otonomassist/scheduler_state.json                                  │
+│  .otonomassist/external_assets.json                                  │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -355,6 +369,10 @@ Entry point CLI resmi:
 - `otonomassist config setup`
 - `otonomassist chat`
 - `otonomassist run "<message>"`
+- `otonomassist worker`
+- `otonomassist scheduler`
+- `otonomassist metrics`
+- `otonomassist api`
 - `otonomassist telegram`
 
 ## Platform Layer
@@ -377,6 +395,17 @@ Status saat ini:
 - process dan service runtime sudah punya abstraction
 - supervisor/background daemon penuh belum diimplementasikan
 - `doctor/status` sekarang menampilkan capability layer ini agar gap platform terlihat eksplisit
+
+## Control Plane dan Runtime Automation
+
+Fondasi operasional yang sekarang sudah ada:
+
+- `execution_history.py`: trace dan event history untuk command, skill, dan task
+- `execution_metrics.py`: agregasi counter/timing untuk operator dan admin API
+- `job_runtime.py`: leasing, completion, dan ringkasan queue worker
+- `scheduler_runtime.py`: cycle scheduler foreground yang menulis state scheduler
+- `admin_api.py`: local read-only API untuk `health`, `status`, `metrics`, `jobs`, `scheduler`, dan `history`
+- `external_assets.py`: trust policy, capability declaration, dan approval state untuk asset eksternal
 
 ## Telegram Authorization Policy
 
@@ -473,15 +502,22 @@ Bagian yang sudah bisa dianggap fondasi selesai:
 
 Yang belum selesai:
 
-- background daemon sungguhan di luar command manual
+- `Assistant` masih menjadi titik konsentrasi orchestration, transport policy, dan command routing
+- scheduler masih foreground loop; supervisor daemon/service wrapper belum siap produksi
+- admin API masih surface operasional read-only, belum conversational API atau webhook platform
+- budget/cost control dan model routing belum ada
+- personality, planner, dan memory retrieval masih terlalu rapat; retrieval baru lexical/token overlap
+- external skill yang sudah di-approve masih berjalan in-process, belum lewat isolated runtime
 - Telegram masih long polling, belum webhook
-- tool execution policy yang lebih granular di luar guard sensitif awal
-- retrieval memory semantik
 - web-grounded research saat ini paling kuat pada provider OpenAI
 
 ## Langkah Berikut yang Logis
 
-- scheduler/background worker
-- retrieval memory berbasis embedding atau ranking
-- executor policy yang lebih ketat untuk aksi tulis/ubah file
-- output doctor machine-readable seperti JSON
+- ekstraksi `interaction/policy` dari `Assistant` ke service boundary terpisah
+- migrasi state planner/job/metrics/scheduler ke storage yang lebih durable
+- personality dan preference service yang dipisah dari planner/execution
+- model router + budget manager + token usage tracing
+- isolated external skill runner
+- conversational API dan adapter channel tambahan
+
+Target state detail untuk fase berikutnya ada di `TARGET_ARCHITECTURE_V2.md`.
