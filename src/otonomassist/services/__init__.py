@@ -3,6 +3,7 @@
 from otonomassist.services.interactions import (
     ConversationService,
     IdentitySessionService,
+    NotificationDispatcher,
     InteractionRequest,
     InteractionResponse,
     build_conversation_response,
@@ -22,6 +23,7 @@ __all__ = [
     "InteractionRequest",
     "InteractionResponse",
     "InteractionOrchestrator",
+    "NotificationDispatcher",
     "ModelRouter",
     "PersonalityService",
     "PolicyDecision",

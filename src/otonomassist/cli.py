@@ -34,7 +34,7 @@ from otonomassist.platform import (
     run_named_service_target,
     write_service_wrapper_artifacts,
 )
-from otonomassist.services.interactions import ConversationService, run_conversation_api
+from otonomassist.services.interactions import ConversationService, NotificationDispatcher, run_conversation_api
 from otonomassist.telegram_cli import run_telegram_transport
 
 
@@ -337,6 +337,30 @@ def conversation_api_command(host: str, port: int, skills_dir: Path) -> None:
     """Run the local conversation API."""
     click.echo(f"Conversation API listening on http://{host}:{port}")
     run_conversation_api(_build_conversation_service(skills_dir), host=host, port=port)
+
+
+@main.group("notify")
+def notify_group() -> None:
+    """Notification dispatch commands."""
+
+
+@notify_group.command("send")
+@click.argument("message", required=True)
+@click.option("--channel", default="internal", show_default=True, help="Notification channel label")
+@click.option("--title", default="Notification", show_default=True, help="Notification title")
+@click.option("--target", default="", help="Optional target descriptor")
+def notify_send_command(message: str, channel: str, title: str, target: str) -> None:
+    """Dispatch one durable notification entry."""
+    payload = NotificationDispatcher().dispatch(
+        channel=channel,
+        title=title,
+        message=message,
+        target=target,
+    )
+    click.echo(
+        f"Notification #{payload['id']} dispatched via {payload['channel']} "
+        f"to {payload['target'] or '-'}"
+    )
 
 
 @main.group("service")

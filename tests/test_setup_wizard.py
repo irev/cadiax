@@ -53,6 +53,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
+    monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -153,6 +154,21 @@ def test_cli_conversation_api_command_starts_separate_service(tmp_path, monkeypa
     assert captured["host"] == "0.0.0.0"
     assert captured["port"] == 8790
     assert captured["service"].__class__.__name__ == "ConversationService"
+
+
+def test_cli_notify_send_dispatches_notification(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["notify", "send", "halo operator", "--channel", "operator", "--title", "Alert", "--target", "cli-user"],
+    )
+
+    state = agent_context.load_notification_state()
+    assert result.exit_code == 0
+    assert "Notification #1 dispatched via operator" in result.output
+    assert state["notifications"][0]["message"] == "halo operator"
 
 
 def test_cli_service_status_reports_wrapper_targets(tmp_path, monkeypatch):
@@ -517,6 +533,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "storage" in payload
     assert "event_bus" in payload
     assert "identity" in payload
+    assert "notifications" in payload
     assert "preference_count" in payload["storage"]
     assert "habit_count" in payload["storage"]
     assert "identity_count" in payload["storage"]
@@ -749,6 +766,7 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
+    monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")

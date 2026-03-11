@@ -19,6 +19,7 @@ from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_stora
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
 from otonomassist.services.personality import HabitModelService, PersonalityService
 from otonomassist.services.policy.policy_service import PolicyService
+from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
 from otonomassist.services.runtime.budget_manager import BudgetManager
 from otonomassist.services.runtime.context_budgeter import ContextBudgeter
 from otonomassist.services.runtime.redaction_policy import RedactionPolicy
@@ -59,6 +60,7 @@ def get_config_status_data() -> dict[str, object]:
     memory_summary = agent_context.load_memory_summary_state()
     identity_state = agent_context.load_identity_state()
     session_state = agent_context.load_session_state()
+    notifications = NotificationDispatcher().get_snapshot()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -151,6 +153,7 @@ def get_config_status_data() -> dict[str, object]:
             "latest_identity_id": str(identity_state.get("identities", [])[-1].get("id", "")) if identity_state.get("identities") else "",
             "latest_session_id": str(session_state.get("sessions", [])[-1].get("id", "")) if session_state.get("sessions") else "",
         },
+        "notifications": notifications,
         "external_assets": {
             "asset_count": external_assets["asset_count"],
             "event_count": external_assets["event_count"],
@@ -365,6 +368,17 @@ def get_config_status_report() -> str:
             f"- latest_session_id: {data['identity']['latest_session_id'] or '-'}",
         ]
     )
+    lines.extend(
+        [
+            "",
+            "[Notifications]",
+            f"- notification_count: {data['notifications']['notification_count']}",
+            f"- latest_channel: {str(data['notifications']['latest_notification'].get('channel', '') or '-')}",
+            f"- latest_title: {str(data['notifications']['latest_notification'].get('title', '') or '-')}",
+        ]
+    )
+    for channel, count in data["notifications"]["by_channel"].items():
+        lines.append(f"- channel {channel}: {count}")
     lines.extend(
         [
             "",

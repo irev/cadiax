@@ -66,6 +66,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
+    monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -343,6 +344,7 @@ def test_self_review_skips_duplicate_follow_up_tasks(tmp_path, monkeypatch):
     (tmp_path / "memory_summaries.json").write_text(json.dumps({"summaries": [], "updated_at": "", "prune_candidates": 0}, indent=2), encoding="utf-8")
     (tmp_path / "identities.json").write_text(json.dumps({"identities": [], "updated_at": ""}, indent=2), encoding="utf-8")
     (tmp_path / "sessions.json").write_text(json.dumps({"sessions": [], "updated_at": ""}, indent=2), encoding="utf-8")
+    (tmp_path / "notifications.json").write_text(json.dumps({"notifications": [], "updated_at": ""}, indent=2), encoding="utf-8")
     (tmp_path / "secrets.json").write_text(json.dumps({"secrets": {}}, indent=2), encoding="utf-8")
 
     result = module.handle("text TODO dan api_key")
@@ -846,6 +848,91 @@ def test_conversation_api_requires_token_when_configured(tmp_path, monkeypatch):
     assert unauthorized_payload["error"] == "unauthorized"
     assert authorized_code == 200
     assert authorized_payload["status"] == "ok"
+
+
+def test_webhook_event_without_message_is_accepted_into_event_bus(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    status_code, payload = build_conversation_response(
+        "/v1/webhooks/events",
+        service=service,
+        method="POST",
+        body=json.dumps(
+            {
+                "event_type": "calendar.reminder",
+                "source": "webhook",
+                "session_id": "hook-session-1",
+                "metadata": {"kind": "reminder"},
+            }
+        ).encode("utf-8"),
+    )
+
+    events = build_admin_snapshot("/events?limit=20")[1]
+    assert status_code == 202
+    assert payload["status"] == "accepted"
+    assert payload["event_topic"] == "webhook.event"
+    assert events["topics"]["webhook.event"] >= 1
+
+
+def test_webhook_message_routes_through_conversation_boundary(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    status_code, payload = build_conversation_response(
+        "/v1/webhooks/events",
+        service=service,
+        method="POST",
+        body=json.dumps(
+            {
+                "event_type": "message.created",
+                "source": "webhook",
+                "user_id": "web-user-1",
+                "session_id": "web-session-1",
+                "message": "help",
+            }
+        ).encode("utf-8"),
+    )
+
+    assert status_code == 200
+    assert payload["status"] == "accepted"
+    assert payload["interaction"]["response"].startswith("OtonomAssist - Available commands:")
+    assert payload["interaction"]["identity_id"]
+
+
+def test_notification_api_dispatches_and_persists_notification(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    status_code, payload = build_conversation_response(
+        "/v1/notifications",
+        service=service,
+        method="POST",
+        body=json.dumps(
+            {
+                "channel": "operator",
+                "title": "Build Alert",
+                "message": "pipeline selesai",
+                "target": "owner",
+            }
+        ).encode("utf-8"),
+    )
+
+    state = agent_context.load_notification_state()
+    events = build_admin_snapshot("/events?limit=20")[1]
+    assert status_code == 200
+    assert payload["status"] == "ok"
+    assert state["notifications"][0]["title"] == "Build Alert"
+    assert events["topics"]["notification.dispatch"] >= 1
 
 
 def test_assistant_times_out_slow_skill_and_records_timeout_status(tmp_path, monkeypatch):

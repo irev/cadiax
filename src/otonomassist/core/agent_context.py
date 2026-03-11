@@ -23,6 +23,7 @@ HABITS_FILE = DATA_DIR / "habits.json"
 MEMORY_SUMMARIES_FILE = DATA_DIR / "memory_summaries.json"
 IDENTITIES_FILE = DATA_DIR / "identities.json"
 SESSIONS_FILE = DATA_DIR / "sessions.json"
+NOTIFICATIONS_FILE = DATA_DIR / "notifications.json"
 LESSONS_FILE = DATA_DIR / "lessons.md"
 SECRETS_FILE = DATA_DIR / "secrets.json"
 EXECUTION_HISTORY_FILE = DATA_DIR / "execution_history.jsonl"
@@ -70,6 +71,7 @@ HABIT_STATE_KEY = "habits"
 MEMORY_SUMMARY_STATE_KEY = "memory_summaries"
 IDENTITY_STATE_KEY = "identities"
 SESSION_STATE_KEY = "sessions"
+NOTIFICATION_STATE_KEY = "notifications"
 
 DEFAULT_PLANNER_STATE = {"goal": "", "tasks": []}
 DEFAULT_METRICS_STATE = {"counters": {}, "timings": {}, "updated_at": ""}
@@ -80,6 +82,7 @@ DEFAULT_HABIT_STATE = {"habits": [], "updated_at": "", "signals_analyzed": 0}
 DEFAULT_MEMORY_SUMMARY_STATE = {"summaries": [], "updated_at": "", "prune_candidates": 0}
 DEFAULT_IDENTITY_STATE = {"identities": [], "updated_at": ""}
 DEFAULT_SESSION_STATE = {"sessions": [], "updated_at": ""}
+DEFAULT_NOTIFICATION_STATE = {"notifications": [], "updated_at": ""}
 
 
 def ensure_agent_storage() -> None:
@@ -110,6 +113,9 @@ def ensure_agent_storage() -> None:
     if not SESSIONS_FILE.exists():
         ensure_internal_state_write_allowed(SESSIONS_FILE)
         SESSIONS_FILE.write_text(json.dumps(DEFAULT_SESSION_STATE, indent=2), encoding="utf-8")
+    if not NOTIFICATIONS_FILE.exists():
+        ensure_internal_state_write_allowed(NOTIFICATIONS_FILE)
+        NOTIFICATIONS_FILE.write_text(json.dumps(DEFAULT_NOTIFICATION_STATE, indent=2), encoding="utf-8")
     if not LESSONS_FILE.exists():
         ensure_internal_state_write_allowed(LESSONS_FILE)
         LESSONS_FILE.write_text(DEFAULT_LESSONS, encoding="utf-8")
@@ -212,6 +218,16 @@ def load_session_state() -> dict[str, Any]:
 def save_session_state(state: dict[str, Any]) -> None:
     """Persist canonical cross-channel session state."""
     _save_durable_json_state(SESSION_STATE_KEY, SESSIONS_FILE, state)
+
+
+def load_notification_state() -> dict[str, Any]:
+    """Load notification dispatch state."""
+    return _load_durable_json_state(NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, DEFAULT_NOTIFICATION_STATE)
+
+
+def save_notification_state(state: dict[str, Any]) -> None:
+    """Persist notification dispatch state."""
+    _save_durable_json_state(NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, state)
 
 
 def build_agent_context_block(query: str | None = None) -> str:
@@ -616,6 +632,7 @@ def _bootstrap_durable_state() -> None:
     _ensure_state_in_store(store, MEMORY_SUMMARY_STATE_KEY, MEMORY_SUMMARIES_FILE, DEFAULT_MEMORY_SUMMARY_STATE)
     _ensure_state_in_store(store, IDENTITY_STATE_KEY, IDENTITIES_FILE, DEFAULT_IDENTITY_STATE)
     _ensure_state_in_store(store, SESSION_STATE_KEY, SESSIONS_FILE, DEFAULT_SESSION_STATE)
+    _ensure_state_in_store(store, NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, DEFAULT_NOTIFICATION_STATE)
     _ensure_preference_state_in_store(store)
 
 

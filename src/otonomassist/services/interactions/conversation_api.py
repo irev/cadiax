@@ -8,7 +8,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
+from otonomassist.core.event_bus import publish_event
 from otonomassist.services.interactions.conversation_service import ConversationService
+from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
 from otonomassist.services.interactions.models import InteractionRequest
 
 
@@ -48,6 +50,85 @@ def build_conversation_response(
         except Exception as exc:
             return 500, {"error": "execution_failed", "detail": str(exc)}
         return 200, response.to_dict()
+
+    if route in {"/webhooks/events", "/v1/webhooks/events"}:
+        if method != "POST":
+            return 405, {"error": "method_not_allowed", "allowed": ["POST"]}
+        try:
+            payload = _load_json_body(body)
+        except json.JSONDecodeError:
+            return 400, {"error": "invalid_json"}
+        except ValueError as exc:
+            return 400, {"error": "invalid_request", "detail": str(exc)}
+
+        metadata = payload.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        event_type = str(payload.get("event_type") or "event.received").strip() or "event.received"
+        text = str(payload.get("message") or payload.get("text") or "").strip()
+        if text:
+            request = InteractionRequest(
+                message=text,
+                source=str(payload.get("source") or "webhook"),
+                user_id=_coerce_optional_text(payload.get("user_id")),
+                session_id=_coerce_optional_text(payload.get("session_id")),
+                chat_id=_coerce_optional_text(payload.get("chat_id")),
+                identity_id=_coerce_optional_text(payload.get("identity_id")),
+                roles=tuple(str(item).strip() for item in payload.get("roles", []) if str(item).strip()) if isinstance(payload.get("roles"), list) else (),
+                trace_id=_coerce_optional_text(payload.get("trace_id")),
+                metadata={"webhook_event_type": event_type, **metadata},
+            )
+            try:
+                response = service.handle(request)
+            except Exception as exc:
+                return 500, {"error": "execution_failed", "detail": str(exc)}
+            return 200, {
+                "status": "accepted",
+                "webhook_event_type": event_type,
+                "interaction": response.to_dict(),
+            }
+
+        published = publish_event(
+            "webhook.event",
+            event_type=event_type,
+            trace_id=str(payload.get("trace_id") or ""),
+            source=str(payload.get("source") or "webhook"),
+            data={
+                "user_id": _coerce_optional_text(payload.get("user_id")) or "",
+                "session_id": _coerce_optional_text(payload.get("session_id")) or "",
+                "chat_id": _coerce_optional_text(payload.get("chat_id")) or "",
+                "metadata": metadata,
+            },
+        )
+        return 202, {
+            "status": "accepted",
+            "webhook_event_type": event_type,
+            "event_topic": published["topic"],
+            "trace_id": published["trace_id"],
+        }
+
+    if route in {"/notifications", "/v1/notifications"}:
+        if method != "POST":
+            return 405, {"error": "method_not_allowed", "allowed": ["POST"]}
+        try:
+            payload = _load_json_body(body)
+        except json.JSONDecodeError:
+            return 400, {"error": "invalid_json"}
+        except ValueError as exc:
+            return 400, {"error": "invalid_request", "detail": str(exc)}
+        message = str(payload.get("message") or "").strip()
+        if not message:
+            return 400, {"error": "invalid_request", "detail": "field `message` is required"}
+        metadata = payload.get("metadata")
+        dispatcher = NotificationDispatcher()
+        dispatched = dispatcher.dispatch(
+            channel=str(payload.get("channel") or "internal"),
+            title=str(payload.get("title") or "Notification"),
+            message=message,
+            trace_id=str(payload.get("trace_id") or ""),
+            target=str(payload.get("target") or ""),
+            metadata=metadata if isinstance(metadata, dict) else {},
+        )
+        return 200, {"status": "ok", "notification": dispatched}
 
     return 404, {"error": "not_found", "path": route}
 
@@ -106,6 +187,13 @@ def _load_json_body(body: bytes | None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("JSON body must be an object")
     return payload
+
+
+def _coerce_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _write_json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict[str, Any]) -> None:
