@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from dotenv import load_dotenv
 
 from otonomassist.ai.factory import AIProviderFactory
-from otonomassist.core.agent_context import build_agent_context_block, ensure_agent_storage
+from otonomassist.core.agent_context import build_runtime_context_block, ensure_agent_storage
 from otonomassist.core.execution_control import classify_result_status, get_skill_timeout_seconds
 from otonomassist.core.execution_history import append_execution_event, new_trace_id, render_execution_history
 from otonomassist.core.execution_metrics import record_execution_metric, render_execution_metrics
@@ -21,6 +21,7 @@ from otonomassist.core.external_assets import (
 from otonomassist.core.skill_loader import SkillLoader
 from otonomassist.core.skill_registry import SkillRegistry
 from otonomassist.core.transport import TransportContext
+from otonomassist.services.personality import PersonalityService
 from otonomassist.services.policy import PolicyService
 from otonomassist.services.runtime import ExecutionService, InteractionOrchestrator
 
@@ -42,6 +43,7 @@ class Assistant:
         ensure_agent_storage()
         self.registry = SkillRegistry()
         self.loader = SkillLoader(skills_dir)
+        self.personality_service = PersonalityService()
         self.policy_service = PolicyService()
         self.execution_service = ExecutionService(
             self.registry,
@@ -121,7 +123,9 @@ class Assistant:
 
 {self._build_skills_context()}
 
-{build_agent_context_block(command)}
+{self.personality_service.build_prompt_block()}
+
+{build_runtime_context_block(command)}
 
 Petunjuk:
 1. Analisis input user untuk menentukan skill yang tepat

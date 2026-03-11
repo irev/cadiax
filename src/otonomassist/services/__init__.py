@@ -7,6 +7,7 @@ from otonomassist.services.interactions import (
     build_conversation_response,
     run_conversation_api,
 )
+from otonomassist.services.personality import PersonalityService
 from otonomassist.services.policy import PolicyDecision, PolicyService
 from otonomassist.services.runtime import ExecutionService, InteractionOrchestrator
 
@@ -16,6 +17,7 @@ __all__ = [
     "InteractionRequest",
     "InteractionResponse",
     "InteractionOrchestrator",
+    "PersonalityService",
     "PolicyDecision",
     "PolicyService",
     "build_conversation_response",

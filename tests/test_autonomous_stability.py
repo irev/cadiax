@@ -25,7 +25,7 @@ from otonomassist.core.job_runtime import process_job_queue  # noqa: E402
 from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
 from otonomassist.interfaces.telegram import TelegramPollingTransport as InterfaceTelegramPollingTransport  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
-from otonomassist.services import PolicyService  # noqa: E402
+from otonomassist.services import PersonalityService, PolicyService  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
     ConversationService,
     InteractionRequest,
@@ -98,6 +98,16 @@ class _StructuredRouteProvider:
         return self.response
 
 
+class _PromptCaptureProvider:
+    def __init__(self, response: str) -> None:
+        self.response = response
+        self.prompts: list[tuple[str, str | None]] = []
+
+    async def chat_completion(self, prompt, system_prompt=None, **kwargs):
+        self.prompts.append((prompt, system_prompt))
+        return self.response
+
+
 def test_append_lesson_deduplicates_recent_entry(tmp_path, monkeypatch):
     lessons_file = tmp_path / "lessons.md"
     lessons_file.write_text("# Learned Lessons\n", encoding="utf-8")
@@ -113,6 +123,23 @@ def test_append_lesson_deduplicates_recent_entry(tmp_path, monkeypatch):
     lines = lessons_file.read_text(encoding="utf-8").splitlines()
     lesson_lines = [line for line in lines if line.startswith("- ")]
     assert len(lesson_lines) == 1
+
+
+def test_personality_service_updates_profile_sections(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    service = PersonalityService()
+    service.set_purpose("Menjadi asisten riset internal.")
+    service.add_preference("jawaban singkat")
+    service.add_constraint("jangan kirim data sensitif")
+    service.add_context("user lebih suka ringkasan mingguan")
+
+    profile = service.show_profile(max_chars=4000)
+
+    assert "Menjadi asisten riset internal." in profile
+    assert "- jawaban singkat" in profile
+    assert "- jangan kirim data sensitif" in profile
+    assert "- user lebih suka ringkasan mingguan" in profile
 
 
 def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypatch):
@@ -805,6 +832,28 @@ def test_assistant_returns_no_provider_error_for_unmatched_natural_language(tmp_
 
     assert "[ERROR] NO_PROVIDER" in result
     assert "Tidak ada AI provider tersedia" in result
+
+
+def test_assistant_ai_prompt_uses_personality_service_and_runtime_context(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    PersonalityService().add_preference("jawaban formal")
+    agent_context.append_memory_entry("catatan penting tentang dependency runtime", source="manual")
+    provider = _PromptCaptureProvider("SKILL: profile | ARGS: show")
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: provider))
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("tolong bantu pilih langkah dependency runtime berikutnya")
+
+    assert "# Agent Profile" in result
+    assert provider.prompts
+    _, system_prompt = provider.prompts[-1]
+    assert system_prompt is not None
+    assert "Assistant personality context:" in system_prompt
+    assert "- jawaban formal" in system_prompt
+    assert "Persistent runtime context:" in system_prompt
+    assert "catatan penting tentang dependency runtime" in system_prompt
 
 
 def test_assistant_returns_api_error_when_provider_fails(tmp_path, monkeypatch):

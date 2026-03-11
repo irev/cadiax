@@ -201,6 +201,41 @@ def build_agent_context_block(query: str | None = None) -> str:
     return "\n".join(parts)
 
 
+def build_runtime_context_block(query: str | None = None) -> str:
+    """Build planner, lessons, and memory context without personality/profile."""
+    ensure_agent_storage()
+    parts = [
+        "Persistent runtime context:",
+        "",
+        "## Learned Lessons",
+        load_markdown(LESSONS_FILE, max_chars=1200),
+    ]
+
+    planner = load_planner_state()
+    tasks = planner.get("tasks", [])
+    parts.extend(
+        [
+            "",
+            "## Planner",
+            f"- goal: {planner.get('goal') or '-'}",
+            f"- total_tasks: {len(tasks)}",
+        ]
+    )
+    next_task = next((task for task in tasks if task.get("status") == "todo"), None)
+    if next_task:
+        parts.append(f"- next_task: #{next_task.get('id')} {next_task.get('text')}")
+
+    memories = retrieve_relevant_memories(query, limit=5) if query and query.strip() else load_recent_memories(limit=5)
+    parts.extend(["", "## Relevant Memories" if query and query.strip() else "## Recent Memories"])
+    if memories:
+        for entry in memories:
+            parts.append(f"- #{entry.get('id')}: {entry.get('text', '')}")
+    else:
+        parts.append("- tidak ada memori relevan" if query and query.strip() else "- belum ada memori")
+
+    return "\n".join(parts)
+
+
 def append_memory_entry(text: str, source: str = "manual") -> dict[str, Any]:
     """Append a memory entry and return it."""
     ensure_agent_storage()

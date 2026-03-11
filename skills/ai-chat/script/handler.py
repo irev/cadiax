@@ -4,7 +4,8 @@ import asyncio
 from typing import Any
 
 from otonomassist.ai.factory import AIProviderFactory
-from otonomassist.core.agent_context import build_agent_context_block, ensure_agent_storage
+from otonomassist.core.agent_context import build_runtime_context_block, ensure_agent_storage
+from otonomassist.services.personality import PersonalityService
 
 
 async def handle(args: str) -> str:
@@ -23,7 +24,8 @@ async def handle(args: str) -> str:
             system_prompt=(
                 "Anda adalah private AI assistant yang membantu. "
                 "Jawab dalam bahasa Indonesia kecuali diminta sebaliknya.\n\n"
-                f"{build_agent_context_block()}"
+                f"{PersonalityService().build_prompt_block()}\n\n"
+                f"{build_runtime_context_block()}"
             ),
         )
         return response

@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-from otonomassist.core.agent_context import (
-    PROFILE_FILE,
-    append_markdown_bullet,
-    ensure_agent_storage,
-    load_markdown,
-    replace_section,
-)
+from otonomassist.core.agent_context import ensure_agent_storage
+from otonomassist.services.personality import PersonalityService
 
 
 def handle(args: str) -> str:
     """Manage persistent agent profile."""
     ensure_agent_storage()
+    service = PersonalityService()
     args = args.strip()
     if not args:
         return _usage()
@@ -23,26 +19,26 @@ def handle(args: str) -> str:
     remainder = remainder.strip()
 
     if command == "show":
-        return load_markdown(PROFILE_FILE, max_chars=4000)
+        return service.show_profile(max_chars=4000)
     if command == "set-purpose":
         if not remainder:
             return "Profile set-purpose membutuhkan isi."
-        replace_section(PROFILE_FILE, "Purpose", remainder)
+        service.set_purpose(remainder)
         return "Purpose profile diperbarui."
     if command == "add-preference":
         if not remainder:
             return "Profile add-preference membutuhkan isi."
-        append_markdown_bullet(PROFILE_FILE, "Preferences", remainder)
+        service.add_preference(remainder)
         return "Preference ditambahkan ke profile."
     if command == "add-constraint":
         if not remainder:
             return "Profile add-constraint membutuhkan isi."
-        append_markdown_bullet(PROFILE_FILE, "Constraints", remainder)
+        service.add_constraint(remainder)
         return "Constraint ditambahkan ke profile."
     if command == "add-context":
         if not remainder:
             return "Profile add-context membutuhkan isi."
-        append_markdown_bullet(PROFILE_FILE, "Long-term Context", remainder)
+        service.add_context(remainder)
         return "Long-term context ditambahkan ke profile."
 
     return _usage()
