@@ -273,6 +273,7 @@ def record_external_asset(
         "manager": manager,
         "source": source,
         "target_path": normalized_target,
+        "execution_mode": _get_execution_mode(asset_type, normalized_target),
         "status": status,
         "installed_by": installed_by,
         "version": version,
@@ -292,6 +293,7 @@ def record_external_asset(
             "manager": existing.get("manager"),
             "source": existing.get("source"),
             "status": existing.get("status"),
+            "execution_mode": existing.get("execution_mode"),
             "installed_by": existing.get("installed_by"),
             "version": existing.get("version"),
             "requirements": existing.get("requirements", []),
@@ -309,6 +311,7 @@ def record_external_asset(
             "manager": record.get("manager"),
             "source": record.get("source"),
             "status": record.get("status"),
+            "execution_mode": record.get("execution_mode"),
             "installed_by": record.get("installed_by"),
             "version": record.get("version"),
             "requirements": record.get("requirements", []),
@@ -476,6 +479,7 @@ def build_external_asset_audit_summary() -> dict[str, Any]:
     unapproved_count = 0
     undeclared_capability_count = 0
     blocked_capability_count = 0
+    isolated_skill_count = 0
     for item in assets:
         by_type[item.get("type", "unknown")] = by_type.get(item.get("type", "unknown"), 0) + 1
         if item.get("compatibility_status") != "ready":
@@ -486,6 +490,8 @@ def build_external_asset_audit_summary() -> dict[str, Any]:
             undeclared_capability_count += 1
         if item.get("capability_status") == "blocked":
             blocked_capability_count += 1
+        if item.get("type") == "skill" and item.get("execution_mode") == "subprocess-isolated":
+            isolated_skill_count += 1
     registry = load_external_asset_registry()
     return {
         "layout": get_external_asset_layout(),
@@ -495,6 +501,7 @@ def build_external_asset_audit_summary() -> dict[str, Any]:
         "unapproved_count": unapproved_count,
         "undeclared_capability_count": undeclared_capability_count,
         "blocked_capability_count": blocked_capability_count,
+        "isolated_skill_count": isolated_skill_count,
         "trust_policy": get_external_skill_trust_policy(),
         "allowed_capabilities": sorted(get_allowed_external_capabilities()),
         "by_type": by_type,
@@ -522,6 +529,7 @@ def render_external_asset_audit() -> str:
         f"- unapproved_count: {summary['unapproved_count']}",
         f"- undeclared_capability_count: {summary['undeclared_capability_count']}",
         f"- blocked_capability_count: {summary['blocked_capability_count']}",
+        f"- isolated_skill_count: {summary['isolated_skill_count']}",
         f"- trust_policy: {summary['trust_policy']}",
         f"- allowed_capabilities: {', '.join(summary['allowed_capabilities']) or '-'}",
     ]
@@ -536,7 +544,7 @@ def render_external_asset_audit() -> str:
     for item in summary["assets"]:
         lines.append(
             f"- #{item.get('id')} {item.get('type')} {item.get('name')} "
-            f"[manager={item.get('manager')}, status={item.get('status')}, compatibility={item.get('compatibility_status')}, approval={item.get('approval_state', 'pending')}]"
+            f"[manager={item.get('manager')}, status={item.get('status')}, compatibility={item.get('compatibility_status')}, approval={item.get('approval_state', 'pending')}, execution={item.get('execution_mode', 'unknown')}]"
         )
         lines.append(f"  target: {item.get('target_path')}")
         lines.append(f"  source: {item.get('source')}")
@@ -574,6 +582,19 @@ def _get_platform_name() -> str:
     if os.name == "posix":
         return "linux"
     return os.name
+
+
+def _get_execution_mode(asset_type: str, target_path: str) -> str:
+    if asset_type != "skill":
+        return "host-managed"
+    try:
+        external_root = get_external_skills_dir().resolve()
+        resolved_target = Path(target_path).resolve()
+    except OSError:
+        return "subprocess-isolated"
+    if resolved_target == external_root or external_root in resolved_target.parents:
+        return "subprocess-isolated"
+    return "in-process"
 
 
 def _strip_internal_flags(item: dict[str, Any]) -> dict[str, Any]:

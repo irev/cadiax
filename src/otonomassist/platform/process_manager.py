@@ -36,11 +36,13 @@ def run_process(
     command: Sequence[str],
     cwd: str | Path | None = None,
     timeout_seconds: float = 120.0,
+    env: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Run a local process with a portable subprocess wrapper."""
     completed = subprocess.run(
         list(command),
         cwd=str(cwd) if cwd is not None else None,
+        env=env,
         capture_output=True,
         text=True,
         timeout=timeout_seconds,

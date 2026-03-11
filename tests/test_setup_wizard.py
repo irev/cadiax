@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -717,6 +718,30 @@ def test_assistant_loads_external_skill_from_workspace(tmp_path, monkeypatch):
     assert result == "EXTERNAL:halo"
 
 
+def test_assistant_runs_external_skill_in_subprocess(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("OTONOMASSIST_EXTERNAL_SKILL_POLICY", "allow-all")
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+    external_skill_dir = workspace_guard.WORKSPACE_ROOT / "skills-external" / "pid-skill"
+    (external_skill_dir / "script").mkdir(parents=True, exist_ok=True)
+    (external_skill_dir / "SKILL.md").write_text(
+        "# PID Skill\n\n## Metadata\n- name: pid-skill\n- description: Report subprocess pid\n\n## Triggers\n- pid-skill\n",
+        encoding="utf-8",
+    )
+    (external_skill_dir / "script" / "handler.py").write_text(
+        "import os\n\ndef handle(args: str) -> str:\n    return str(os.getpid())\n",
+        encoding="utf-8",
+    )
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("pid-skill")
+
+    assert int(result) != os.getpid()
+
+
 def test_external_audit_lists_workspace_managed_skill(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
@@ -735,6 +760,7 @@ def test_external_audit_lists_workspace_managed_skill(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "External Asset Audit" in result.output
     assert "audit-skill" in result.output
+    assert "execution=subprocess-isolated" in result.output
     assert "skills_dir:" in result.output
 
 
@@ -793,6 +819,7 @@ def test_external_audit_reports_manifest_requirements_and_degraded_compatibility
     assert status_result.exit_code == 0
     assert "[External Assets]" in status_result.output
     assert "- incompatible_count: 1" in status_result.output
+    assert "- isolated_skill_count: 1" in status_result.output
     assert "- unapproved_count: 1" in status_result.output
 
 
