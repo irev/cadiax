@@ -16,6 +16,7 @@ from otonomassist.core.scheduler_runtime import get_scheduler_summary
 from otonomassist.interfaces.telegram import TelegramAuthService
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
+from otonomassist.services.personality import PersonalityService
 from otonomassist.services.policy.policy_service import PolicyService
 
 
@@ -45,6 +46,7 @@ def get_config_status_data() -> dict[str, object]:
     metrics = get_execution_metrics_snapshot()
     scheduler = get_scheduler_summary()
     state_storage = agent_context.get_state_storage_info()
+    personality = PersonalityService()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -110,6 +112,7 @@ def get_config_status_data() -> dict[str, object]:
             "metrics_file": str(agent_context.METRICS_FILE),
             "state_backend": state_storage["backend"],
             "state_db_file": state_storage["path"],
+            "preference_count": len(personality.list_preferences()),
             "portable_key_file": str(PORTABLE_KEY_FILE),
             "skill_timeout_seconds": get_skill_timeout_seconds(),
         },
@@ -231,6 +234,7 @@ def get_config_status_report() -> str:
             f"- metrics_file: {data['storage']['metrics_file']}",
             f"- state_backend: {data['storage']['state_backend']}",
             f"- state_db_file: {data['storage']['state_db_file']}",
+            f"- preference_count: {data['storage']['preference_count']}",
             f"- portable_key_file: {data['storage']['portable_key_file']}",
             f"- skill_timeout_seconds: {data['storage']['skill_timeout_seconds']:.2f}",
         ]

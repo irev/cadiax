@@ -24,7 +24,15 @@ class PersonalityService:
 
     def add_preference(self, text: str) -> None:
         """Append one preference item."""
-        agent_context.append_markdown_bullet(self.profile_path, "Preferences", text.strip())
+        normalized = text.strip()
+        if not normalized:
+            return
+        preferences = self.list_preferences()
+        if normalized.casefold() in {item.casefold() for item in preferences}:
+            return
+        agent_context.append_markdown_bullet(self.profile_path, "Preferences", normalized)
+        preferences.append(normalized)
+        agent_context.save_preference_state({"preferences": preferences})
 
     def add_constraint(self, text: str) -> None:
         """Append one constraint item."""
@@ -36,11 +44,25 @@ class PersonalityService:
 
     def build_prompt_block(self, max_chars: int = 1200) -> str:
         """Render the personality block for prompt assembly."""
-        return "\n".join(
+        parts = [
+            "Assistant personality context:",
+            "",
+            "## Structured Preferences",
+        ]
+        preferences = self.list_preferences()
+        if preferences:
+            parts.extend(f"- {item}" for item in preferences[:8])
+        else:
+            parts.append("- belum ada preference terstruktur")
+        parts.extend(
             [
-                "Assistant personality context:",
                 "",
                 "## Profile",
                 self.show_profile(max_chars=max_chars),
             ]
         )
+        return "\n".join(parts)
+
+    def list_preferences(self) -> list[str]:
+        """Return structured preferences for prompt assembly."""
+        return agent_context.list_preferences()

@@ -17,6 +17,7 @@ DATA_DIR = Path(os.getenv("OTONOMASSIST_STATE_DIR", str(PROJECT_ROOT / ".otonoma
 MEMORY_FILE = DATA_DIR / "memory.jsonl"
 PLANNER_FILE = DATA_DIR / "planner.json"
 PROFILE_FILE = DATA_DIR / "profile.md"
+PREFERENCES_FILE = DATA_DIR / "preferences.json"
 LESSONS_FILE = DATA_DIR / "lessons.md"
 SECRETS_FILE = DATA_DIR / "secrets.json"
 EXECUTION_HISTORY_FILE = DATA_DIR / "execution_history.jsonl"
@@ -59,11 +60,13 @@ PLANNER_STATE_KEY = "planner"
 JOB_QUEUE_STATE_KEY = "job_queue"
 METRICS_STATE_KEY = "metrics"
 SCHEDULER_STATE_KEY = "scheduler"
+PREFERENCE_STATE_KEY = "preferences"
 
 DEFAULT_PLANNER_STATE = {"goal": "", "tasks": []}
 DEFAULT_METRICS_STATE = {"counters": {}, "timings": {}, "updated_at": ""}
 DEFAULT_JOB_QUEUE_STATE = {"jobs": []}
 DEFAULT_SCHEDULER_STATE = {"last_run_at": "", "last_status": "", "last_cycles": 0, "last_processed": 0}
+DEFAULT_PREFERENCE_STATE = {"preferences": []}
 
 
 def ensure_agent_storage() -> None:
@@ -79,6 +82,9 @@ def ensure_agent_storage() -> None:
     if not PROFILE_FILE.exists():
         ensure_internal_state_write_allowed(PROFILE_FILE)
         PROFILE_FILE.write_text(DEFAULT_PROFILE, encoding="utf-8")
+    if not PREFERENCES_FILE.exists():
+        ensure_internal_state_write_allowed(PREFERENCES_FILE)
+        PREFERENCES_FILE.write_text(json.dumps(DEFAULT_PREFERENCE_STATE, indent=2), encoding="utf-8")
     if not LESSONS_FILE.exists():
         ensure_internal_state_write_allowed(LESSONS_FILE)
         LESSONS_FILE.write_text(DEFAULT_LESSONS, encoding="utf-8")
@@ -435,6 +441,47 @@ def save_scheduler_state(state: dict[str, Any]) -> None:
     _save_durable_json_state(SCHEDULER_STATE_KEY, SCHEDULER_STATE_FILE, state)
 
 
+def load_preference_state() -> dict[str, Any]:
+    """Load structured personality preferences from durable state."""
+    state = _load_durable_json_state(PREFERENCE_STATE_KEY, PREFERENCES_FILE, DEFAULT_PREFERENCE_STATE)
+    if state.get("preferences"):
+        return state
+    preferences = parse_markdown_section_bullets(PROFILE_FILE, "Preferences")
+    if preferences:
+        state = {"preferences": preferences}
+        save_preference_state(state)
+    return state
+
+
+def save_preference_state(state: dict[str, Any]) -> None:
+    """Persist structured personality preferences."""
+    normalized = {
+        "preferences": [
+            str(item).strip()
+            for item in state.get("preferences", [])
+            if str(item).strip()
+        ]
+    }
+    _save_durable_json_state(PREFERENCE_STATE_KEY, PREFERENCES_FILE, normalized)
+
+
+def list_preferences() -> list[str]:
+    """Return normalized preference items."""
+    state = load_preference_state()
+    seen: set[str] = set()
+    items: list[str] = []
+    for raw in state.get("preferences", []):
+        text = str(raw).strip()
+        if not text:
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(text)
+    return items
+
+
 def get_secret_value(name: str) -> str | None:
     """Get a decrypted secret value by name for internal runtime use."""
     state = load_secrets_state()
@@ -508,6 +555,7 @@ def _bootstrap_durable_state() -> None:
     _ensure_state_in_store(store, JOB_QUEUE_STATE_KEY, JOB_QUEUE_FILE, DEFAULT_JOB_QUEUE_STATE)
     _ensure_state_in_store(store, METRICS_STATE_KEY, METRICS_FILE, DEFAULT_METRICS_STATE)
     _ensure_state_in_store(store, SCHEDULER_STATE_KEY, SCHEDULER_STATE_FILE, DEFAULT_SCHEDULER_STATE)
+    _ensure_preference_state_in_store(store)
 
 
 def _ensure_state_in_store(
@@ -520,6 +568,23 @@ def _ensure_state_in_store(
         return
     value, _ = _read_legacy_json_state(legacy_path, default)
     store.upsert_json_state(state_key, value)
+
+
+def _ensure_preference_state_in_store(store: SQLiteStateStore) -> None:
+    record = store.get_json_state(PREFERENCE_STATE_KEY)
+    if record is not None and record.value.get("preferences"):
+        return
+    legacy_value, _ = _read_legacy_json_state(PREFERENCES_FILE, DEFAULT_PREFERENCE_STATE)
+    preferences = [
+        str(item).strip()
+        for item in legacy_value.get("preferences", [])
+        if str(item).strip()
+    ]
+    if not preferences:
+        preferences = parse_markdown_section_bullets(PROFILE_FILE, "Preferences")
+    store.upsert_json_state(PREFERENCE_STATE_KEY, {"preferences": preferences})
+    ensure_internal_state_write_allowed(PREFERENCES_FILE)
+    _write_text_atomic(PREFERENCES_FILE, json.dumps({"preferences": preferences}, indent=2))
 
 
 def _load_durable_json_state(
@@ -629,6 +694,29 @@ def append_markdown_bullet(path: Path, section_title: str, text: str) -> None:
         content += f"\n{marker}\n- {text}\n"
         ensure_internal_state_write_allowed(path)
         path.write_text(content, encoding="utf-8")
+
+
+def parse_markdown_section_bullets(path: Path, section_title: str) -> list[str]:
+    """Extract bullet items from one markdown section."""
+    if not path.exists():
+        return []
+    ensure_read_allowed(path)
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    marker = f"## {section_title}"
+    inside_section = False
+    items: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped == marker:
+            inside_section = True
+            continue
+        if inside_section and stripped.startswith("## "):
+            break
+        if inside_section and stripped.startswith("- "):
+            value = stripped[2:].strip()
+            if value:
+                items.append(value)
+    return items
 
 
 def replace_section(path: Path, section_title: str, bullet_text: str) -> None:

@@ -60,6 +60,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "PLANNER_FILE", data_dir / "planner.json")
     monkeypatch.setattr(agent_context, "LESSONS_FILE", data_dir / "lessons.md")
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
+    monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -140,6 +141,26 @@ def test_personality_service_updates_profile_sections(tmp_path, monkeypatch):
     assert "- jawaban singkat" in profile
     assert "- jangan kirim data sensitif" in profile
     assert "- user lebih suka ringkasan mingguan" in profile
+    assert service.list_preferences() == [
+        "Utamakan bahasa Indonesia kecuali diminta sebaliknya.",
+        "Utamakan solusi pragmatis dan berbasis data lokal.",
+        "jawaban singkat",
+    ]
+
+
+def test_personality_service_bootstraps_structured_preferences_from_profile(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.PROFILE_FILE.write_text(
+        "# Agent Profile\n\n## Preferences\n- ringkas\n- fokus outcome\n",
+        encoding="utf-8",
+    )
+    agent_context.PREFERENCES_FILE.write_text(json.dumps({"preferences": []}, indent=2), encoding="utf-8")
+    agent_context._get_state_store().upsert_json_state(agent_context.PREFERENCE_STATE_KEY, {"preferences": []})
+
+    service = PersonalityService()
+
+    assert service.list_preferences() == ["ringkas", "fokus outcome"]
+    assert "- ringkas" in service.build_prompt_block()
 
 
 def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypatch):
