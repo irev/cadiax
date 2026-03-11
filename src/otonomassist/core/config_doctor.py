@@ -54,6 +54,7 @@ def get_config_status_data() -> dict[str, object]:
     state_storage = agent_context.get_state_storage_info()
     personality = PersonalityService()
     habits = HabitModelService().load_or_refresh()
+    memory_summary = agent_context.load_memory_summary_state()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -132,6 +133,11 @@ def get_config_status_data() -> dict[str, object]:
             "habit_count": len(habits.get("habits", [])),
             "habit_signals_analyzed": habits.get("signals_analyzed", 0),
             "habits": habits.get("habits", []),
+        },
+        "memory": {
+            "summary_count": len(memory_summary.get("summaries", [])),
+            "prune_candidates": memory_summary.get("prune_candidates", 0),
+            "updated_at": memory_summary.get("updated_at", ""),
         },
         "external_assets": {
             "asset_count": external_assets["asset_count"],
@@ -306,6 +312,15 @@ def get_config_status_report() -> str:
             f"- habit:{habit.get('kind')} -> {habit.get('value')} "
             f"(confidence={habit.get('confidence')}, evidence={habit.get('evidence_count')})"
         )
+    lines.extend(
+        [
+            "",
+            "[Memory]",
+            f"- summary_count: {data['memory']['summary_count']}",
+            f"- prune_candidates: {data['memory']['prune_candidates']}",
+            f"- updated_at: {data['memory']['updated_at'] or '-'}",
+        ]
+    )
     lines.extend(
         [
             "",

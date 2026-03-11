@@ -13,6 +13,8 @@ from otonomassist.core.agent_context import (
     append_lesson,
     append_memory_entry,
     ensure_agent_storage,
+    load_memory_summary_state,
+    save_memory_summary_state,
     retrieve_relevant_memories,
 )
 from otonomassist.memory import MemoryConsolidationService
@@ -197,6 +199,8 @@ def _summarize_memories() -> str:
         top_terms = [term for term, _ in tokens.most_common(5)]
 
     recent_entries = [_memory_row(entry) for entry in entries[-3:]]
+    summary_state = MemoryConsolidationService().summarize_collection(entries)
+    save_memory_summary_state(summary_state)
     return _wrap_result(
         result_type="memory_summary",
         data={
@@ -204,6 +208,8 @@ def _summarize_memories() -> str:
             "last_entry_id": entries[-1]["id"],
             "top_terms": top_terms,
             "recent_entries": recent_entries,
+            "summary_chunks": summary_state.get("summaries", []),
+            "prune_candidates": summary_state.get("prune_candidates", 0),
             "summary": (
                 f"Memory berisi {len(entries)} entry"
                 + (f"; top terms: {', '.join(top_terms)}." if top_terms else ".")
@@ -231,6 +237,8 @@ def _consolidate_memories(topic: str) -> str:
     recent = selected[-5:]
     summary = MemoryConsolidationService().summarize(recent, topic=topic)
     append_lesson(summary or "memory consolidation: tidak ada ringkasan")
+    summary_state = MemoryConsolidationService().summarize_collection(selected)
+    save_memory_summary_state(summary_state)
     return f"{len(recent)} memori dikonsolidasikan ke lessons.md."
 
 
@@ -242,6 +250,7 @@ def _memory_context() -> str:
                 {"name": "jsonl", "path": str(MEMORY_FILE.relative_to(PROJECT_ROOT))},
                 {"name": "lessons", "path": str(LESSONS_FILE.relative_to(PROJECT_ROOT))},
             ],
+            "summary_state": load_memory_summary_state(),
             "summary": "Lokasi file memory agent.",
         },
         default_view="table",
@@ -255,6 +264,7 @@ def _consolidate_recent_entries(entries_to_merge: int) -> None:
     recent = entries[-entries_to_merge:]
     summary = MemoryConsolidationService().summarize(recent)
     append_lesson(summary or "memory consolidation: tidak ada ringkasan")
+    save_memory_summary_state(MemoryConsolidationService().summarize_collection(entries))
 
 
 def _memory_row(entry: dict[str, Any]) -> dict[str, object]:

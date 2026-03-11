@@ -63,6 +63,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
     monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
     monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
+    monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -326,6 +327,7 @@ def test_self_review_skips_duplicate_follow_up_tasks(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "LESSONS_FILE", tmp_path / "lessons.md")
     monkeypatch.setattr(agent_context, "PROFILE_FILE", tmp_path / "profile.md")
     monkeypatch.setattr(agent_context, "HABITS_FILE", tmp_path / "habits.json")
+    monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", tmp_path / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", tmp_path / "secrets.json")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
@@ -334,6 +336,7 @@ def test_self_review_skips_duplicate_follow_up_tasks(tmp_path, monkeypatch):
     (tmp_path / "lessons.md").write_text("# Learned Lessons\n", encoding="utf-8")
     (tmp_path / "profile.md").write_text("# Agent Profile\n", encoding="utf-8")
     (tmp_path / "habits.json").write_text(json.dumps({"habits": [], "updated_at": "", "signals_analyzed": 0}, indent=2), encoding="utf-8")
+    (tmp_path / "memory_summaries.json").write_text(json.dumps({"summaries": [], "updated_at": "", "prune_candidates": 0}, indent=2), encoding="utf-8")
     (tmp_path / "secrets.json").write_text(json.dumps({"secrets": {}}, indent=2), encoding="utf-8")
 
     result = module.handle("text TODO dan api_key")
@@ -879,6 +882,22 @@ def test_memory_consolidate_writes_structured_summary_to_lessons(tmp_path, monke
     assert "dikonsolidasikan ke lessons.md" in result
     assert "memory consolidation:" in lessons
     assert "topic=planner" in lessons
+
+
+def test_memory_summary_persists_chunk_summaries_and_prune_candidates(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    memory_module = _load_module(ROOT / "skills" / "memory" / "script" / "handler.py", "memory_handler_summary_state_test")
+
+    for index in range(12):
+        memory_module.handle(f"add catatan penting nomor {index} tentang planner runtime")
+
+    result = memory_module.handle("summary")
+    summary_state = agent_context.load_memory_summary_state()
+
+    assert result["type"] == "memory_summary"
+    assert result["data"]["summary_chunks"]
+    assert summary_state["summaries"]
+    assert summary_state["prune_candidates"] >= 1
 
 
 def test_telegram_transport_handles_message_without_network(tmp_path, monkeypatch):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -62,6 +63,40 @@ class SemanticMemoryService:
 
 class MemoryConsolidationService:
     """Produce compact lesson summaries from memory entries."""
+
+    def summarize_collection(
+        self,
+        entries: list[dict[str, Any]],
+        *,
+        chunk_size: int = 5,
+        max_chunks: int = 6,
+        retain_recent_entries: int = 10,
+    ) -> dict[str, Any]:
+        """Build durable rolling summaries and prune hints for a memory collection."""
+        selected = [entry for entry in entries if str(entry.get("text", "")).strip()]
+        chunks = [
+            selected[index : index + max(1, chunk_size)]
+            for index in range(0, len(selected), max(1, chunk_size))
+        ]
+        rendered: list[dict[str, Any]] = []
+        for chunk_index, chunk in enumerate(chunks[-max(1, max_chunks):], start=max(1, len(chunks) - max_chunks + 1)):
+            summary = self.summarize(chunk)
+            if not summary:
+                continue
+            rendered.append(
+                {
+                    "chunk_index": chunk_index,
+                    "entry_ids": [int(item.get("id", 0) or 0) for item in chunk],
+                    "entry_count": len(chunk),
+                    "summary": summary,
+                }
+            )
+        prune_candidates = max(0, len(selected) - max(1, retain_recent_entries))
+        return {
+            "summaries": rendered,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "prune_candidates": prune_candidates,
+        }
 
     def summarize(self, entries: list[dict[str, Any]], *, topic: str = "") -> str:
         selected = [
