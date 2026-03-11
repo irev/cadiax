@@ -15,6 +15,7 @@ class InteractionRequest:
     user_id: str | None = None
     session_id: str | None = None
     chat_id: str | None = None
+    identity_id: str | None = None
     roles: tuple[str, ...] = ()
     trace_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -34,6 +35,7 @@ class InteractionRequest:
             user_id=_coerce_optional_text(payload.get("user_id")),
             session_id=_coerce_optional_text(payload.get("session_id")),
             chat_id=_coerce_optional_text(payload.get("chat_id")),
+            identity_id=_coerce_optional_text(payload.get("identity_id")),
             roles=roles,
             trace_id=_coerce_optional_text(payload.get("trace_id")),
             metadata=metadata if isinstance(metadata, dict) else {},
@@ -50,6 +52,7 @@ class InteractionResponse:
     user_id: str | None = None
     session_id: str | None = None
     chat_id: str | None = None
+    identity_id: str | None = None
     status: str = "ok"
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -63,6 +66,7 @@ class InteractionResponse:
             "user_id": self.user_id,
             "session_id": self.session_id,
             "chat_id": self.chat_id,
+            "identity_id": self.identity_id,
             "metadata": self.metadata,
         }
 

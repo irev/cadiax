@@ -51,6 +51,8 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
     monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
+    monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
+    monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -514,8 +516,11 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "runtime" in payload
     assert "storage" in payload
     assert "event_bus" in payload
+    assert "identity" in payload
     assert "preference_count" in payload["storage"]
     assert "habit_count" in payload["storage"]
+    assert "identity_count" in payload["storage"]
+    assert "session_count" in payload["storage"]
     assert "topics" in payload["event_bus"]
     assert "provider_latency" in payload["metrics"]
     assert "queue_depth" in payload["metrics"]
@@ -742,6 +747,8 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
     monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
+    monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
+    monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")

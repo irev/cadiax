@@ -57,6 +57,8 @@ def get_config_status_data() -> dict[str, object]:
     personality = PersonalityService()
     habits = HabitModelService().load_or_refresh()
     memory_summary = agent_context.load_memory_summary_state()
+    identity_state = agent_context.load_identity_state()
+    session_state = agent_context.load_session_state()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -128,6 +130,8 @@ def get_config_status_data() -> dict[str, object]:
             "state_db_file": state_storage["path"],
             "preference_count": len(personality.list_preferences()),
             "habit_count": len(habits.get("habits", [])),
+            "identity_count": len(identity_state.get("identities", [])),
+            "session_count": len(session_state.get("sessions", [])),
             "portable_key_file": str(PORTABLE_KEY_FILE),
             "skill_timeout_seconds": get_skill_timeout_seconds(),
         },
@@ -140,6 +144,12 @@ def get_config_status_data() -> dict[str, object]:
             "summary_count": len(memory_summary.get("summaries", [])),
             "prune_candidates": memory_summary.get("prune_candidates", 0),
             "updated_at": memory_summary.get("updated_at", ""),
+        },
+        "identity": {
+            "identity_count": len(identity_state.get("identities", [])),
+            "session_count": len(session_state.get("sessions", [])),
+            "latest_identity_id": str(identity_state.get("identities", [])[-1].get("id", "")) if identity_state.get("identities") else "",
+            "latest_session_id": str(session_state.get("sessions", [])[-1].get("id", "")) if session_state.get("sessions") else "",
         },
         "external_assets": {
             "asset_count": external_assets["asset_count"],
@@ -317,6 +327,8 @@ def get_config_status_report() -> str:
             f"- state_db_file: {data['storage']['state_db_file']}",
             f"- preference_count: {data['storage']['preference_count']}",
             f"- habit_count: {data['storage']['habit_count']}",
+            f"- identity_count: {data['storage']['identity_count']}",
+            f"- session_count: {data['storage']['session_count']}",
             f"- portable_key_file: {data['storage']['portable_key_file']}",
             f"- skill_timeout_seconds: {data['storage']['skill_timeout_seconds']:.2f}",
         ]
@@ -341,6 +353,16 @@ def get_config_status_report() -> str:
             f"- summary_count: {data['memory']['summary_count']}",
             f"- prune_candidates: {data['memory']['prune_candidates']}",
             f"- updated_at: {data['memory']['updated_at'] or '-'}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[Identity]",
+            f"- identity_count: {data['identity']['identity_count']}",
+            f"- session_count: {data['identity']['session_count']}",
+            f"- latest_identity_id: {data['identity']['latest_identity_id'] or '-'}",
+            f"- latest_session_id: {data['identity']['latest_session_id'] or '-'}",
         ]
     )
     lines.extend(

@@ -185,6 +185,8 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
             data={
                 "user_id": context.user_id or "",
                 "chat_id": context.chat_id or "",
+                "session_id": context.session_id or "",
+                "identity_id": context.identity_id or "",
             },
         )
         result = self.orchestrator.handle_command(command, context)

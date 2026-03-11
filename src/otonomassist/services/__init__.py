@@ -2,6 +2,7 @@
 
 from otonomassist.services.interactions import (
     ConversationService,
+    IdentitySessionService,
     InteractionRequest,
     InteractionResponse,
     build_conversation_response,
@@ -17,6 +18,7 @@ __all__ = [
     "ContextBudgeter",
     "ExecutionService",
     "HabitModelService",
+    "IdentitySessionService",
     "InteractionRequest",
     "InteractionResponse",
     "InteractionOrchestrator",

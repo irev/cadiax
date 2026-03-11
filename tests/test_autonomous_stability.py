@@ -64,6 +64,8 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
     monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
+    monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
+    monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -328,6 +330,8 @@ def test_self_review_skips_duplicate_follow_up_tasks(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "PROFILE_FILE", tmp_path / "profile.md")
     monkeypatch.setattr(agent_context, "HABITS_FILE", tmp_path / "habits.json")
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", tmp_path / "memory_summaries.json")
+    monkeypatch.setattr(agent_context, "IDENTITIES_FILE", tmp_path / "identities.json")
+    monkeypatch.setattr(agent_context, "SESSIONS_FILE", tmp_path / "sessions.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", tmp_path / "secrets.json")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
@@ -337,6 +341,8 @@ def test_self_review_skips_duplicate_follow_up_tasks(tmp_path, monkeypatch):
     (tmp_path / "profile.md").write_text("# Agent Profile\n", encoding="utf-8")
     (tmp_path / "habits.json").write_text(json.dumps({"habits": [], "updated_at": "", "signals_analyzed": 0}, indent=2), encoding="utf-8")
     (tmp_path / "memory_summaries.json").write_text(json.dumps({"summaries": [], "updated_at": "", "prune_candidates": 0}, indent=2), encoding="utf-8")
+    (tmp_path / "identities.json").write_text(json.dumps({"identities": [], "updated_at": ""}, indent=2), encoding="utf-8")
+    (tmp_path / "sessions.json").write_text(json.dumps({"sessions": [], "updated_at": ""}, indent=2), encoding="utf-8")
     (tmp_path / "secrets.json").write_text(json.dumps({"secrets": {}}, indent=2), encoding="utf-8")
 
     result = module.handle("text TODO dan api_key")
@@ -770,9 +776,47 @@ def test_conversation_api_handles_message_and_returns_trace_metadata(tmp_path, m
     assert payload["source"] == "api"
     assert payload["user_id"] == "user-1"
     assert payload["session_id"] == "session-1"
+    assert payload["identity_id"]
     assert payload["trace_id"]
     assert payload["metadata"]["roles"] == ["api", "trusted"]
     assert payload["response"].startswith("OtonomAssist - Available commands:")
+
+
+def test_conversation_service_keeps_identity_continuity_across_channels_with_identity_hint(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    service = ConversationService(assistant)
+
+    api_response = service.handle(
+        InteractionRequest(
+            message="help",
+            source="api",
+            user_id="api-user-1",
+            session_id="api-session-1",
+            metadata={"identity_hint": "refy@example.local"},
+        )
+    )
+    telegram_response = service.handle(
+        InteractionRequest(
+            message="help",
+            source="telegram",
+            user_id="tg-user-99",
+            chat_id="tg-chat-99",
+            roles=("telegram", "owner"),
+            metadata={"identity_hint": "refy@example.local"},
+        )
+    )
+
+    identity_state = agent_context.load_identity_state()
+    session_state = agent_context.load_session_state()
+
+    assert api_response.identity_id == telegram_response.identity_id
+    assert api_response.session_id != telegram_response.session_id
+    assert len(identity_state["identities"]) == 1
+    assert len(session_state["sessions"]) == 2
+    assert identity_state["identities"][0]["identity_hint"] == "refy@example.local"
 
 
 def test_conversation_api_requires_token_when_configured(tmp_path, monkeypatch):
