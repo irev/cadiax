@@ -26,6 +26,7 @@ class ProactiveAssistanceService:
                 {
                     "kind": "next_task_focus",
                     "confidence": "high",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "summary": f"Task berikutnya sudah siap: #{next_task.get('id')} {next_task.get('text')}",
                     "suggested_action": f"jobs enqueue",
                     "reason": "planner_ready_task_detected",
@@ -38,6 +39,7 @@ class ProactiveAssistanceService:
                 {
                     "kind": "runtime_recovery",
                     "confidence": "medium",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "summary": f"Ada {runtime.get('failed_jobs')} job gagal yang perlu ditinjau.",
                     "suggested_action": "jobs list",
                     "reason": "failed_jobs_detected",
@@ -48,6 +50,7 @@ class ProactiveAssistanceService:
                 {
                     "kind": "runtime_follow_up",
                     "confidence": "medium",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "summary": f"Ada {runtime.get('queued_jobs')} job queued yang bisa diproses.",
                     "suggested_action": "worker --until-idle",
                     "reason": "queued_jobs_detected",
@@ -60,6 +63,7 @@ class ProactiveAssistanceService:
                 {
                     "kind": "scheduler_deferral",
                     "confidence": "medium",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "summary": "Scheduler terakhir tertahan karena quiet hours.",
                     "suggested_action": "privacy show",
                     "reason": "scheduler_quiet_hours_detected",
@@ -71,14 +75,15 @@ class ProactiveAssistanceService:
             latest = episodes[0]
             if str(latest.get("status", "")).lower() in {"failed", "timeout"}:
                 insights.append(
-                    {
-                        "kind": "recent_failure_follow_up",
-                        "confidence": "medium",
-                        "summary": f"Episode terakhir menunjukkan status {latest.get('status')}.",
-                        "suggested_action": "history",
-                        "reason": "recent_episode_failure",
-                    }
-                )
+                {
+                    "kind": "recent_failure_follow_up",
+                    "confidence": "medium",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "summary": f"Episode terakhir menunjukkan status {latest.get('status')}.",
+                    "suggested_action": "history",
+                    "reason": "recent_episode_failure",
+                }
+            )
 
         habits = HabitModelService().list_habits(limit=3)
         preferred_source = next((item for item in habits if item.get("kind") == "preferred_source"), None)
@@ -87,6 +92,7 @@ class ProactiveAssistanceService:
                 {
                     "kind": "channel_alignment",
                     "confidence": preferred_source.get("confidence", "low"),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "summary": f"Interaksi paling sering datang dari {preferred_source.get('value')}.",
                     "suggested_action": "profile show-structured",
                     "reason": "habit_preferred_source",
@@ -99,6 +105,7 @@ class ProactiveAssistanceService:
                 {
                     "kind": "preference_alignment",
                     "confidence": "medium",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "summary": "Preferred channels sudah terdefinisi untuk personalisasi respons.",
                     "suggested_action": f"profile show-structured",
                     "reason": "structured_preference_profile_present",

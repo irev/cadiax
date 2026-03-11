@@ -496,6 +496,16 @@ def privacy_quiet_hours_command(start: str, end: str, disable: bool) -> None:
     )
 
 
+@privacy_group.command("retention")
+@click.option("--days", required=True, type=int, help="Retention period in days")
+def privacy_retention_command(days: int) -> None:
+    """Configure personal-data retention period."""
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+    state = PrivacyControlService().set_proactive_controls(memory_retention_days=days)
+    click.echo(f"Memory retention updated to {state['memory_retention_days']} day(s)")
+
+
 @privacy_group.command("export")
 @click.option(
     "--output",
@@ -522,6 +532,26 @@ def privacy_delete_memory_command() -> None:
         f"Deleted {result['deleted_memory_entries']} memory entry(ies) and "
         f"{result['deleted_memory_summaries']} memory summary chunk(s)"
     )
+
+
+@privacy_group.command("prune")
+def privacy_prune_command() -> None:
+    """Prune personal data older than the configured retention period."""
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+    result = PrivacyControlService().prune_expired_personal_data()
+    total = sum(int(value or 0) for value in result.values())
+    click.echo(f"Pruned {total} expired personal-data record(s)")
+
+
+@privacy_group.command("delete-personal-data")
+def privacy_delete_personal_data_command() -> None:
+    """Delete privacy-relevant personal data stores."""
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+    result = PrivacyControlService().delete_personal_data()
+    total = sum(int(value or 0) for value in result.values())
+    click.echo(f"Deleted {total} personal-data record(s) across privacy stores")
 
 
 @main.group("proactive")

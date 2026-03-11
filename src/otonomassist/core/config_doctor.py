@@ -319,8 +319,15 @@ def get_config_status_report() -> str:
             f"- proactive_assistance_enabled: {'yes' if data['privacy_controls']['proactive_assistance_enabled'] else 'no'}",
             f"- memory_retention_days: {data['privacy_controls']['memory_retention_days']}",
             f"- memory_entry_count: {data['privacy_controls']['memory_entry_count']}",
+            f"- notification_count: {data['privacy_controls']['notification_count']}",
+            f"- email_count: {data['privacy_controls']['email_count']}",
+            f"- whatsapp_count: {data['privacy_controls']['whatsapp_count']}",
+            f"- episode_count: {data['privacy_controls']['episode_count']}",
+            f"- proactive_insight_count: {data['privacy_controls']['proactive_insight_count']}",
         ]
     )
+    for key, value in data["privacy_controls"].get("retention_candidates", {}).items():
+        lines.append(f"- retention_candidate_{key}: {value}")
 
     lines.extend(
         [

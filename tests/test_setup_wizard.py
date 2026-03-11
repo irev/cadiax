@@ -267,6 +267,97 @@ def test_cli_privacy_export_and_delete_memory_controls(tmp_path, monkeypatch):
     assert agent_context.load_memory_summary_state()["summaries"] == []
 
 
+def test_cli_privacy_retention_prune_and_delete_personal_data(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.replace_memory_entries(
+        [
+            {
+                "id": 1,
+                "timestamp": "2024-01-01T00:00:00+00:00",
+                "source": "manual",
+                "text": "catatan lama",
+            }
+        ]
+    )
+    agent_context.save_notification_state(
+        {
+            "notifications": [
+                {
+                    "id": 1,
+                    "channel": "email",
+                    "title": "lama",
+                    "message": "lama",
+                    "target": "ops@example.com",
+                    "trace_id": "",
+                    "status": "queued",
+                    "metadata": {},
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2024-01-01T00:00:00+00:00",
+        }
+    )
+    agent_context.save_email_message_state(
+        {
+            "messages": [
+                {
+                    "id": 1,
+                    "direction": "outbound",
+                    "to_address": "ops@example.com",
+                    "subject": "lama",
+                    "body": "lama",
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2024-01-01T00:00:00+00:00",
+        }
+    )
+    agent_context.save_episode_state(
+        {
+            "episodes": [
+                {
+                    "trace_id": "trace-old",
+                    "status": "ok",
+                    "summary": "lama",
+                    "last_timestamp": "2024-01-01T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2024-01-01T00:00:00+00:00",
+            "episodes_analyzed": 1,
+        }
+    )
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "old",
+                    "confidence": "low",
+                    "summary": "lama",
+                    "reason": "old",
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2024-01-01T00:00:00+00:00",
+            "insights_generated": 1,
+        }
+    )
+
+    runner = CliRunner()
+    retention_result = runner.invoke(main, ["privacy", "retention", "--days", "30"])
+    prune_result = runner.invoke(main, ["privacy", "prune"])
+    delete_result = runner.invoke(main, ["privacy", "delete-personal-data"])
+
+    assert retention_result.exit_code == 0
+    assert "30 day" in retention_result.output
+    assert prune_result.exit_code == 0
+    assert "Pruned" in prune_result.output
+    assert delete_result.exit_code == 0
+    assert agent_context.load_notification_state()["notifications"] == []
+    assert agent_context.load_email_message_state()["messages"] == []
+    assert agent_context.load_episode_state()["episodes"] == []
+    assert agent_context.load_proactive_insight_state()["insights"] == []
+
+
 def test_cli_privacy_show_and_quiet_hours_configuration(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 
@@ -686,6 +777,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "privacy_controls" in payload
     assert "proactive_insight_count" in payload["personality"]
     assert "delivery_batch_count" in payload["notifications"]
+    assert "retention_candidates" in payload["privacy_controls"]
     assert "preference_count" in payload["storage"]
     assert "habit_count" in payload["storage"]
     assert "identity_count" in payload["storage"]
@@ -912,6 +1004,54 @@ def test_cli_doctor_reports_proactive_insights(tmp_path, monkeypatch):
     assert "- proactive_insight_count: 1" in result.output
     assert "proactive:medium -> Ada 1 job queued yang bisa diproses." in result.output
     assert payload["personality"]["proactive_insights_generated"] == 1
+
+
+def test_cli_doctor_reports_retention_candidates(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_privacy_control_state(
+        {
+            "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00"},
+            "consent_required_for_proactive": True,
+            "proactive_assistance_enabled": True,
+            "memory_retention_days": 30,
+            "updated_at": "2026-03-12T00:00:00+00:00",
+        }
+    )
+    agent_context.replace_memory_entries(
+        [
+            {
+                "id": 1,
+                "timestamp": "2024-01-01T00:00:00+00:00",
+                "source": "manual",
+                "text": "catatan lama",
+            }
+        ]
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "retention_candidate_memory_entries" in result.output
+    assert payload["privacy_controls"]["retention_candidates"]["memory_entries"] >= 1
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
