@@ -784,8 +784,35 @@ def test_memory_search_uses_hybrid_retrieval_for_relevant_entries(tmp_path, monk
     result = memory_module.handle("search dependency planner")
 
     assert result["type"] == "memory_search"
-    assert result["data"]["retrieval_mode"] == "hybrid_exact_token_overlap"
+    assert result["data"]["retrieval_mode"] == "hybrid_semantic_recency"
     assert any("planner dependency runtime" in entry["text"] for entry in result["data"]["entries"])
+
+
+def test_memory_search_supports_lightweight_semantic_aliases(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    memory_module = _load_module(ROOT / "skills" / "memory" / "script" / "handler.py", "memory_handler_semantic_alias_test")
+
+    memory_module.handle("add budget token harian untuk provider openai")
+    memory_module.handle("add catatan cuaca jakarta hari ini")
+    result = memory_module.handle("search anggaran token remote")
+
+    assert result["type"] == "memory_search"
+    assert any("budget token harian" in entry["text"] for entry in result["data"]["entries"])
+
+
+def test_memory_consolidate_writes_structured_summary_to_lessons(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    memory_module = _load_module(ROOT / "skills" / "memory" / "script" / "handler.py", "memory_handler_consolidate_test")
+
+    memory_module.handle("add planner butuh dependency jelas")
+    memory_module.handle("add planner butuh retry aman")
+    memory_module.handle("add planner perlu observability")
+    result = memory_module.handle("consolidate planner")
+    lessons = agent_context.LESSONS_FILE.read_text(encoding="utf-8")
+
+    assert "dikonsolidasikan ke lessons.md" in result
+    assert "memory consolidation:" in lessons
+    assert "topic=planner" in lessons
 
 
 def test_telegram_transport_handles_message_without_network(tmp_path, monkeypatch):

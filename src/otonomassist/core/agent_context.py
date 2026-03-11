@@ -11,6 +11,7 @@ import os
 from otonomassist.storage import SQLiteStateStore
 from otonomassist.core.secure_storage import decrypt_secret
 from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed, ensure_workspace_root_exists
+from otonomassist.memory import SemanticMemoryService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = Path(os.getenv("OTONOMASSIST_STATE_DIR", str(PROJECT_ROOT / ".otonomassist"))).expanduser().resolve()
@@ -368,30 +369,12 @@ def update_planner_task_fields(task_id: int, **fields: Any) -> bool:
 
 
 def retrieve_relevant_memories(query: str, limit: int = 5) -> list[dict[str, Any]]:
-    """Retrieve memory entries by simple token overlap and recency weighting."""
-    normalized = _tokenize_text(query)
-    if not normalized:
-        return load_recent_memories(limit=limit)
-
-    scored: list[tuple[float, dict[str, Any]]] = []
-    for entry in load_recent_memories(limit=10_000):
-        text = str(entry.get("text", ""))
-        tokens = _tokenize_text(text)
-        if not tokens:
-            continue
-        overlap = len(normalized.intersection(tokens))
-        if overlap <= 0:
-            continue
-        recency_bonus = min(int(entry.get("id", 0) or 0) / 10_000.0, 0.25)
-        scored.append((float(overlap) + recency_bonus, entry))
-
-    return [
-        entry
-        for _, entry in sorted(
-            scored,
-            key=lambda item: (-item[0], -int(item[1].get("id", 0) or 0)),
-        )[: max(1, limit)]
-    ]
+    """Retrieve memory entries via semantic ranking service."""
+    return SemanticMemoryService().retrieve(
+        load_recent_memories(limit=10_000),
+        query,
+        limit=limit,
+    )
 
 
 def load_job_queue_state() -> dict[str, Any]:

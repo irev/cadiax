@@ -15,6 +15,7 @@ from otonomassist.core.agent_context import (
     ensure_agent_storage,
     retrieve_relevant_memories,
 )
+from otonomassist.memory import MemoryConsolidationService
 from otonomassist.core.result_builder import build_result
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -151,7 +152,7 @@ def _search_memories(query: str) -> str:
             "query": query,
             "match_count": len(matches),
             "returned_entries": len(selected),
-            "retrieval_mode": "hybrid_exact_token_overlap",
+            "retrieval_mode": "hybrid_semantic_recency",
             "entries": [_memory_row(entry) for entry in selected],
             "summary": f"Ditemukan {len(matches)} memory yang cocok untuk '{query}'.",
         },
@@ -228,7 +229,8 @@ def _consolidate_memories(topic: str) -> str:
             return f"Tidak ada memori bertopik '{topic}' untuk dikonsolidasikan."
 
     recent = selected[-5:]
-    append_lesson(" | ".join(entry.get("text", "") for entry in recent))
+    summary = MemoryConsolidationService().summarize(recent, topic=topic)
+    append_lesson(summary or "memory consolidation: tidak ada ringkasan")
     return f"{len(recent)} memori dikonsolidasikan ke lessons.md."
 
 
@@ -251,7 +253,8 @@ def _consolidate_recent_entries(entries_to_merge: int) -> None:
     if not entries:
         return
     recent = entries[-entries_to_merge:]
-    append_lesson(" | ".join(entry.get("text", "") for entry in recent))
+    summary = MemoryConsolidationService().summarize(recent)
+    append_lesson(summary or "memory consolidation: tidak ada ringkasan")
 
 
 def _memory_row(entry: dict[str, Any]) -> dict[str, object]:
