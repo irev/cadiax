@@ -424,6 +424,28 @@ def test_heartbeat_service_persists_runtime_pulse(tmp_path, monkeypatch):
     assert payload["last_trigger"] == "test"
     assert payload["last_mode"] in {"ready", "active", "reflective", "deferred"}
     assert agent_context.load_heartbeat_state()["last_trigger"] == "test"
+    assert (tmp_path / "memory" / "heartbeat-state.json").exists()
+
+
+def test_heartbeat_service_runs_periodic_memory_maintenance(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.save_heartbeat_state(
+        {
+            "pulse_count": 2,
+            "last_pulse_at": "2026-03-12T00:00:00+00:00",
+            "last_mode": "reflective",
+            "last_summary": "lama",
+            "last_trigger": "old",
+            "last_actions": [],
+        }
+    )
+    agent_context.append_memory_entry("catatan untuk maintenance heartbeat", source="manual")
+
+    payload = HeartbeatService().pulse(trigger="maintenance-test")
+
+    assert payload["pulse_count"] == 3
+    assert "memory maintain" in payload["last_actions"]
+    assert "heartbeat-maintenance:" in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
 
 
 def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypatch):

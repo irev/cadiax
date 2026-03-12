@@ -567,6 +567,11 @@ def get_daily_memory_journal_path(day: date | None = None) -> Path:
     return get_daily_memory_dir() / f"{target_day.isoformat()}.md"
 
 
+def get_workspace_heartbeat_state_path() -> Path:
+    """Return the workspace path for projected heartbeat state."""
+    return get_daily_memory_dir() / "heartbeat-state.json"
+
+
 def append_daily_memory_note(
     text: str,
     source: str = "manual",
@@ -626,6 +631,23 @@ def load_recent_workspace_daily_notes(days: int = 2, max_chars: int = 1600) -> s
     if len(combined) <= max_chars:
         return combined
     return combined[:max_chars].rstrip() + "\n... (truncated)"
+
+
+def project_workspace_heartbeat_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Project heartbeat state into a workspace-readable JSON file when writable."""
+    ensure_agent_storage()
+    path = get_workspace_heartbeat_state_path()
+    payload = {"path": str(path), "written": False}
+    try:
+        directory = get_daily_memory_dir()
+        ensure_write_allowed(directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        ensure_write_allowed(path)
+        path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        payload["written"] = True
+    except PermissionError:
+        payload["written"] = False
+    return payload
 
 
 def append_memory_entry(

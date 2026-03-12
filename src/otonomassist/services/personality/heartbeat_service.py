@@ -13,6 +13,7 @@ from otonomassist.core.scheduler_runtime import get_scheduler_summary
 from otonomassist.core.workspace_guard import get_workspace_root
 from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+from otonomassist.memory import MemoryConsolidationService
 
 
 class HeartbeatService:
@@ -65,7 +66,12 @@ class HeartbeatService:
             "last_trigger": trigger,
             "last_actions": _dedupe_actions(actions),
         }
+        maintenance = self._run_memory_maintenance(state)
+        if maintenance.get("curated_written"):
+            state["last_actions"] = _dedupe_actions(state["last_actions"] + ["memory maintain"])
+            state["last_summary"] = f"{state['last_summary']} Maintenance memory dijalankan."
         agent_context.save_heartbeat_state(state)
+        projection = agent_context.project_workspace_heartbeat_state(state)
         append_execution_event(
             "heartbeat_pulse",
             trace_id=trace_id or new_trace_id(),
@@ -77,6 +83,8 @@ class HeartbeatService:
                 "actions": state["last_actions"],
                 "scheduler_status": get_scheduler_summary().get("last_status", ""),
                 "proactive_insight_count": len(proactive.get("insights", [])),
+                "workspace_projection_written": projection.get("written", False),
+                "memory_maintenance": maintenance,
             },
         )
         return state
@@ -107,6 +115,28 @@ class HeartbeatService:
         for action in state.get("last_actions", []):
             lines.append(f"- action: {action}")
         return "\n".join(lines)
+
+    def _run_memory_maintenance(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Periodically consolidate recent notes into curated memory."""
+        pulse_count = int(state.get("pulse_count", 0) or 0)
+        if pulse_count % 3 != 0:
+            return {"curated_written": False, "reason": "interval_not_reached"}
+        recent_entries = agent_context.load_recent_memories(limit=5)
+        if not recent_entries:
+            return {"curated_written": False, "reason": "no_recent_entries"}
+        summary = MemoryConsolidationService().summarize(recent_entries, topic="heartbeat")
+        if not summary:
+            return {"curated_written": False, "reason": "empty_summary"}
+        try:
+            agent_context.append_curated_memory(
+                f"heartbeat-maintenance: {summary}",
+                source="heartbeat",
+                session_mode="main",
+                agent_scope="default",
+            )
+        except PermissionError:
+            return {"curated_written": False, "reason": "workspace_read_only"}
+        return {"curated_written": True, "reason": "curated_memory_updated"}
 
 
 def _dedupe_actions(actions: list[str]) -> list[str]:
