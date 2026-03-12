@@ -8,6 +8,7 @@ import time
 
 import click
 
+from otonomassist import __version__
 from otonomassist.core import (
     Assistant,
     TransportContext,
@@ -60,7 +61,7 @@ def _build_conversation_service(skills_dir: Path) -> ConversationService:
 
 
 def _run_interactive(service: ConversationService) -> None:
-    click.echo("OtonomAssist v0.1.0")
+    click.echo(f"OtonomAssist v{__version__}")
     click.echo("Type 'help' for available commands, 'exit' to quit.")
     if should_recommend_setup():
         click.echo("Konfigurasi awal belum lengkap. Jalankan `otonomassist setup` untuk wizard interaktif.")
