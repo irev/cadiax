@@ -58,11 +58,18 @@ def load_event_bus_events(limit: int = 20) -> list[dict[str, Any]]:
     return _get_state_store().load_event_bus_events(limit=limit)
 
 
-def get_event_bus_snapshot(limit: int = 100) -> dict[str, Any]:
+def get_event_bus_snapshot(
+    limit: int = 100,
+    *,
+    agent_scope: str | None = None,
+    roles: tuple[str, ...] = (),
+) -> dict[str, Any]:
     """Summarize the current internal event bus state for operator diagnostics."""
     events = load_event_bus_events(limit=max(20, limit))
+    if agent_scope:
+        events = _filter_bus_events(events, agent_scope=agent_scope, roles=roles)
     topic_counts = Counter(event.get("topic", "") for event in events if event.get("topic"))
-    total_events = _get_state_store().count_event_bus_events()
+    total_events = len(events) if agent_scope else _get_state_store().count_event_bus_events()
     last_event = events[-1] if events else {}
     return {
         "status": "healthy" if total_events > 0 else "warning",
@@ -157,3 +164,20 @@ def _sync_from_execution_history_if_needed() -> None:
         return
     for event in store.load_execution_events(limit=500):
         publish_execution_event(event)
+
+
+def _filter_bus_events(
+    events: list[dict[str, Any]],
+    *,
+    agent_scope: str,
+    roles: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    return [
+        event
+        for event in events
+        if agent_context._is_scope_visible(  # type: ignore[attr-defined]
+            str((event.get("data") or {}).get("agent_scope") or "default"),
+            str(agent_scope or "").strip().lower() or "default",
+            roles=roles,
+        )
+    ]

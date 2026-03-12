@@ -47,10 +47,10 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
         return 200, {"scheduler": get_scheduler_summary()}
     if route == "/history":
         limit = _int_query(query, "limit", 20, minimum=1, maximum=200)
-        return 200, {"events": export_execution_events(limit=limit)}
+        return 200, {"events": export_execution_events(limit=limit, agent_scope=agent_scope or None, roles=roles)}
     if route == "/events":
         limit = _int_query(query, "limit", 20, minimum=1, maximum=200)
-        return 200, get_event_bus_snapshot(limit=limit)
+        return 200, get_event_bus_snapshot(limit=limit, agent_scope=agent_scope or None, roles=roles)
     if route == "/bootstrap":
         return 200, {"bootstrap": get_workspace_bootstrap_status()}
     if route == "/startup":

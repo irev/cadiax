@@ -1211,6 +1211,35 @@ def test_admin_api_scope_filtered_status_and_jobs(tmp_path, monkeypatch):
     assert jobs_payload["queue"]["jobs"][0]["agent_scope"] == "finance-agent"
 
 
+def test_admin_api_scope_filtered_history_and_events(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    assistant.handle_message(
+        "memory add catatan default history",
+        context=TransportContext(source="cli", roles=("approved",), session_mode="main", agent_scope="default"),
+    )
+    assistant.handle_message(
+        "memory add catatan finance history",
+        context=TransportContext(source="cli", roles=("finance",), session_mode="main", agent_scope="finance-agent"),
+    )
+
+    history_code, history_payload = build_admin_snapshot("/history?limit=50&agent_scope=finance-agent&roles=finance")
+    events_code, events_payload = build_admin_snapshot("/events?limit=50&agent_scope=finance-agent&roles=finance")
+
+    assert history_code == 200
+    assert events_code == 200
+    assert history_payload["events"]
+    assert all((event.get("data") or {}).get("agent_scope") == "finance-agent" for event in history_payload["events"])
+    assert events_payload["events"]
+    assert all((event.get("data") or {}).get("agent_scope") == "finance-agent" for event in events_payload["events"])
+
+
 def test_admin_api_requires_token_when_configured(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setenv("OTONOMASSIST_ADMIN_TOKEN", "token-rahasia")
