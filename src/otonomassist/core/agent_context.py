@@ -10,7 +10,7 @@ import os
 
 from otonomassist.storage import SQLiteStateStore
 from otonomassist.core.secure_storage import decrypt_secret
-from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed, ensure_workspace_root_exists
+from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed, ensure_workspace_root_exists, get_workspace_root
 from otonomassist.memory import SemanticMemoryService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -117,6 +117,8 @@ DEFAULT_PRIVACY_CONTROL_STATE = {
 
 def ensure_agent_storage() -> None:
     """Ensure persistent agent files exist."""
+    workspace_root = get_workspace_root()
+    workspace_was_missing = not workspace_root.exists()
     ensure_workspace_root_exists()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not MEMORY_FILE.exists():
@@ -188,6 +190,10 @@ def ensure_agent_storage() -> None:
     ensure_internal_state_write_allowed(get_state_db_path())
     _get_state_store().ensure_initialized()
     _bootstrap_durable_state()
+    if workspace_was_missing:
+        from otonomassist.core.openclaw_bootstrap import ensure_openclaw_workspace_skeleton
+
+        ensure_openclaw_workspace_skeleton(only_if_workspace_empty=True)
 
 
 def get_state_db_path() -> Path:

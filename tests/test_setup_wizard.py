@@ -775,6 +775,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "email" in payload
     assert "whatsapp" in payload
     assert "privacy_controls" in payload
+    assert "bootstrap" in payload
     assert "proactive_insight_count" in payload["personality"]
     assert "delivery_batch_count" in payload["notifications"]
     assert "retention_candidates" in payload["privacy_controls"]
@@ -1296,6 +1297,58 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     assert workspace_root.exists()
     assert workspace_root.is_dir()
     assert agent_context.get_state_db_path().exists()
+    assert (workspace_root / "AGENTS.md").exists()
+    assert (workspace_root / "SOUL.md").exists()
+    assert (workspace_root / "USER.md").exists()
+
+
+def test_cli_bootstrap_openclaw_seeds_workspace_templates(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace-clean")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["bootstrap", "openclaw"])
+    status_result = runner.invoke(main, ["bootstrap", "status", "--json"])
+
+    payload = json.loads(status_result.output)
+    assert result.exit_code == 0
+    assert "OpenClaw bootstrap written=" in result.output
+    assert (workspace_guard.WORKSPACE_ROOT / "AGENTS.md").exists()
+    assert (workspace_guard.WORKSPACE_ROOT / "IDENTITY.md").exists()
+    assert payload["workspace_seeded_count"] >= 4
+
+
+def test_cli_doctor_reports_openclaw_bootstrap_status(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+
+    runner = CliRunner()
+    bootstrap_result = runner.invoke(main, ["bootstrap", "openclaw", "--force"])
+    doctor_result = runner.invoke(main, ["doctor"])
+    doctor_json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(doctor_json_result.output)
+    assert bootstrap_result.exit_code == 0
+    assert doctor_result.exit_code == 0
+    assert "[Bootstrap]" in doctor_result.output
+    assert "- template_count:" in doctor_result.output
+    assert payload["bootstrap"]["workspace_seeded_count"] >= 4
 
 
 def test_run_process_wrapper_executes_python_command():

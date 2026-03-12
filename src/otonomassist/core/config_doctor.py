@@ -12,6 +12,7 @@ from otonomassist.core.execution_control import get_skill_timeout_seconds
 from otonomassist.core.event_bus import get_event_bus_snapshot
 from otonomassist.core.external_assets import build_external_asset_audit_summary
 from otonomassist.core.job_runtime import get_job_queue_summary
+from otonomassist.core.openclaw_bootstrap import get_openclaw_bootstrap_status
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
 from otonomassist.core.scheduler_runtime import get_scheduler_summary
 from otonomassist.interfaces.email import EmailInterfaceService
@@ -71,6 +72,7 @@ def get_config_status_data() -> dict[str, object]:
     from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
     privacy_controls = PrivacyControlService().get_diagnostics()
+    bootstrap = get_openclaw_bootstrap_status()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -174,6 +176,7 @@ def get_config_status_data() -> dict[str, object]:
         "email": email,
         "whatsapp": whatsapp,
         "privacy_controls": privacy_controls,
+        "bootstrap": bootstrap,
         "external_assets": {
             "asset_count": external_assets["asset_count"],
             "event_count": external_assets["event_count"],
@@ -341,6 +344,15 @@ def get_config_status_report() -> str:
             f"- process_manager_detail: {data['platform']['process_manager_detail']}",
             f"- service_runtime: {data['platform']['service_runtime']}",
             f"- service_runtime_detail: {data['platform']['service_runtime_detail']}",
+        ]
+    )
+    lines.extend(
+        [
+            "",
+            "[Bootstrap]",
+            f"- template_count: {data['bootstrap']['template_count']}",
+            f"- workspace_seeded_count: {data['bootstrap']['workspace_seeded_count']}",
+            f"- manifest_file: {data['bootstrap']['manifest_file']}",
         ]
     )
 
