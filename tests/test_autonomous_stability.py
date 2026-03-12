@@ -1166,6 +1166,51 @@ def test_admin_api_snapshot_exposes_status_metrics_and_history(tmp_path, monkeyp
     assert identity_entry["availability"] == "restricted"
 
 
+def test_admin_api_scope_filtered_status_and_jobs(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    agent_context.add_planner_task("memory add default task", status="todo")
+    with bind_interaction_context(session_mode="main", agent_scope="finance-agent", roles=("finance",)):
+        finance_task = agent_context.add_planner_task("memory add finance task", status="todo")
+        agent_context.append_memory_entry("catatan finance", source="manual")
+    job_state = agent_context.load_job_queue_state()
+    job_state["jobs"] = [
+        {
+            "id": 1,
+            "task_id": 1,
+            "task_text": "memory add default task",
+            "agent_scope": "default",
+            "session_mode": "main",
+            "priority": 0,
+            "status": "queued",
+        },
+        {
+            "id": 2,
+            "task_id": finance_task["id"],
+            "task_text": "memory add finance task",
+            "agent_scope": "finance-agent",
+            "session_mode": "main",
+            "priority": 0,
+            "status": "done",
+        },
+    ]
+    agent_context.save_job_queue_state(job_state)
+
+    status_code, status_payload = build_admin_snapshot("/status?agent_scope=finance-agent&roles=finance")
+    jobs_code, jobs_payload = build_admin_snapshot("/jobs?agent_scope=finance-agent&roles=finance")
+
+    assert status_code == 200
+    assert jobs_code == 200
+    assert status_payload["scope_filter"]["agent_scope"] == "finance-agent"
+    assert status_payload["scope_filter"]["visible_memory_entries"] == 1
+    assert status_payload["scope_filter"]["visible_planner_tasks"] == 1
+    assert jobs_payload["summary"]["total_jobs"] == 1
+    assert jobs_payload["queue"]["jobs"][0]["agent_scope"] == "finance-agent"
+
+
 def test_admin_api_requires_token_when_configured(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setenv("OTONOMASSIST_ADMIN_TOKEN", "token-rahasia")

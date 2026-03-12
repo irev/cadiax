@@ -31,7 +31,7 @@ from otonomassist.services.runtime.redaction_policy import RedactionPolicy
 ENV_FILE = agent_context.PROJECT_ROOT / ".env"
 
 
-def get_config_status_data() -> dict[str, object]:
+def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, ...] = ()) -> dict[str, object]:
     """Build machine-readable configuration status data."""
     agent_context.ensure_agent_storage()
     env_values = _load_env_values(ENV_FILE)
@@ -59,6 +59,7 @@ def get_config_status_data() -> dict[str, object]:
     scheduler = get_scheduler_summary()
     state_storage = agent_context.get_state_storage_info()
     scope_state = agent_context.get_scope_state_summary()
+    scope_filter = _build_scope_filter_snapshot(agent_scope=agent_scope, roles=roles)
     personality = PersonalityService()
     preference_profile = personality.get_structured_profile()
     habits = HabitModelService().load_or_refresh()
@@ -174,6 +175,7 @@ def get_config_status_data() -> dict[str, object]:
             "updated_at": memory_summary.get("updated_at", ""),
             "scope_state": scope_state,
         },
+        "scope_filter": scope_filter,
         "identity": {
             "identity_count": len(identity_state.get("identities", [])),
             "session_count": len(session_state.get("sessions", [])),
@@ -471,6 +473,17 @@ def get_config_status_report() -> str:
             f"(todo={item['planner_todo_count']}, done={item['planner_done_count']}, blocked={item['planner_blocked_count']}), "
             f"memory={item['memory_entry_count']}, latest_memory_id={item['latest_memory_id'] or '-'}"
         )
+    lines.extend(
+        [
+            "",
+            "[Scope Filter]",
+            f"- agent_scope: {data['scope_filter']['agent_scope'] or '-'}",
+            f"- roles: {', '.join(data['scope_filter']['roles']) or '-'}",
+            f"- visible_memory_entries: {data['scope_filter']['visible_memory_entries']}",
+            f"- visible_planner_tasks: {data['scope_filter']['visible_planner_tasks']}",
+            f"- visible_planner_todo: {data['scope_filter']['visible_planner_todo']}",
+        ]
+    )
     lines.extend(
         [
             "",
@@ -850,3 +863,29 @@ def _single_line_preview(value: str, max_chars: int = 100) -> str:
     if len(compact) <= max_chars:
         return compact
     return compact[:max_chars].rstrip() + "..."
+
+
+def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, ...]) -> dict[str, object]:
+    normalized_scope = str(agent_scope or "").strip().lower()
+    if not normalized_scope:
+        return {
+            "agent_scope": "",
+            "roles": [],
+            "visible_memory_entries": 0,
+            "visible_planner_tasks": 0,
+            "visible_planner_todo": 0,
+        }
+    visible_memories = agent_context.load_all_memories(agent_scope=normalized_scope, roles=roles)
+    planner = agent_context.load_planner_state()
+    visible_tasks = [
+        task
+        for task in planner.get("tasks", [])
+        if str(task.get("agent_scope") or "default").strip().lower() == normalized_scope
+    ]
+    return {
+        "agent_scope": normalized_scope,
+        "roles": list(roles),
+        "visible_memory_entries": len(visible_memories),
+        "visible_planner_tasks": len(visible_tasks),
+        "visible_planner_todo": sum(1 for task in visible_tasks if str(task.get("status") or "").strip().lower() == "todo"),
+    }

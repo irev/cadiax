@@ -11,7 +11,7 @@ from otonomassist.core.config_doctor import get_config_status_data
 from otonomassist.core.event_bus import get_event_bus_snapshot
 from otonomassist.core.execution_history import export_execution_events
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
-from otonomassist.core.job_runtime import get_job_queue_summary
+from otonomassist.core.job_runtime import get_job_queue_snapshot, get_job_queue_summary
 from otonomassist.core.workspace_bootstrap import get_workspace_bootstrap_status
 from otonomassist.core.agent_context import load_job_queue_state
 from otonomassist.core.scheduler_runtime import get_scheduler_summary
@@ -25,14 +25,23 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
     parsed = urlparse(path)
     route = parsed.path.rstrip("/") or "/"
     query = parse_qs(parsed.query)
+    agent_scope = (query.get("agent_scope") or [""])[0].strip().lower()
+    role_query = ",".join(query.get("role") or query.get("roles") or [])
+    roles = tuple(
+        item_text
+        for item_text in (item.strip().lower() for item in role_query.split(","))
+        if item_text
+    )
     if route == "/health":
-        status = get_config_status_data()
+        status = get_config_status_data(agent_scope=agent_scope or None, roles=roles)
         return 200, {"status": "ok", "overall": status["overall"]["status"]}
     if route == "/status":
-        return 200, get_config_status_data()
+        return 200, get_config_status_data(agent_scope=agent_scope or None, roles=roles)
     if route == "/metrics":
         return 200, get_execution_metrics_snapshot()
     if route == "/jobs":
+        if agent_scope:
+            return 200, get_job_queue_snapshot(agent_scope=agent_scope, roles=roles)
         return 200, {"summary": get_job_queue_summary(), "queue": load_job_queue_state()}
     if route == "/scheduler":
         return 200, {"scheduler": get_scheduler_summary()}
@@ -46,17 +55,10 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
         return 200, {"bootstrap": get_workspace_bootstrap_status()}
     if route == "/startup":
         session_mode = (query.get("session_mode") or ["main"])[0]
-        agent_scope = (query.get("agent_scope") or ["default"])[0]
-        role_query = ",".join(query.get("role") or query.get("roles") or [])
-        roles = tuple(
-            item_text
-            for item_text in (item.strip().lower() for item in role_query.split(","))
-            if item_text
-        )
         return 200, {
             "startup": StartupDocumentService().get_snapshot(
                 session_mode=session_mode,
-                agent_scope=agent_scope,
+                agent_scope=agent_scope or "default",
                 roles=roles,
             )
         }

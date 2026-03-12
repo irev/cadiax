@@ -45,6 +45,8 @@ def enqueue_ready_planner_task(
         "id": len(jobs) + 1,
         "task_id": task.get("id"),
         "task_text": task.get("text", ""),
+        "agent_scope": str(task.get("agent_scope") or "default"),
+        "session_mode": str(task.get("session_mode") or "main"),
         "priority": int(task.get("priority", 0) or 0),
         "status": "queued",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -401,6 +403,52 @@ def render_job_queue() -> str:
     return "\n".join(lines)
 
 
+def get_job_queue_snapshot(
+    *,
+    agent_scope: str | None = None,
+    roles: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Return queue summary and jobs, optionally filtered by scope visibility."""
+    state = load_job_queue_state()
+    jobs = list(state.get("jobs", []))
+    if agent_scope:
+        jobs = _filter_jobs_by_scope(jobs, agent_scope=agent_scope, roles=roles)
+    counts = {
+        "queued": 0,
+        "leased": 0,
+        "done": 0,
+        "failed": 0,
+        "requeued": 0,
+    }
+    for job in jobs:
+        status = str(job.get("status", "")).strip().lower()
+        if status in counts:
+            counts[status] += 1
+    worker = state.get("worker", {}) if isinstance(state.get("worker", {}), dict) else {}
+    return {
+        "summary": {
+            "total_jobs": len(jobs),
+            "queued_jobs": counts["queued"],
+            "leased_jobs": counts["leased"],
+            "done_jobs": counts["done"],
+            "failed_jobs": counts["failed"],
+            "requeued_jobs": counts["requeued"],
+            "last_worker_run_at": worker.get("last_run_at", ""),
+            "last_worker_status": worker.get("last_status", ""),
+            "last_worker_processed": int(worker.get("last_processed", 0) or 0),
+            "last_worker_trace_id": worker.get("last_trace_id", ""),
+        },
+        "queue": {
+            "jobs": jobs,
+            "worker": worker,
+        },
+        "scope_filter": {
+            "agent_scope": str(agent_scope or "").strip().lower(),
+            "roles": list(roles),
+        },
+    }
+
+
 def _record_runtime_queue_depth(state: dict[str, Any]) -> None:
     """Update runtime queue depth metrics from the current queue state."""
     jobs = state.get("jobs", [])
@@ -423,3 +471,19 @@ def _record_runtime_queue_depth(state: dict[str, Any]) -> None:
         failed=counts["failed"],
         requeued=counts["requeued"],
     )
+
+
+def _filter_jobs_by_scope(
+    jobs: list[dict[str, Any]],
+    *,
+    agent_scope: str,
+    roles: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    from otonomassist.core.agent_context import _is_scope_visible  # type: ignore[attr-defined]
+
+    requested_scope = str(agent_scope or "").strip().lower() or "default"
+    return [
+        job
+        for job in jobs
+        if _is_scope_visible(str(job.get("agent_scope", "default") or "default"), requested_scope, roles=roles)
+    ]
