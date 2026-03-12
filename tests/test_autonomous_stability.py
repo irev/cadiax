@@ -225,6 +225,19 @@ def test_personality_service_persists_structured_preference_profile(tmp_path, mo
     assert "proactive_mode: low" in prompt
 
 
+def test_personality_service_includes_identity_and_soul_documents(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "IDENTITY.md").write_text("# Identity\n\n- Fokus pada akurasi.\n", encoding="utf-8")
+    (tmp_path / "SOUL.md").write_text("# Soul\n\n- Bergerak tenang dan reflektif.\n", encoding="utf-8")
+
+    prompt = PersonalityService().build_prompt_block()
+
+    assert "## Identity" in prompt
+    assert "Fokus pada akurasi." in prompt
+    assert "## Soul" in prompt
+    assert "Bergerak tenang dan reflektif." in prompt
+
+
 def test_profile_skill_supports_structured_profile_commands(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     module = _load_module(ROOT / "skills" / "profile" / "script" / "handler.py", "profile_handler_structured_test")

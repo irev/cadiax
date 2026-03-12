@@ -7,7 +7,9 @@ from pathlib import Path
 from otonomassist.core import agent_context
 from otonomassist.services.personality.episodic_learning_service import EpisodicLearningService
 from otonomassist.services.personality.habit_model_service import HabitModelService
+from otonomassist.services.personality.identity_service import IdentityService
 from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
+from otonomassist.services.personality.soul_service import SoulService
 
 
 class PersonalityService:
@@ -15,6 +17,8 @@ class PersonalityService:
 
     def __init__(self, profile_path: Path | None = None) -> None:
         self.profile_path = profile_path or agent_context.PROFILE_FILE
+        self.identity_service = IdentityService()
+        self.soul_service = SoulService()
 
     def show_profile(self, max_chars: int = 4000) -> str:
         """Return the persisted profile markdown."""
@@ -118,6 +122,8 @@ class PersonalityService:
         else:
             parts.append("- belum ada profil preferensi terstruktur")
         habits = HabitModelService().list_habits(limit=3)
+        parts.extend(["", self.identity_service.build_prompt_block()])
+        parts.extend(["", self.soul_service.build_prompt_block()])
         parts.extend(["", "## Habit Signals"])
         if habits:
             parts.extend(f"- {item.get('summary')}" for item in habits)

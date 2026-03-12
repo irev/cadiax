@@ -24,10 +24,10 @@ from otonomassist.core.external_assets import (
     sync_external_skill_inventory,
 )
 from otonomassist.core.external_installer import install_external_skill, render_external_install_result
-from otonomassist.core.openclaw_bootstrap import (
-    ensure_openclaw_workspace_skeleton,
-    get_openclaw_bootstrap_status,
-    render_openclaw_bootstrap_status,
+from otonomassist.core.workspace_bootstrap import (
+    ensure_workspace_skeleton,
+    get_workspace_bootstrap_status,
+    render_workspace_bootstrap_status,
 )
 from otonomassist.core.job_runtime import enqueue_ready_planner_task, process_job_queue, render_job_queue
 from otonomassist.core.scheduler_runtime import run_scheduler
@@ -276,21 +276,21 @@ def bootstrap_group() -> None:
 @bootstrap_group.command("status")
 @click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON bootstrap status")
 def bootstrap_status_command(as_json: bool) -> None:
-    """Show OpenClaw bootstrap template status."""
-    payload = get_openclaw_bootstrap_status()
+    """Show workspace bootstrap template status."""
+    payload = get_workspace_bootstrap_status()
     if as_json:
         click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
-    click.echo(render_openclaw_bootstrap_status())
+    click.echo(render_workspace_bootstrap_status())
 
 
-@bootstrap_group.command("openclaw")
-@click.option("--force", is_flag=True, help="Overwrite existing OpenClaw skeleton files in workspace")
-def bootstrap_openclaw_command(force: bool) -> None:
-    """Seed OpenClaw templates into the workspace root."""
-    result = ensure_openclaw_workspace_skeleton(force=force, only_if_workspace_empty=not force)
+@bootstrap_group.command("foundation")
+@click.option("--force", is_flag=True, help="Overwrite existing foundation skeleton files in workspace")
+def bootstrap_foundation_command(force: bool) -> None:
+    """Seed foundation templates into the workspace root."""
+    result = ensure_workspace_skeleton(force=force, only_if_workspace_empty=not force)
     click.echo(
-        f"OpenClaw bootstrap written={result['written_count']} existing={result['existing_count']} "
+        f"Foundation bootstrap written={result['written_count']} existing={result['existing_count']} "
         f"skipped={result['skipped'] or '-'}"
     )
 

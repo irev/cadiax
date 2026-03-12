@@ -191,9 +191,9 @@ def ensure_agent_storage() -> None:
     _get_state_store().ensure_initialized()
     _bootstrap_durable_state()
     if workspace_was_missing:
-        from otonomassist.core.openclaw_bootstrap import ensure_openclaw_workspace_skeleton
+        from otonomassist.core.workspace_bootstrap import ensure_workspace_skeleton
 
-        ensure_openclaw_workspace_skeleton(only_if_workspace_empty=True)
+        ensure_workspace_skeleton(only_if_workspace_empty=True)
 
 
 def get_state_db_path() -> Path:

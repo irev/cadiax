@@ -1,4 +1,4 @@
-"""Bootstrap OpenClaw-style workspace skeleton documents from bundled templates."""
+"""Bootstrap workspace skeleton documents from bundled foundation templates."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from otonomassist.core import agent_context
 from otonomassist.core.workspace_guard import get_workspace_root
 
 
-OPENCLAW_TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "bootstrap_assets" / "openclaw" / "official"
-OPENCLAW_TEMPLATE_FILES = (
+FOUNDATION_TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "bootstrap_assets" / "foundation" / "official"
+FOUNDATION_TEMPLATE_FILES = (
     "AGENTS.dev.md",
     "AGENTS.md",
     "BOOT.md",
@@ -28,15 +28,12 @@ OPENCLAW_TEMPLATE_FILES = (
     "USER.md",
 )
 BOOTSTRAP_MANIFEST_FILE = "bootstrap_manifest.json"
-BOOTSTRAP_SOURCE_URL = "https://github.com/openclaw/openclaw/tree/main/docs/reference/templates"
-
-
-def ensure_openclaw_workspace_skeleton(
+def ensure_workspace_skeleton(
     *,
     force: bool = False,
     only_if_workspace_empty: bool = False,
 ) -> dict[str, Any]:
-    """Seed OpenClaw workspace templates into the workspace root."""
+    """Seed bundled foundation templates into the workspace root."""
     workspace_root = get_workspace_root()
     workspace_root.mkdir(parents=True, exist_ok=True)
     agent_context.DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -45,8 +42,8 @@ def ensure_openclaw_workspace_skeleton(
 
     written: list[str] = []
     existing: list[str] = []
-    for name in OPENCLAW_TEMPLATE_FILES:
-        source = OPENCLAW_TEMPLATE_DIR / name
+    for name in FOUNDATION_TEMPLATE_FILES:
+        source = FOUNDATION_TEMPLATE_DIR / name
         target = workspace_root / name
         if target.exists() and not force:
             existing.append(name)
@@ -55,9 +52,8 @@ def ensure_openclaw_workspace_skeleton(
         written.append(name)
 
     manifest = {
-        "source": "openclaw-official-templates",
-        "source_url": BOOTSTRAP_SOURCE_URL,
-        "template_count": len(OPENCLAW_TEMPLATE_FILES),
+        "source": "official-foundation-templates",
+        "template_count": len(FOUNDATION_TEMPLATE_FILES),
         "written": written,
         "existing": existing,
         "seeded_at": datetime.now(timezone.utc).isoformat(),
@@ -67,12 +63,12 @@ def ensure_openclaw_workspace_skeleton(
     return _build_result(written, existing, skipped="")
 
 
-def get_openclaw_bootstrap_status() -> dict[str, Any]:
+def get_workspace_bootstrap_status() -> dict[str, Any]:
     """Describe bundled template availability and workspace seed status."""
     workspace_root = get_workspace_root()
     manifest_path = agent_context.DATA_DIR / BOOTSTRAP_MANIFEST_FILE
     seeded_files = [
-        name for name in OPENCLAW_TEMPLATE_FILES
+        name for name in FOUNDATION_TEMPLATE_FILES
         if (workspace_root / name).exists()
     ]
     manifest: dict[str, Any] = {}
@@ -82,23 +78,21 @@ def get_openclaw_bootstrap_status() -> dict[str, Any]:
         except json.JSONDecodeError:
             manifest = {}
     return {
-        "template_count": len(OPENCLAW_TEMPLATE_FILES),
-        "bundled_template_dir": str(OPENCLAW_TEMPLATE_DIR),
+        "template_count": len(FOUNDATION_TEMPLATE_FILES),
+        "bundled_template_dir": str(FOUNDATION_TEMPLATE_DIR),
         "workspace_seeded_count": len(seeded_files),
         "workspace_seeded_files": seeded_files,
         "manifest_file": str(manifest_path),
         "manifest": manifest,
-        "source_url": BOOTSTRAP_SOURCE_URL,
     }
 
 
-def render_openclaw_bootstrap_status() -> str:
-    """Render the OpenClaw bootstrap status for operator inspection."""
-    status = get_openclaw_bootstrap_status()
+def render_workspace_bootstrap_status() -> str:
+    """Render the workspace bootstrap status for operator inspection."""
+    status = get_workspace_bootstrap_status()
     lines = [
-        "OpenClaw Bootstrap",
+        "Workspace Bootstrap",
         "",
-        f"- source_url: {status['source_url']}",
         f"- bundled_template_dir: {status['bundled_template_dir']}",
         f"- template_count: {status['template_count']}",
         f"- workspace_seeded_count: {status['workspace_seeded_count']}",

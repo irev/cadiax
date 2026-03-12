@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from otonomassist.core.admin_api import build_admin_snapshot
@@ -23,6 +24,7 @@ class InteractionOrchestrator:
     """Route one normalized interaction through built-ins, skills, and AI fallback."""
 
     RESEARCH_PREFIXES = ("cari informasi ", "cek informasi ", "cari fakta ", "verifikasi ")
+    DIRECT_SKILL_TOKEN_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$", re.IGNORECASE)
 
     def __init__(
         self,
@@ -180,6 +182,10 @@ class InteractionOrchestrator:
                 trace_id=context.trace_id or "",
             )
 
+        if self._looks_like_direct_skill_invocation(command):
+            skill_name = command.strip().split(maxsplit=1)[0]
+            return f"Skill '{skill_name}' tidak ditemukan."
+
         if self.assistant.should_force_research(command):
             research_skill = self.assistant.registry.get("research")
             if research_skill:
@@ -200,3 +206,9 @@ class InteractionOrchestrator:
         if decision.allowed:
             return None
         return decision.message or f"Command/skill `{prefix}` ditolak oleh policy."
+
+    def _looks_like_direct_skill_invocation(self, command: str) -> bool:
+        token = command.strip().split(maxsplit=1)[0] if command.strip() else ""
+        if "-" not in token and "_" not in token:
+            return False
+        return bool(self.DIRECT_SKILL_TOKEN_PATTERN.fullmatch(token))

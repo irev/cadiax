@@ -9,7 +9,14 @@ from otonomassist.services.interactions import (
     build_conversation_response,
     run_conversation_api,
 )
-from otonomassist.services.personality import EpisodicLearningService, HabitModelService, PersonalityService, ProactiveAssistanceService
+from otonomassist.services.personality import (
+    EpisodicLearningService,
+    HabitModelService,
+    IdentityService,
+    PersonalityService,
+    ProactiveAssistanceService,
+    SoulService,
+)
 from otonomassist.services.policy import PolicyDecision, PolicyService
 from otonomassist.services.runtime import BudgetManager, ContextBudgeter, ExecutionService, InteractionOrchestrator, ModelRouter, RedactionPolicy
 
@@ -20,6 +27,7 @@ __all__ = [
     "EpisodicLearningService",
     "ExecutionService",
     "HabitModelService",
+    "IdentityService",
     "IdentitySessionService",
     "InteractionRequest",
     "InteractionResponse",
@@ -31,6 +39,7 @@ __all__ = [
     "PolicyService",
     "ProactiveAssistanceService",
     "RedactionPolicy",
+    "SoulService",
     "build_conversation_response",
     "run_conversation_api",
 ]

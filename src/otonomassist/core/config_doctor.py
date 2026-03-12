@@ -12,7 +12,7 @@ from otonomassist.core.execution_control import get_skill_timeout_seconds
 from otonomassist.core.event_bus import get_event_bus_snapshot
 from otonomassist.core.external_assets import build_external_asset_audit_summary
 from otonomassist.core.job_runtime import get_job_queue_summary
-from otonomassist.core.openclaw_bootstrap import get_openclaw_bootstrap_status
+from otonomassist.core.workspace_bootstrap import get_workspace_bootstrap_status
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
 from otonomassist.core.scheduler_runtime import get_scheduler_summary
 from otonomassist.interfaces.email import EmailInterfaceService
@@ -72,7 +72,7 @@ def get_config_status_data() -> dict[str, object]:
     from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
     privacy_controls = PrivacyControlService().get_diagnostics()
-    bootstrap = get_openclaw_bootstrap_status()
+    bootstrap = get_workspace_bootstrap_status()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -150,6 +150,8 @@ def get_config_status_data() -> dict[str, object]:
             "skill_timeout_seconds": get_skill_timeout_seconds(),
         },
         "personality": {
+            "identity_preview": personality.identity_service.show_identity(max_chars=240),
+            "soul_preview": personality.soul_service.show_soul(max_chars=240),
             "habit_count": len(habits.get("habits", [])),
             "habit_signals_analyzed": habits.get("signals_analyzed", 0),
             "habits": habits.get("habits", []),
@@ -401,6 +403,8 @@ def get_config_status_report() -> str:
             f"- proactive_insights_generated: {data['personality']['proactive_insights_generated']}",
         ]
     )
+    lines.append(f"- identity_preview: {_single_line_preview(data['personality']['identity_preview'])}")
+    lines.append(f"- soul_preview: {_single_line_preview(data['personality']['soul_preview'])}")
     preference_profile = data["personality"].get("preference_profile", {})
     if preference_profile.get("preferred_channels"):
         lines.append(f"- preferred_channels: {', '.join(preference_profile['preferred_channels'])}")
@@ -799,3 +803,12 @@ def _mask_value(value: str) -> str:
     if len(value) <= 4:
         return "*" * len(value)
     return f"{'*' * 8}...{value[-4:]}"
+
+
+def _single_line_preview(value: str, max_chars: int = 100) -> str:
+    compact = " ".join(str(value or "").split())
+    if not compact:
+        return "-"
+    if len(compact) <= max_chars:
+        return compact
+    return compact[:max_chars].rstrip() + "..."

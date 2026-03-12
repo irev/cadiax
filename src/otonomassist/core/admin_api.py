@@ -12,7 +12,7 @@ from otonomassist.core.event_bus import get_event_bus_snapshot
 from otonomassist.core.execution_history import export_execution_events
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
 from otonomassist.core.job_runtime import get_job_queue_summary
-from otonomassist.core.openclaw_bootstrap import get_openclaw_bootstrap_status
+from otonomassist.core.workspace_bootstrap import get_workspace_bootstrap_status
 from otonomassist.core.agent_context import load_job_queue_state
 from otonomassist.core.scheduler_runtime import get_scheduler_summary
 
@@ -42,7 +42,7 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
         limit = _int_query(query, "limit", 20, minimum=1, maximum=200)
         return 200, get_event_bus_snapshot(limit=limit)
     if route == "/bootstrap":
-        return 200, {"bootstrap": get_openclaw_bootstrap_status()}
+        return 200, {"bootstrap": get_workspace_bootstrap_status()}
     if route == "/privacy":
         from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 

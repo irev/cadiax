@@ -1302,24 +1302,24 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     assert (workspace_root / "USER.md").exists()
 
 
-def test_cli_bootstrap_openclaw_seeds_workspace_templates(tmp_path, monkeypatch):
+def test_cli_bootstrap_foundation_seeds_workspace_templates(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace-clean")
     monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
 
     runner = CliRunner()
-    result = runner.invoke(main, ["bootstrap", "openclaw"])
+    result = runner.invoke(main, ["bootstrap", "foundation"])
     status_result = runner.invoke(main, ["bootstrap", "status", "--json"])
 
     payload = json.loads(status_result.output)
     assert result.exit_code == 0
-    assert "OpenClaw bootstrap written=" in result.output
+    assert "Foundation bootstrap written=" in result.output
     assert (workspace_guard.WORKSPACE_ROOT / "AGENTS.md").exists()
     assert (workspace_guard.WORKSPACE_ROOT / "IDENTITY.md").exists()
     assert payload["workspace_seeded_count"] >= 4
 
 
-def test_cli_doctor_reports_openclaw_bootstrap_status(tmp_path, monkeypatch):
+def test_cli_doctor_reports_bootstrap_status(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     env_file = tmp_path / ".env"
     env_file.write_text(
@@ -1339,7 +1339,7 @@ def test_cli_doctor_reports_openclaw_bootstrap_status(tmp_path, monkeypatch):
     monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
 
     runner = CliRunner()
-    bootstrap_result = runner.invoke(main, ["bootstrap", "openclaw", "--force"])
+    bootstrap_result = runner.invoke(main, ["bootstrap", "foundation", "--force"])
     doctor_result = runner.invoke(main, ["doctor"])
     doctor_json_result = runner.invoke(main, ["doctor", "--json"])
 
@@ -1349,6 +1349,23 @@ def test_cli_doctor_reports_openclaw_bootstrap_status(tmp_path, monkeypatch):
     assert "[Bootstrap]" in doctor_result.output
     assert "- template_count:" in doctor_result.output
     assert payload["bootstrap"]["workspace_seeded_count"] >= 4
+
+
+def test_cli_doctor_reports_identity_and_soul_previews(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "IDENTITY.md").write_text("# Identity\n\n- Akurat dan sabar.\n", encoding="utf-8")
+    (tmp_path / "SOUL.md").write_text("# Soul\n\n- Reflektif dan tenang.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "- identity_preview:" in result.output
+    assert "- soul_preview:" in result.output
+    assert "Akurat dan sabar." in payload["personality"]["identity_preview"]
+    assert "Reflektif dan tenang." in payload["personality"]["soul_preview"]
 
 
 def test_run_process_wrapper_executes_python_command():
