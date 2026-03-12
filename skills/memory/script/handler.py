@@ -11,6 +11,7 @@ from typing import Any
 from otonomassist.core.agent_context import (
     LESSONS_FILE,
     append_lesson,
+    append_curated_memory,
     append_memory_entry,
     ensure_agent_storage,
     load_memory_summary_state,
@@ -38,6 +39,8 @@ def handle(args: str) -> str:
 
     if command in {"add", "remember"}:
         return _add_memory(remainder)
+    if command == "curate":
+        return _curate_memory(remainder)
     if command == "list":
         return _list_memories(remainder)
     if command == "search":
@@ -59,6 +62,7 @@ def _usage() -> str:
         "Usage: memory <add|list|search|get|summarize|consolidate|context> ...\n"
         "Examples:\n"
         "- memory add private ai harus fokus lokal\n"
+        "- memory curate user suka ringkasan singkat\n"
         "- memory search planner\n"
         "- memory summarize\n"
         "- memory consolidate"
@@ -99,6 +103,14 @@ def _add_memory(text: str) -> str:
         _consolidate_recent_entries(entries_to_merge=5)
         message += " Auto-consolidation dijalankan."
     return message
+
+
+def _curate_memory(text: str) -> str:
+    if not text:
+        return "Memory curate membutuhkan isi memori."
+
+    payload = append_curated_memory(text, source="memory-skill")
+    return f"Curated memory tersimpan ke {payload['path']}."
 
 
 def _list_memories(limit_text: str) -> str:

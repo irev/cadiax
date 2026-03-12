@@ -8,6 +8,8 @@ from pathlib import Path
 import time
 from types import SimpleNamespace
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -312,6 +314,28 @@ def test_runtime_context_loads_curated_memory_only_for_main_session(tmp_path, mo
     assert "fakta privat utama" in main_prompt
     assert "tidak dimuat pada shared session" in shared_prompt
     assert "fakta privat utama" not in shared_prompt
+
+
+def test_curated_memory_write_requires_main_session(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    payload = agent_context.append_curated_memory(
+        "preferensi privat utama",
+        source="test",
+        session_mode="main",
+        agent_scope="default",
+    )
+
+    assert "MEMORY.md" in payload["path"]
+    assert "preferensi privat utama" in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
+
+    with pytest.raises(PermissionError):
+        agent_context.append_curated_memory(
+            "tidak boleh bocor",
+            source="test",
+            session_mode="shared",
+            agent_scope="group",
+        )
 
 
 def test_redaction_policy_can_be_disabled_for_local_debugging(tmp_path, monkeypatch):

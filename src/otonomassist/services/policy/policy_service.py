@@ -122,6 +122,21 @@ class PolicyService:
         prefix = prefix.strip().lower()
         subcommand = _extract_subcommand(args)
         roles = tuple(context.roles) if context else ()
+        session_mode = str(context.session_mode).strip().lower() if context else "main"
+
+        if prefix == "memory" and subcommand == "curate" and session_mode == "shared":
+            return self._record_decision(
+                context,
+                prefix,
+                args,
+                subcommand,
+                PolicyDecision(
+                    allowed=False,
+                    message="Curated memory hanya boleh ditulis dari main session.",
+                    reason="shared_session_curated_memory_denied",
+                    metadata={"roles": list(roles), "session_mode": session_mode},
+                ),
+            )
 
         if context is None or context.source != "telegram":
             return self._record_decision(
@@ -132,7 +147,7 @@ class PolicyService:
                 PolicyDecision(
                     allowed=True,
                     reason="policy_not_applicable",
-                    metadata={"roles": list(roles)},
+                    metadata={"roles": list(roles), "session_mode": session_mode},
                 ),
             )
 
@@ -146,7 +161,7 @@ class PolicyService:
                 PolicyDecision(
                     allowed=True,
                     reason="telegram_owner",
-                    metadata={"roles": list(roles)},
+                    metadata={"roles": list(roles), "session_mode": session_mode},
                 ),
             )
         if "approved" not in role_set:
@@ -159,7 +174,7 @@ class PolicyService:
                     allowed=False,
                     message="Akses Telegram belum diotorisasi untuk operasi ini.",
                     reason="telegram_unapproved",
-                    metadata={"roles": list(roles)},
+                    metadata={"roles": list(roles), "session_mode": session_mode},
                 ),
             )
 
@@ -185,7 +200,7 @@ class PolicyService:
                         "Gunakan akun owner atau minta owner menjalankannya."
                     ),
                     reason="telegram_owner_only_prefix",
-                    metadata={"roles": list(roles)},
+                    metadata={"roles": list(roles), "session_mode": session_mode},
                 ),
             )
 
@@ -201,7 +216,7 @@ class PolicyService:
                         allowed=False,
                         message=action_denied,
                         reason="telegram_approved_action_denied",
-                        metadata={"roles": list(roles)},
+                        metadata={"roles": list(roles), "session_mode": session_mode},
                     ),
                 )
             return self._record_decision(
@@ -212,7 +227,7 @@ class PolicyService:
                 PolicyDecision(
                     allowed=True,
                     reason="telegram_approved_prefix",
-                    metadata={"roles": list(roles)},
+                    metadata={"roles": list(roles), "session_mode": session_mode},
                 ),
             )
 
@@ -225,7 +240,7 @@ class PolicyService:
                 allowed=False,
                 message=f"Command/skill `{prefix}` tidak diizinkan untuk user Telegram non-owner.",
                 reason="telegram_prefix_denied",
-                metadata={"roles": list(roles)},
+                metadata={"roles": list(roles), "session_mode": session_mode},
             ),
         )
 
@@ -266,6 +281,7 @@ class PolicyService:
                     "subcommand": subcommand,
                     "reason": decision.reason,
                     "roles": list(context.roles),
+                    "session_mode": context.session_mode,
                     "message": decision.message or "",
                 },
             )

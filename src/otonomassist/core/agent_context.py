@@ -10,7 +10,7 @@ import os
 
 from otonomassist.storage import SQLiteStateStore
 from otonomassist.core.secure_storage import decrypt_secret
-from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed, ensure_workspace_root_exists, get_workspace_root
+from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed, ensure_workspace_root_exists, ensure_write_allowed, get_workspace_root
 from otonomassist.memory import SemanticMemoryService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -553,7 +553,13 @@ def load_workspace_curated_memory(max_chars: int = 1600) -> str:
     return load_markdown(memory_file, max_chars=max_chars)
 
 
-def append_memory_entry(text: str, source: str = "manual") -> dict[str, Any]:
+def append_memory_entry(
+    text: str,
+    source: str = "manual",
+    *,
+    session_mode: str = "main",
+    agent_scope: str = "default",
+) -> dict[str, Any]:
     """Append a memory entry and return it."""
     ensure_agent_storage()
     entries = load_recent_memories(limit=10_000)
@@ -561,12 +567,41 @@ def append_memory_entry(text: str, source: str = "manual") -> dict[str, Any]:
         "id": len(entries) + 1,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "source": source,
+        "session_mode": str(session_mode or "main").strip().lower() or "main",
+        "agent_scope": str(agent_scope or "default").strip().lower() or "default",
         "text": text,
     }
     ensure_internal_state_write_allowed(MEMORY_FILE)
     with MEMORY_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=True) + "\n")
     return entry
+
+
+def append_curated_memory(text: str, source: str = "manual", *, session_mode: str = "main", agent_scope: str = "default") -> dict[str, Any]:
+    """Append one curated long-term memory note in the workspace."""
+    ensure_agent_storage()
+    normalized_mode = str(session_mode or "main").strip().lower() or "main"
+    if normalized_mode != "main":
+        raise PermissionError("Curated memory hanya boleh ditulis dari main session.")
+    memory_file = get_workspace_root() / "MEMORY.md"
+    if not memory_file.exists():
+        ensure_write_allowed(memory_file)
+        memory_file.write_text("# Memory\n\n", encoding="utf-8")
+    ensure_read_allowed(memory_file)
+    content = memory_file.read_text(encoding="utf-8", errors="replace").rstrip()
+    stamp = datetime.now(timezone.utc).date().isoformat()
+    bullet = f"- {stamp} [{str(agent_scope or 'default').strip().lower() or 'default'}|{source}]: {text}"
+    recent_lines = [line.strip() for line in content.splitlines()[-20:] if line.strip()]
+    if bullet not in recent_lines:
+        ensure_write_allowed(memory_file)
+        memory_file.write_text(f"{content}\n{bullet}\n", encoding="utf-8")
+    return {
+        "path": str(memory_file),
+        "session_mode": normalized_mode,
+        "agent_scope": str(agent_scope or "default").strip().lower() or "default",
+        "text": text,
+        "source": source,
+    }
 
 
 def append_lesson(text: str) -> None:

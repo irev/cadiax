@@ -1274,6 +1274,26 @@ def test_conversation_service_accepts_main_session_override(tmp_path, monkeypatc
     assert response.status == "ok"
 
 
+def test_shared_session_blocks_curated_memory_command(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    service = cli_module.ConversationService(assistant)
+
+    response = service.handle(
+        InteractionRequest(
+            message="memory curate rahasia utama",
+            source="telegram",
+            user_id="1",
+            chat_id="100",
+            roles=("owner",),
+        )
+    )
+
+    assert "Curated memory hanya boleh ditulis dari main session." in response.response
+    memory_file = tmp_path / "MEMORY.md"
+    assert not memory_file.exists() or "rahasia utama" not in memory_file.read_text(encoding="utf-8", errors="replace")
+
+
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 
