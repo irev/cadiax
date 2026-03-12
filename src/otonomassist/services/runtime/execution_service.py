@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import re
 import time
 from typing import TYPE_CHECKING, Any, Callable
@@ -214,8 +215,9 @@ class ExecutionService:
 
         cleaned_args, presentation = extract_presentation_request(original_command or args, args)
         timeout_seconds = get_skill_timeout_seconds()
+        copied_context = contextvars.copy_context()
         raw_result, timed_out = run_with_timeout(
-            lambda: skill.run(cleaned_args),
+            lambda: copied_context.run(skill.run, cleaned_args),
             timeout_seconds=timeout_seconds,
         )
         if timed_out:

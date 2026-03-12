@@ -19,6 +19,7 @@ if str(SRC) not in sys.path:
 from otonomassist.core import agent_context  # noqa: E402
 from otonomassist.core.execution_history import load_execution_events  # noqa: E402
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot  # noqa: E402
+from otonomassist.core.runtime_interaction import bind_interaction_context  # noqa: E402
 from otonomassist.core import workspace_guard  # noqa: E402
 from otonomassist.core.admin_api import build_admin_snapshot  # noqa: E402
 from otonomassist.core.transport import TransportContext  # noqa: E402
@@ -466,6 +467,72 @@ def test_curated_memory_and_daily_notes_follow_scope_role_filters(tmp_path, monk
     assert "preferensi finansial khusus" in allowed_curated
     assert "preferensi default umum" in default_curated
     assert "preferensi finansial khusus" not in default_curated
+
+
+def test_memory_write_inherits_active_interaction_scope(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.handle_message(
+        "memory add catatan scoped interaction",
+        context=TransportContext(
+            source="cli",
+            roles=("finance",),
+            session_mode="main",
+            agent_scope="finance-agent",
+        ),
+    )
+
+    entries = agent_context.load_all_memories(agent_scope="finance-agent", roles=("finance",))
+    assert "tersimpan" in result
+    assert entries[-1]["agent_scope"] == "finance-agent"
+    assert "catatan scoped interaction" in entries[-1]["text"]
+
+
+def test_executor_nested_command_inherits_active_interaction_scope(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    agent_context.add_planner_task("memory add catatan nested executor", status="todo")
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.handle_message(
+        "executor next",
+        context=TransportContext(
+            source="cli",
+            roles=("finance",),
+            session_mode="main",
+            agent_scope="finance-agent",
+        ),
+    )
+
+    entries = agent_context.load_all_memories(agent_scope="finance-agent", roles=("finance",))
+    assert "Task #1 selesai dieksekusi." in result
+    assert any("catatan nested executor" in entry["text"] for entry in entries)
+
+
+def test_memory_write_rejects_scope_override_mismatch_under_active_context(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+
+    with bind_interaction_context(session_mode="main", agent_scope="finance-agent", roles=("finance",)):
+        with pytest.raises(PermissionError):
+            agent_context.append_memory_entry(
+                "tidak boleh keluar scope aktif",
+                source="manual",
+                agent_scope="default",
+            )
 
 
 def test_redaction_policy_can_be_disabled_for_local_debugging(tmp_path, monkeypatch):

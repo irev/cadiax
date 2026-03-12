@@ -1,6 +1,7 @@
 """Core assistant implementation."""
 
 import asyncio
+import contextvars
 import re
 import sys
 import time
@@ -14,6 +15,7 @@ from otonomassist.core.agent_context import build_runtime_context_block, ensure_
 from otonomassist.core.execution_control import classify_result_status, get_skill_timeout_seconds
 from otonomassist.core.execution_history import append_execution_event, new_trace_id, render_execution_history
 from otonomassist.core.execution_metrics import record_execution_metric, render_execution_metrics
+from otonomassist.core.runtime_interaction import bind_interaction_context, get_current_interaction_context
 from otonomassist.core.external_assets import (
     ensure_external_asset_layout,
     get_external_skills_dir,
@@ -165,7 +167,21 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 
     def execute(self, command: str) -> str:
         """Execute a command using AI-First orchestration."""
-        return self._execute_with_context(command, context=None)
+        inherited = get_current_interaction_context()
+        context = None
+        if inherited:
+            context = TransportContext(
+                source=str(inherited.get("source") or "cli"),
+                user_id=inherited.get("user_id"),
+                chat_id=inherited.get("chat_id"),
+                session_id=inherited.get("session_id"),
+                identity_id=inherited.get("identity_id"),
+                roles=tuple(inherited.get("roles") or ()),
+                trace_id=inherited.get("trace_id"),
+                session_mode=str(inherited.get("session_mode") or "main"),
+                agent_scope=str(inherited.get("agent_scope") or "default"),
+            )
+        return self._execute_with_context(command, context=context)
 
     def _execute_with_context(self, command: str, context: TransportContext | None) -> str:
         """Execute a command with optional transport context."""
@@ -192,7 +208,18 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
                 "identity_id": context.identity_id or "",
             },
         )
-        result = self.orchestrator.handle_command(command, context)
+        with bind_interaction_context(
+            source=context.source,
+            user_id=context.user_id,
+            chat_id=context.chat_id,
+            session_id=context.session_id,
+            identity_id=context.identity_id,
+            roles=context.roles,
+            trace_id=context.trace_id,
+            session_mode=context.session_mode,
+            agent_scope=context.agent_scope,
+        ):
+            result = self.orchestrator.handle_command(command, context)
         return self._finalize_command_result(context, command, result, command_started)
 
     def handle_message(self, message: str, context: TransportContext | None = None) -> str:
@@ -235,7 +262,8 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
                     new_loop.close()
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(run_in_new_loop)
+                copied = contextvars.copy_context()
+                future = executor.submit(copied.run, run_in_new_loop)
                 return future.result()
         else:
             return asyncio.run(coro)

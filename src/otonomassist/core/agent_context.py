@@ -618,19 +618,21 @@ def append_daily_memory_note(
     text: str,
     source: str = "manual",
     *,
-    session_mode: str = "main",
-    agent_scope: str = "default",
+    session_mode: str | None = None,
+    agent_scope: str | None = None,
     timestamp: datetime | None = None,
 ) -> dict[str, Any]:
     """Project one operational memory note into the workspace daily journal."""
     ensure_agent_storage()
     moment = timestamp or datetime.now(timezone.utc)
     journal_path = get_daily_memory_journal_path(moment.date())
+    resolved_session_mode = _resolve_write_session_mode(session_mode)
+    resolved_agent_scope = _resolve_write_agent_scope(agent_scope)
     payload = {
         "path": str(journal_path),
         "written": False,
-        "session_mode": str(session_mode or "main").strip().lower() or "main",
-        "agent_scope": str(agent_scope or "default").strip().lower() or "default",
+        "session_mode": resolved_session_mode,
+        "agent_scope": resolved_agent_scope,
     }
     try:
         journal_dir = get_daily_memory_dir()
@@ -704,18 +706,20 @@ def append_memory_entry(
     text: str,
     source: str = "manual",
     *,
-    session_mode: str = "main",
-    agent_scope: str = "default",
+    session_mode: str | None = None,
+    agent_scope: str | None = None,
 ) -> dict[str, Any]:
     """Append a memory entry and return it."""
     ensure_agent_storage()
     entries = load_recent_memories(limit=10_000)
+    resolved_session_mode = _resolve_write_session_mode(session_mode)
+    resolved_agent_scope = _resolve_write_agent_scope(agent_scope)
     entry = {
         "id": len(entries) + 1,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "source": source,
-        "session_mode": str(session_mode or "main").strip().lower() or "main",
-        "agent_scope": str(agent_scope or "default").strip().lower() or "default",
+        "session_mode": resolved_session_mode,
+        "agent_scope": resolved_agent_scope,
         "text": text,
     }
     ensure_internal_state_write_allowed(MEMORY_FILE)
@@ -733,10 +737,17 @@ def append_memory_entry(
     return entry
 
 
-def append_curated_memory(text: str, source: str = "manual", *, session_mode: str = "main", agent_scope: str = "default") -> dict[str, Any]:
+def append_curated_memory(
+    text: str,
+    source: str = "manual",
+    *,
+    session_mode: str | None = None,
+    agent_scope: str | None = None,
+) -> dict[str, Any]:
     """Append one curated long-term memory note in the workspace."""
     ensure_agent_storage()
-    normalized_mode = str(session_mode or "main").strip().lower() or "main"
+    normalized_mode = _resolve_write_session_mode(session_mode)
+    normalized_scope = _resolve_write_agent_scope(agent_scope)
     if normalized_mode != "main":
         raise PermissionError("Curated memory hanya boleh ditulis dari main session.")
     memory_file = get_workspace_root() / "MEMORY.md"
@@ -746,7 +757,7 @@ def append_curated_memory(text: str, source: str = "manual", *, session_mode: st
     ensure_read_allowed(memory_file)
     content = memory_file.read_text(encoding="utf-8", errors="replace").rstrip()
     stamp = datetime.now(timezone.utc).date().isoformat()
-    bullet = f"- {stamp} [{str(agent_scope or 'default').strip().lower() or 'default'}|{source}]: {text}"
+    bullet = f"- {stamp} [{normalized_scope}|{source}]: {text}"
     recent_lines = [line.strip() for line in content.splitlines()[-20:] if line.strip()]
     if bullet not in recent_lines:
         ensure_write_allowed(memory_file)
@@ -754,7 +765,7 @@ def append_curated_memory(text: str, source: str = "manual", *, session_mode: st
     return {
         "path": str(memory_file),
         "session_mode": normalized_mode,
-        "agent_scope": str(agent_scope or "default").strip().lower() or "default",
+        "agent_scope": normalized_scope,
         "text": text,
         "source": source,
     }
@@ -1157,6 +1168,32 @@ def _is_scope_visible(entry_scope: str, requested_scope: str, *, roles: tuple[st
 def _normalize_scope_name(value: str) -> str:
     normalized = str(value or "").strip().lower().replace(" ", "-")
     return normalized or "default"
+
+
+def _resolve_write_session_mode(value: str | None) -> str:
+    from otonomassist.core.runtime_interaction import get_current_interaction_context
+
+    inherited = get_current_interaction_context()
+    inherited_mode = str(inherited.get("session_mode") or "main").strip().lower() or "main"
+    if value is None:
+        return inherited_mode
+    normalized = str(value or "").strip().lower() or inherited_mode
+    if inherited and normalized != inherited_mode:
+        raise PermissionError("Memory write session_mode harus mengikuti interaction context aktif.")
+    return normalized
+
+
+def _resolve_write_agent_scope(value: str | None) -> str:
+    from otonomassist.core.runtime_interaction import get_current_interaction_context
+
+    inherited = get_current_interaction_context()
+    inherited_scope = _normalize_scope_name(str(inherited.get("agent_scope") or "default"))
+    if value is None:
+        return inherited_scope
+    normalized = _normalize_scope_name(value)
+    if inherited and normalized != inherited_scope:
+        raise PermissionError("Memory write agent_scope harus mengikuti interaction context aktif.")
+    return normalized
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
