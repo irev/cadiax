@@ -646,11 +646,23 @@ def privacy_delete_memory_command() -> None:
 
 
 @privacy_group.command("prune")
-def privacy_prune_command() -> None:
+@click.option("--scope", "scope_name", default="", help="Optional scope preview filter")
+@click.option("--role", "roles", multiple=True, help="Optional role filter, repeatable")
+@click.option("--dry-run", is_flag=True, help="Preview prune impact without deleting data")
+def privacy_prune_command(scope_name: str, roles: tuple[str, ...], dry_run: bool) -> None:
     """Prune personal data older than the configured retention period."""
     from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
-    result = PrivacyControlService().prune_expired_personal_data()
+    service = PrivacyControlService()
+    if dry_run or scope_name:
+        preview = service.preview_prune_expired_personal_data(agent_scope=scope_name or None, roles=roles)
+        total = int(preview["total_candidates"] or 0)
+        click.echo(
+            f"Prune preview total={total} scope={preview['agent_scope'] or '-'} "
+            f"roles={', '.join(preview['roles']) or '-'}"
+        )
+        return
+    result = service.prune_expired_personal_data(roles=roles)
     total = sum(int(value or 0) for value in result.values())
     click.echo(f"Pruned {total} expired personal-data record(s)")
 

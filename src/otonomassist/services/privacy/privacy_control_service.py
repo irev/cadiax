@@ -254,7 +254,7 @@ class PrivacyControlService:
             if agent_scope
             else agent_context.load_session_state().get("sessions", [])
         )
-        retention_candidates = self.get_retention_candidates()
+        retention_candidates = self.get_retention_candidates(agent_scope=agent_scope, roles=roles)
         return {
             "quiet_hours": state.get("quiet_hours", {}),
             "quiet_hours_active": self.is_quiet_hours(),
@@ -452,20 +452,124 @@ class PrivacyControlService:
         )
         return result
 
-    def get_retention_candidates(self, now: datetime | None = None) -> dict[str, int]:
+    def get_retention_candidates(
+        self,
+        now: datetime | None = None,
+        *,
+        agent_scope: str | None = None,
+        roles: tuple[str, ...] = (),
+    ) -> dict[str, int]:
         """Count records older than the configured retention window."""
         cutoff = self._get_retention_cutoff(now=now)
+        memories = (
+            agent_context.load_all_memories(agent_scope=agent_scope or "default", roles=roles)
+            if agent_scope
+            else agent_context.load_all_memories()
+        )
+        notifications = (
+            agent_context.filter_notification_entries_by_scope(
+                agent_context.load_notification_state().get("notifications", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_notification_state().get("notifications", [])
+        )
+        email_messages = (
+            agent_context.filter_email_messages_by_scope(
+                agent_context.load_email_message_state().get("messages", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_email_message_state().get("messages", [])
+        )
+        whatsapp_messages = (
+            agent_context.filter_whatsapp_messages_by_scope(
+                agent_context.load_whatsapp_message_state().get("messages", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_whatsapp_message_state().get("messages", [])
+        )
+        proactive_insights = (
+            agent_context.filter_proactive_insights_by_scope(
+                agent_context.load_proactive_insight_state().get("insights", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_proactive_insight_state().get("insights", [])
+        )
+        identities = (
+            agent_context.filter_identity_entries_by_scope(
+                agent_context.load_identity_state().get("identities", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_identity_state().get("identities", [])
+        )
+        sessions = (
+            agent_context.filter_session_entries_by_scope(
+                agent_context.load_session_state().get("sessions", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_session_state().get("sessions", [])
+        )
         return {
-            "memory_entries": _count_older_than(agent_context.load_all_memories(), "timestamp", cutoff),
-            "notifications": _count_older_than(agent_context.load_notification_state().get("notifications", []), "created_at", cutoff),
-            "email_messages": _count_older_than(agent_context.load_email_message_state().get("messages", []), "created_at", cutoff),
-            "whatsapp_messages": _count_older_than(agent_context.load_whatsapp_message_state().get("messages", []), "created_at", cutoff),
+            "memory_entries": _count_older_than(memories, "timestamp", cutoff),
+            "notifications": _count_older_than(notifications, "created_at", cutoff),
+            "email_messages": _count_older_than(email_messages, "created_at", cutoff),
+            "whatsapp_messages": _count_older_than(whatsapp_messages, "created_at", cutoff),
             "episodes": _count_older_than(agent_context.load_episode_state().get("episodes", []), "last_timestamp", cutoff),
-            "proactive_insights": _count_older_than(agent_context.load_proactive_insight_state().get("insights", []), "created_at", cutoff),
+            "proactive_insights": _count_older_than(proactive_insights, "created_at", cutoff),
+            "identities": _count_older_than(identities, "last_seen_at", cutoff),
+            "sessions": _count_older_than(sessions, "last_seen_at", cutoff),
         }
 
-    def prune_expired_personal_data(self, now: datetime | None = None) -> dict[str, int]:
+    def preview_prune_expired_personal_data(
+        self,
+        now: datetime | None = None,
+        *,
+        agent_scope: str | None = None,
+        roles: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        """Preview prune impact without mutating state."""
+        candidates = self.get_retention_candidates(now=now, agent_scope=agent_scope, roles=roles)
+        return {
+            "mode": "preview",
+            "agent_scope": str(agent_scope or ""),
+            "roles": list(roles),
+            "retention_candidates": candidates,
+            "total_candidates": sum(int(value or 0) for value in candidates.values()),
+        }
+
+    def prune_expired_personal_data(
+        self,
+        now: datetime | None = None,
+        *,
+        agent_scope: str | None = None,
+        roles: tuple[str, ...] = (),
+    ) -> dict[str, int]:
         """Prune records older than the configured retention window."""
+        if agent_scope:
+            preview = self.preview_prune_expired_personal_data(now=now, agent_scope=agent_scope, roles=roles)
+            append_execution_event(
+                "privacy_prune_previewed",
+                trace_id=new_trace_id(),
+                status="ok",
+                source="privacy",
+                command="privacy prune --dry-run",
+                data=preview,
+            )
+            return {
+                key: int(value or 0)
+                for key, value in preview["retention_candidates"].items()
+            }
         cutoff = self._get_retention_cutoff(now=now)
         result = {
             "memory_entries": self._prune_memories(cutoff),
@@ -506,6 +610,20 @@ class PrivacyControlService:
                 cutoff,
                 {"insights_generated": agent_context.load_proactive_insight_state().get("insights_generated", 0)},
             ),
+            "identities": self._prune_state_items(
+                agent_context.load_identity_state,
+                agent_context.save_identity_state,
+                "identities",
+                "last_seen_at",
+                cutoff,
+            ),
+            "sessions": self._prune_state_items(
+                agent_context.load_session_state,
+                agent_context.save_session_state,
+                "sessions",
+                "last_seen_at",
+                cutoff,
+            ),
         }
         append_execution_event(
             "privacy_prune_completed",
@@ -513,7 +631,7 @@ class PrivacyControlService:
             status="ok",
             source="privacy",
             command="privacy prune",
-            data={"cutoff": cutoff.isoformat(), "deleted": result},
+            data={"cutoff": cutoff.isoformat(), "deleted": result, "agent_scope": "", "roles": list(roles)},
         )
         return result
 

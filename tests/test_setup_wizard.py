@@ -371,6 +371,67 @@ def test_cli_privacy_retention_prune_and_delete_personal_data(tmp_path, monkeypa
     assert agent_context.load_proactive_insight_state()["insights"] == []
 
 
+def test_cli_privacy_prune_preview_supports_scope_filter(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    agent_context.replace_memory_entries(
+        [
+            {
+                "id": 1,
+                "timestamp": "2024-01-01T00:00:00+00:00",
+                "source": "manual",
+                "text": "catatan default lama",
+                "agent_scope": "default",
+            },
+            {
+                "id": 2,
+                "timestamp": "2024-01-01T00:00:00+00:00",
+                "source": "manual",
+                "text": "catatan finance lama",
+                "agent_scope": "finance-agent",
+            },
+        ]
+    )
+    agent_context.save_session_state(
+        {
+            "sessions": [
+                {
+                    "id": "session_1",
+                    "identity_id": "identity_1",
+                    "source": "api",
+                    "raw_session_id": "default",
+                    "agent_scope": "default",
+                    "last_seen_at": "2024-01-01T00:00:00+00:00",
+                },
+                {
+                    "id": "session_2",
+                    "identity_id": "identity_2",
+                    "source": "api",
+                    "raw_session_id": "finance",
+                    "agent_scope": "finance-agent",
+                    "roles": ["finance"],
+                    "last_seen_at": "2024-01-01T00:00:00+00:00",
+                },
+            ],
+            "updated_at": "2024-01-01T00:00:00+00:00",
+        }
+    )
+    runner = CliRunner()
+    retention_result = runner.invoke(main, ["privacy", "retention", "--days", "30"])
+    preview_result = runner.invoke(
+        main,
+        ["privacy", "prune", "--dry-run", "--scope", "finance-agent", "--role", "finance"],
+    )
+
+    assert retention_result.exit_code == 0
+    assert preview_result.exit_code == 0
+    assert "Prune preview total=" in preview_result.output
+    assert "scope=finance-agent" in preview_result.output
+
+
 def test_cli_privacy_show_and_quiet_hours_configuration(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 

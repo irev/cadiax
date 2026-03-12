@@ -75,7 +75,7 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
     whatsapp = WhatsAppInterfaceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)
     from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
-    privacy_controls = PrivacyControlService().get_diagnostics()
+    privacy_controls = PrivacyControlService().get_diagnostics(agent_scope=agent_scope or None, roles=roles)
     agent_scopes = AgentScopeService().get_snapshot()
     bootstrap = get_workspace_bootstrap_status()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
