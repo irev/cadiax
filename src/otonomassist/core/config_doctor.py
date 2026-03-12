@@ -58,6 +58,7 @@ def get_config_status_data() -> dict[str, object]:
     metrics = get_execution_metrics_snapshot()
     scheduler = get_scheduler_summary()
     state_storage = agent_context.get_state_storage_info()
+    scope_state = agent_context.get_scope_state_summary()
     personality = PersonalityService()
     preference_profile = personality.get_structured_profile()
     habits = HabitModelService().load_or_refresh()
@@ -171,6 +172,7 @@ def get_config_status_data() -> dict[str, object]:
             "summary_count": len(memory_summary.get("summaries", [])),
             "prune_candidates": memory_summary.get("prune_candidates", 0),
             "updated_at": memory_summary.get("updated_at", ""),
+            "scope_state": scope_state,
         },
         "identity": {
             "identity_count": len(identity_state.get("identities", [])),
@@ -460,8 +462,15 @@ def get_config_status_report() -> str:
             f"- summary_count: {data['memory']['summary_count']}",
             f"- prune_candidates: {data['memory']['prune_candidates']}",
             f"- updated_at: {data['memory']['updated_at'] or '-'}",
+            f"- scope_count: {data['memory']['scope_state']['scope_count']}",
         ]
     )
+    for item in data["memory"]["scope_state"].get("scopes", [])[:6]:
+        lines.append(
+            f"- scope:{item['scope']} -> planner={item['planner_task_count']} "
+            f"(todo={item['planner_todo_count']}, done={item['planner_done_count']}, blocked={item['planner_blocked_count']}), "
+            f"memory={item['memory_entry_count']}, latest_memory_id={item['latest_memory_id'] or '-'}"
+        )
     lines.extend(
         [
             "",

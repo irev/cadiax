@@ -253,16 +253,7 @@ def load_recent_memories(
 ) -> list[dict[str, Any]]:
     """Load recent memory entries."""
     ensure_agent_storage()
-    entries: list[dict[str, Any]] = []
-    ensure_read_allowed(MEMORY_FILE)
-    for line in MEMORY_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entries.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
+    entries = _load_memory_entries_raw()
     visible = filter_memory_entries_by_scope(entries, agent_scope=agent_scope, roles=roles)
     return visible[-limit:]
 
@@ -927,6 +918,51 @@ def filter_memory_entries_by_scope(
     ]
 
 
+def get_scope_state_summary() -> dict[str, Any]:
+    """Return operator-facing state counts grouped by agent scope."""
+    planner = load_planner_state()
+    memories = _load_memory_entries_raw()
+    scopes: dict[str, dict[str, Any]] = {}
+
+    def ensure_scope(scope_name: str) -> dict[str, Any]:
+        normalized = _normalize_scope_name(scope_name)
+        if normalized not in scopes:
+            scopes[normalized] = {
+                "scope": normalized,
+                "planner_task_count": 0,
+                "planner_todo_count": 0,
+                "planner_done_count": 0,
+                "planner_blocked_count": 0,
+                "memory_entry_count": 0,
+                "latest_memory_id": 0,
+            }
+        return scopes[normalized]
+
+    for task in planner.get("tasks", []):
+        bucket = ensure_scope(str(task.get("agent_scope") or "default"))
+        bucket["planner_task_count"] += 1
+        status = str(task.get("status") or "").strip().lower()
+        if status == "todo":
+            bucket["planner_todo_count"] += 1
+        elif status == "done":
+            bucket["planner_done_count"] += 1
+        elif status == "blocked":
+            bucket["planner_blocked_count"] += 1
+
+    for entry in memories:
+        bucket = ensure_scope(str(entry.get("agent_scope") or "default"))
+        bucket["memory_entry_count"] += 1
+        bucket["latest_memory_id"] = max(bucket["latest_memory_id"], int(entry.get("id", 0) or 0))
+
+    return {
+        "scope_count": len(scopes),
+        "scopes": [
+            scopes[name]
+            for name in sorted(scopes)
+        ],
+    }
+
+
 def load_job_queue_state() -> dict[str, Any]:
     """Load runtime job queue state."""
     return _load_durable_json_state(JOB_QUEUE_STATE_KEY, JOB_QUEUE_FILE, DEFAULT_JOB_QUEUE_STATE)
@@ -1101,6 +1137,20 @@ def _tokenize_text(text: str) -> set[str]:
         for cleaned in [raw.strip(".,:;!?()[]{}\"'")]
         if len(cleaned) >= 4
     }
+
+
+def _load_memory_entries_raw() -> list[dict[str, Any]]:
+    ensure_read_allowed(MEMORY_FILE)
+    entries: list[dict[str, Any]] = []
+    for line in MEMORY_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return entries
 
 
 def _filter_daily_journal_text(text: str, *, agent_scope: str, roles: tuple[str, ...]) -> str:

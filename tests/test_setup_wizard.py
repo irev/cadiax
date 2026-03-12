@@ -19,6 +19,7 @@ if str(SRC) not in sys.path:
 from otonomassist.cli import main  # noqa: E402
 import otonomassist.cli as cli_module  # noqa: E402
 from otonomassist.core import agent_context, workspace_guard  # noqa: E402
+from otonomassist.core.runtime_interaction import bind_interaction_context  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
 from otonomassist.core.skill_loader import SkillLoader  # noqa: E402
 from otonomassist.core.skill_registry import SkillRegistry  # noqa: E402
@@ -1219,6 +1220,43 @@ def test_cli_doctor_reports_scope_controls(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "scope:finance-agent -> proactive=no consent=yes roles=finance, owner" in result.output
     assert payload["privacy_controls"]["scope_count"] == 1
+
+
+def test_cli_doctor_reports_scope_state_breakdown(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.append_memory_entry("catatan default", source="manual", agent_scope="default")
+    with bind_interaction_context(session_mode="main", agent_scope="finance-agent", roles=("finance",)):
+        agent_context.append_memory_entry("catatan finance", source="manual")
+        agent_context.add_planner_task("memory add tindak lanjut finance", status="todo")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "- scope_count: 2" in result.output
+    assert "scope:finance-agent -> planner=1" in result.output
+    assert payload["memory"]["scope_state"]["scope_count"] == 2
+    finance_scope = next(item for item in payload["memory"]["scope_state"]["scopes"] if item["scope"] == "finance-agent")
+    assert finance_scope["planner_task_count"] == 1
+    assert finance_scope["memory_entry_count"] == 1
 
 
 def test_cli_agents_show_reads_scope_registry_from_agents_document(tmp_path, monkeypatch):
