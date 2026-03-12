@@ -8,7 +8,7 @@ import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from otonomassist.ai.base import AIResponse
-from otonomassist.core.execution_control import classify_result_status, get_skill_timeout_seconds, run_with_timeout
+from otonomassist.core.execution_control import classify_error_kind, classify_result_status, get_skill_timeout_seconds, run_with_timeout
 from otonomassist.core.execution_history import append_execution_event
 from otonomassist.core.execution_metrics import (
     record_ai_usage_metric,
@@ -215,11 +215,25 @@ class ExecutionService:
 
         cleaned_args, presentation = extract_presentation_request(original_command or args, args)
         timeout_seconds = get_skill_timeout_seconds()
-        copied_context = contextvars.copy_context()
-        raw_result, timed_out = run_with_timeout(
-            lambda: copied_context.run(skill.run, cleaned_args),
-            timeout_seconds=timeout_seconds,
-        )
+        attempts = 0
+        retry_budget = _retry_budget_for_policy(skill.definition.retry_policy)
+        raw_result: Any = None
+        timed_out = False
+        while True:
+            attempts += 1
+            copied_context = contextvars.copy_context()
+            raw_result, timed_out = run_with_timeout(
+                lambda: copied_context.run(skill.run, cleaned_args),
+                timeout_seconds=timeout_seconds,
+            )
+            preview = (
+                f"[ERROR] TIMEOUT\nSkill `{skill.name}` melebihi batas waktu {timeout_seconds:.2f} detik."
+                if timed_out
+                else format_result(raw_result, presentation)
+            )
+            if retry_budget <= 0 or classify_error_kind(preview) != "transient":
+                break
+            retry_budget -= 1
         if timed_out:
             formatted = (
                 f"[ERROR] TIMEOUT\n"
@@ -243,6 +257,7 @@ class ExecutionService:
                     "view": presentation.view,
                     "timed_out": timed_out,
                     "timeout_seconds": timeout_seconds,
+                    "attempt_count": attempts,
                     "skill_contract": {
                         "schema_version": skill.definition.schema_version,
                         "timeout_behavior": skill.definition.timeout_behavior,
@@ -258,3 +273,12 @@ class ExecutionService:
                 duration_ms=duration_ms,
             )
         return formatted
+
+
+def _retry_budget_for_policy(policy: str) -> int:
+    normalized = str(policy or "").strip().lower()
+    if normalized in {"transient_once", "retry_once"}:
+        return 1
+    if normalized in {"transient_twice", "retry_twice"}:
+        return 2
+    return 0

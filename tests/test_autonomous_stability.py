@@ -1820,6 +1820,61 @@ def test_skill_completed_event_includes_skill_contract_metadata(tmp_path, monkey
     assert contract["retry_policy"] == "none"
 
 
+def test_execution_service_retries_transient_skill_once(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    skills_dir = tmp_path / "skills"
+    flaky_dir = skills_dir / "flaky"
+    state_file = tmp_path / "flaky_state.txt"
+    (flaky_dir / "script").mkdir(parents=True, exist_ok=True)
+    (flaky_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "# Flaky",
+                "",
+                "## Metadata",
+                "- name: flaky",
+                "- description: Skill transient untuk test retry",
+                "- retry_policy: transient_once",
+                "",
+                "## Triggers",
+                "- flaky",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (flaky_dir / "script" / "handler.py").write_text(
+        "from pathlib import Path\n"
+        f"STATE_FILE = Path(r'{state_file}')\n"
+        "def handle(args: str) -> str:\n"
+        "    attempts = int(STATE_FILE.read_text(encoding='utf-8') or '0') if STATE_FILE.exists() else 0\n"
+        "    attempts += 1\n"
+        "    STATE_FILE.write_text(str(attempts), encoding='utf-8')\n"
+        "    if attempts == 1:\n"
+        "        return 'Error executing skill: connection reset by peer'\n"
+        "    return 'retry success'\n",
+        encoding="utf-8",
+    )
+
+    assistant = Assistant(skills_dir=skills_dir)
+    assistant.initialize()
+    trace_id = "trace-flaky-retry"
+    result = assistant.handle_message(
+        "flaky",
+        context=TransportContext(source="cli", roles=("approved",), session_mode="main", agent_scope="default", trace_id=trace_id),
+    )
+    events = load_execution_events(limit=20)
+    skill_event = next(
+        event
+        for event in events
+        if event.get("event_type") == "skill_completed" and event.get("trace_id") == trace_id
+    )
+
+    assert result == "retry success"
+    assert state_file.read_text(encoding="utf-8") == "2"
+    assert (skill_event.get("data") or {}).get("attempt_count") == 2
+    assert ((skill_event.get("data") or {}).get("skill_contract") or {}).get("retry_policy") == "transient_once"
+
+
 def test_scheduler_skips_cycles_during_quiet_hours(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     PrivacyControlService().set_quiet_hours(start="00:00", end="23:59", enabled=True)

@@ -7,7 +7,7 @@ Source checklist: [autonomous_ai_system_spec_extended.md](./autonomous_ai_system
 | Checklist | Status | Evidence |
 |---|---|---|
 | Interface terpisah dari core agent | Ya | `src/otonomassist/services/interactions/conversation_service.py`, `src/otonomassist/services/interactions/conversation_api.py`, `src/otonomassist/core/admin_api.py`, `src/otonomassist/interfaces/email/service.py`, `src/otonomassist/interfaces/whatsapp/service.py` |
-| Skill punya schema, timeout, dan retry | Sebagian | `src/otonomassist/services/runtime/execution_service.py`, `src/otonomassist/core/execution_control.py`, `src/otonomassist/core/skill_loader.py` |
+| Skill punya schema, timeout, dan retry | Ya | `src/otonomassist/services/runtime/execution_service.py`, `src/otonomassist/core/execution_control.py`, `src/otonomassist/core/skill_loader.py`, `src/otonomassist/models/skill.py` |
 | Memory dipisah jadi vector, episodic, dan preference | Ya | `src/otonomassist/memory/semantic_memory_service.py`, `src/otonomassist/services/personality/episodic_learning_service.py`, `src/otonomassist/services/personality/personality_service.py`, `src/otonomassist/core/agent_context.py` |
 | Planner punya limit iterasi | Ya | `src/otonomassist/core/job_runtime.py`, `src/otonomassist/core/scheduler_runtime.py`, `src/otonomassist/cli.py` |
 | Scheduler hormati quiet hours | Ya | `src/otonomassist/core/scheduler_runtime.py`, `src/otonomassist/services/privacy/privacy_control_service.py` |
@@ -22,12 +22,11 @@ Source checklist: [autonomous_ai_system_spec_extended.md](./autonomous_ai_system
 
 ## Summary
 
-- `Ya`: `11/13`
-- `Sebagian`: `2/13`
+- `Ya`: `12/13`
+- `Sebagian`: `1/13`
 - `Belum`: `0/13`
 - Confidence: `94%`
 
 ## Remaining Gaps
 
-1. Formalisasi `skill schema` dan `retry policy` agar seragam lintas semua skill path.
-2. Audit tambahan untuk minor execution path agar coverage `log/audit trail` benar-benar penuh, bukan hanya kuat pada jalur utama.
+1. Audit tambahan untuk minor execution path agar coverage `log/audit trail` benar-benar penuh, bukan hanya kuat pada jalur utama.
