@@ -69,6 +69,68 @@ class PrivacyControlService:
         )
         return state
 
+    def set_scope_controls(
+        self,
+        *,
+        scope: str,
+        proactive_enabled: bool | None = None,
+        consent_required: bool | None = None,
+        allowed_roles: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Persist privacy controls for one agent or domain scope."""
+        normalized_scope = _normalize_scope(scope)
+        state = self.get_settings()
+        scoped = dict(state.get("scoped_controls", {}))
+        current = dict(scoped.get(normalized_scope, {}))
+        if proactive_enabled is not None:
+            current["proactive_assistance_enabled"] = bool(proactive_enabled)
+        if consent_required is not None:
+            current["consent_required_for_proactive"] = bool(consent_required)
+        if allowed_roles is not None:
+            current["allowed_roles"] = sorted(
+                {
+                    item_text
+                    for item_text in (str(item).strip().lower() for item in allowed_roles)
+                    if item_text
+                }
+            )
+        current["updated_at"] = _utc_now_iso()
+        scoped[normalized_scope] = current
+        state["scoped_controls"] = scoped
+        state["updated_at"] = _utc_now_iso()
+        agent_context.save_privacy_control_state(state)
+        append_execution_event(
+            "privacy_scope_updated",
+            trace_id=new_trace_id(),
+            status="ok",
+            source="privacy",
+            command=f"privacy scope {normalized_scope}",
+            data={
+                "scope": normalized_scope,
+                "proactive_assistance_enabled": current.get("proactive_assistance_enabled"),
+                "consent_required_for_proactive": current.get("consent_required_for_proactive"),
+                "allowed_roles": current.get("allowed_roles", []),
+            },
+        )
+        return self.get_scope_controls(normalized_scope)
+
+    def get_scope_controls(self, scope: str) -> dict[str, Any]:
+        """Return merged privacy controls for one scope."""
+        normalized_scope = _normalize_scope(scope)
+        state = self.get_settings()
+        scoped = dict(state.get("scoped_controls", {})).get(normalized_scope, {})
+        return {
+            "scope": normalized_scope,
+            "proactive_assistance_enabled": bool(
+                scoped.get("proactive_assistance_enabled", state.get("proactive_assistance_enabled", True))
+            ),
+            "consent_required_for_proactive": bool(
+                scoped.get("consent_required_for_proactive", state.get("consent_required_for_proactive", True))
+            ),
+            "allowed_roles": list(scoped.get("allowed_roles", [])),
+            "updated_at": str(scoped.get("updated_at", "")),
+        }
+
     def is_quiet_hours(self, now: datetime | None = None) -> bool:
         """Return whether quiet hours are currently active."""
         state = self.get_settings()
@@ -91,9 +153,28 @@ class PrivacyControlService:
         is_proactive = bool(payload.get("proactive", False))
         if not is_proactive:
             return False, ""
+        scope = _normalize_scope(str(payload.get("agent_scope") or payload.get("scope") or "default"))
+        scoped = self.get_scope_controls(scope)
+        if scoped.get("allowed_roles"):
+            raw_roles = payload.get("roles", ())
+            if isinstance(raw_roles, str):
+                candidate_roles = [raw_roles]
+            elif isinstance(raw_roles, (list, tuple, set)):
+                candidate_roles = list(raw_roles)
+            else:
+                candidate_roles = []
+            request_roles = {
+                item_text
+                for item_text in (str(item).strip().lower() for item in candidate_roles)
+                if item_text
+            }
+            if request_roles and not request_roles.intersection(set(scoped["allowed_roles"])):
+                return True, "scope_role_denied"
         if not bool(state.get("proactive_assistance_enabled", True)):
             return True, "proactive_assistance_disabled"
-        if bool(state.get("consent_required_for_proactive", True)) and not bool(payload.get("user_consented", False)):
+        if not bool(scoped.get("proactive_assistance_enabled", True)):
+            return True, "scope_proactive_disabled"
+        if bool(scoped.get("consent_required_for_proactive", True)) and not bool(payload.get("user_consented", False)):
             return True, "proactive_consent_required"
         if not bool(payload.get("allow_during_quiet_hours", False)) and self.is_quiet_hours(now=now):
             return True, "quiet_hours_active"
@@ -110,6 +191,8 @@ class PrivacyControlService:
             "consent_required_for_proactive": bool(state.get("consent_required_for_proactive", True)),
             "proactive_assistance_enabled": bool(state.get("proactive_assistance_enabled", True)),
             "memory_retention_days": int(state.get("memory_retention_days", 365) or 365),
+            "scoped_controls": dict(state.get("scoped_controls", {})),
+            "scope_count": len(dict(state.get("scoped_controls", {}))),
             "memory_entry_count": len(memories),
             "memory_summary_count": len(agent_context.load_memory_summary_state().get("summaries", [])),
             "notification_count": len(agent_context.load_notification_state().get("notifications", [])),
@@ -136,6 +219,7 @@ class PrivacyControlService:
             "whatsapp": agent_context.load_whatsapp_message_state(),
             "episodes": agent_context.load_episode_state(),
             "proactive_insights": agent_context.load_proactive_insight_state(),
+            "heartbeat": agent_context.load_heartbeat_state(),
         }
 
     def export_user_data_to_path(self, output_path: Path) -> Path:
@@ -190,6 +274,7 @@ class PrivacyControlService:
             "deleted_whatsapp_messages": len(agent_context.load_whatsapp_message_state().get("messages", [])),
             "deleted_episodes": len(agent_context.load_episode_state().get("episodes", [])),
             "deleted_proactive_insights": len(agent_context.load_proactive_insight_state().get("insights", [])),
+            "deleted_heartbeat_state": 1 if agent_context.load_heartbeat_state().get("last_pulse_at") else 0,
         }
         agent_context.replace_memory_entries([])
         agent_context.save_memory_summary_state({"summaries": [], "updated_at": _utc_now_iso(), "prune_candidates": 0})
@@ -202,6 +287,16 @@ class PrivacyControlService:
         agent_context.save_whatsapp_message_state({"messages": [], "updated_at": _utc_now_iso()})
         agent_context.save_episode_state({"episodes": [], "updated_at": _utc_now_iso(), "episodes_analyzed": 0})
         agent_context.save_proactive_insight_state({"insights": [], "updated_at": _utc_now_iso(), "insights_generated": 0})
+        agent_context.save_heartbeat_state(
+            {
+                "pulse_count": 0,
+                "last_pulse_at": "",
+                "last_mode": "",
+                "last_summary": "",
+                "last_trigger": "",
+                "last_actions": [],
+            }
+        )
         append_execution_event(
             "privacy_delete_completed",
             trace_id=new_trace_id(),
@@ -357,3 +452,8 @@ def _parse_datetime(value: str) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _normalize_scope(value: str) -> str:
+    normalized = str(value or "").strip().lower().replace(" ", "-")
+    return normalized or "default"

@@ -326,6 +326,7 @@ def get_config_status_report() -> str:
             f"- consent_required_for_proactive: {'yes' if data['privacy_controls']['consent_required_for_proactive'] else 'no'}",
             f"- proactive_assistance_enabled: {'yes' if data['privacy_controls']['proactive_assistance_enabled'] else 'no'}",
             f"- memory_retention_days: {data['privacy_controls']['memory_retention_days']}",
+            f"- scope_count: {data['privacy_controls']['scope_count']}",
             f"- memory_entry_count: {data['privacy_controls']['memory_entry_count']}",
             f"- notification_count: {data['privacy_controls']['notification_count']}",
             f"- email_count: {data['privacy_controls']['email_count']}",
@@ -336,6 +337,12 @@ def get_config_status_report() -> str:
     )
     for key, value in data["privacy_controls"].get("retention_candidates", {}).items():
         lines.append(f"- retention_candidate_{key}: {value}")
+    for scope_name, scope_payload in sorted(data["privacy_controls"].get("scoped_controls", {}).items()):
+        lines.append(
+            f"- scope:{scope_name} -> proactive={'yes' if scope_payload.get('proactive_assistance_enabled', True) else 'no'} "
+            f"consent={'yes' if scope_payload.get('consent_required_for_proactive', True) else 'no'} "
+            f"roles={', '.join(scope_payload.get('allowed_roles', [])) or '-'}"
+        )
 
     lines.extend(
         [

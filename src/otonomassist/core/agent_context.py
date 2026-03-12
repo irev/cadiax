@@ -127,6 +127,7 @@ DEFAULT_PRIVACY_CONTROL_STATE = {
     "consent_required_for_proactive": True,
     "proactive_assistance_enabled": True,
     "memory_retention_days": 365,
+    "scoped_controls": {},
     "updated_at": "",
 }
 
@@ -360,6 +361,26 @@ def load_privacy_control_state() -> dict[str, Any]:
 def save_privacy_control_state(state: dict[str, Any]) -> None:
     """Persist privacy governance and quiet-hours controls."""
     quiet_hours = state.get("quiet_hours", {})
+    raw_scoped = state.get("scoped_controls", {})
+    scoped_controls: dict[str, Any] = {}
+    if isinstance(raw_scoped, dict):
+        for raw_scope, raw_payload in raw_scoped.items():
+            if not isinstance(raw_payload, dict):
+                continue
+            scoped_controls[str(raw_scope).strip()] = {
+                "proactive_assistance_enabled": bool(
+                    raw_payload.get("proactive_assistance_enabled", True)
+                ),
+                "consent_required_for_proactive": bool(
+                    raw_payload.get("consent_required_for_proactive", True)
+                ),
+                "allowed_roles": [
+                    str(item).strip().lower()
+                    for item in list(raw_payload.get("allowed_roles", []))
+                    if str(item).strip()
+                ],
+                "updated_at": str(raw_payload.get("updated_at", "")),
+            }
     normalized = {
         "quiet_hours": {
             "enabled": bool(quiet_hours.get("enabled", False)),
@@ -369,6 +390,7 @@ def save_privacy_control_state(state: dict[str, Any]) -> None:
         "consent_required_for_proactive": bool(state.get("consent_required_for_proactive", True)),
         "proactive_assistance_enabled": bool(state.get("proactive_assistance_enabled", True)),
         "memory_retention_days": int(state.get("memory_retention_days", 365) or 365),
+        "scoped_controls": scoped_controls,
         "updated_at": str(state.get("updated_at", "")),
     }
     _save_durable_json_state(

@@ -377,6 +377,34 @@ def test_cli_privacy_show_and_quiet_hours_configuration(tmp_path, monkeypatch):
     assert payload["quiet_hours"]["end"] == "06:30"
 
 
+def test_cli_privacy_scope_updates_scoped_controls(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "privacy",
+            "scope",
+            "--scope",
+            "finance-agent",
+            "--proactive-enabled",
+            "--consent-required",
+            "--allow-role",
+            "owner",
+            "--allow-role",
+            "finance",
+        ],
+    )
+    show_result = runner.invoke(main, ["privacy", "show", "--json"])
+
+    payload = json.loads(show_result.output)
+    assert result.exit_code == 0
+    assert "Scope `finance-agent` updated" in result.output
+    assert payload["scope_count"] == 1
+    assert payload["scoped_controls"]["finance-agent"]["allowed_roles"] == ["finance", "owner"]
+
+
 def test_cli_proactive_show_and_notify_respects_consent_boundary(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     agent_context.save_proactive_insight_state(
@@ -408,6 +436,56 @@ def test_cli_proactive_show_and_notify_respects_consent_boundary(tmp_path, monke
     assert notify_result.exit_code == 0
     assert "status=deferred" in notify_result.output
     assert notifications["notifications"][0]["status"] == "deferred"
+
+
+def test_cli_proactive_notify_respects_scope_role_boundary(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService  # noqa: E402
+
+    PrivacyControlService().set_scope_controls(
+        scope="finance-agent",
+        proactive_enabled=True,
+        consent_required=False,
+        allowed_roles=["owner"],
+    )
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "scope_role_test",
+                    "confidence": "high",
+                    "summary": "Insight sensitif finansial.",
+                    "suggested_action": "review finance",
+                    "reason": "scope_role_guard",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "insights_generated": 1,
+        }
+    )
+
+    runner = CliRunner()
+    notify_result = runner.invoke(
+        main,
+        [
+            "proactive",
+            "notify",
+            "--channel",
+            "email",
+            "--target",
+            "ops@example.com",
+            "--consented",
+            "--scope",
+            "finance-agent",
+            "--role",
+            "approved",
+        ],
+    )
+
+    notifications = agent_context.load_notification_state()
+    assert notify_result.exit_code == 0
+    assert "status=deferred" in notify_result.output
+    assert notifications["notifications"][0]["metadata"]["deferred_reason"] == "scope_role_denied"
 
 
 def test_cli_service_status_reports_wrapper_targets(tmp_path, monkeypatch):
@@ -1054,6 +1132,43 @@ def test_cli_doctor_reports_retention_candidates(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "retention_candidate_memory_entries" in result.output
     assert payload["privacy_controls"]["retention_candidates"]["memory_entries"] >= 1
+
+
+def test_cli_doctor_reports_scope_controls(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService  # noqa: E402
+
+    PrivacyControlService().set_scope_controls(
+        scope="finance-agent",
+        proactive_enabled=False,
+        consent_required=True,
+        allowed_roles=["owner", "finance"],
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "scope:finance-agent -> proactive=no consent=yes roles=finance, owner" in result.output
+    assert payload["privacy_controls"]["scope_count"] == 1
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):

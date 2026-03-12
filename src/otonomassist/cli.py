@@ -529,6 +529,34 @@ def privacy_quiet_hours_command(start: str, end: str, disable: bool) -> None:
     )
 
 
+@privacy_group.command("scope")
+@click.option("--scope", "scope_name", required=True, help="Agent/domain scope label")
+@click.option("--proactive-enabled/--proactive-disabled", default=None, help="Enable or disable proactive delivery for the scope")
+@click.option("--consent-required/--consent-optional", default=None, help="Require consent for proactive delivery in the scope")
+@click.option("--allow-role", "allowed_roles", multiple=True, help="Allowed role for the scope, repeatable")
+def privacy_scope_command(
+    scope_name: str,
+    proactive_enabled: bool | None,
+    consent_required: bool | None,
+    allowed_roles: tuple[str, ...],
+) -> None:
+    """Configure scope-specific privacy controls."""
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+
+    payload = PrivacyControlService().set_scope_controls(
+        scope=scope_name,
+        proactive_enabled=proactive_enabled,
+        consent_required=consent_required,
+        allowed_roles=list(allowed_roles) if allowed_roles else None,
+    )
+    click.echo(
+        f"Scope `{payload['scope']}` updated: proactive="
+        f"{'yes' if payload['proactive_assistance_enabled'] else 'no'} consent="
+        f"{'yes' if payload['consent_required_for_proactive'] else 'no'} roles="
+        f"{', '.join(payload['allowed_roles']) or '-'}"
+    )
+
+
 @privacy_group.command("retention")
 @click.option("--days", required=True, type=int, help="Retention period in days")
 def privacy_retention_command(days: int) -> None:
@@ -607,7 +635,9 @@ def proactive_show_command(as_json: bool) -> None:
 @click.option("--channel", default="internal", show_default=True, help="Notification channel label")
 @click.option("--target", default="", help="Delivery target")
 @click.option("--consented/--no-consented", default=False, show_default=True, help="Mark that the user consented to proactive delivery")
-def proactive_notify_command(channel: str, target: str, consented: bool) -> None:
+@click.option("--scope", "scope_name", default="default", show_default=True, help="Agent/domain scope label")
+@click.option("--role", "roles", multiple=True, help="Role surface for scope checks, repeatable")
+def proactive_notify_command(channel: str, target: str, consented: bool, scope_name: str, roles: tuple[str, ...]) -> None:
     """Dispatch the top proactive insight as a proactive notification."""
     service = ProactiveAssistanceService()
     insights = service.list_insights(limit=1)
@@ -620,7 +650,13 @@ def proactive_notify_command(channel: str, target: str, consented: bool) -> None
         title="Proactive Suggestion",
         message=top["summary"],
         target=target,
-        metadata={"proactive": True, "user_consented": consented, "reason": top.get("reason", "")},
+        metadata={
+            "proactive": True,
+            "user_consented": consented,
+            "reason": top.get("reason", ""),
+            "agent_scope": scope_name,
+            "roles": list(roles),
+        },
     )
     click.echo(
         f"Proactive notification #{payload['id']} status={payload['status']} "
