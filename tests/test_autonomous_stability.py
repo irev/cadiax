@@ -386,6 +386,88 @@ def test_memory_entry_projects_to_daily_workspace_journal(tmp_path, monkeypatch)
     assert "catatan operasional harian" in journal_path.read_text(encoding="utf-8")
 
 
+def test_runtime_context_filters_scope_bound_memory_and_daily_journal(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    agent_context.append_memory_entry(
+        "catatan umum default",
+        source="manual",
+        session_mode="main",
+        agent_scope="default",
+    )
+    agent_context.append_memory_entry(
+        "catatan finansial rahasia",
+        source="manual",
+        session_mode="main",
+        agent_scope="finance-agent",
+    )
+
+    default_prompt = agent_context.build_runtime_context_block(
+        "catatan",
+        session_mode="main",
+        agent_scope="default",
+        roles=("approved",),
+    )
+    restricted_prompt = agent_context.build_runtime_context_block(
+        "finansial",
+        session_mode="main",
+        agent_scope="finance-agent",
+        roles=("approved",),
+    )
+    allowed_prompt = agent_context.build_runtime_context_block(
+        "finansial",
+        session_mode="main",
+        agent_scope="finance-agent",
+        roles=("finance",),
+    )
+
+    assert "catatan umum default" in default_prompt
+    assert "catatan finansial rahasia" not in default_prompt
+    assert "catatan finansial rahasia" not in restricted_prompt
+    assert "catatan finansial rahasia" in allowed_prompt
+
+
+def test_curated_memory_and_daily_notes_follow_scope_role_filters(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    agent_context.append_curated_memory(
+        "preferensi default umum",
+        source="test",
+        session_mode="main",
+        agent_scope="default",
+    )
+    agent_context.append_curated_memory(
+        "preferensi finansial khusus",
+        source="test",
+        session_mode="main",
+        agent_scope="finance-agent",
+    )
+
+    restricted_curated = agent_context.load_workspace_curated_memory(
+        agent_scope="finance-agent",
+        roles=("approved",),
+    )
+    allowed_curated = agent_context.load_workspace_curated_memory(
+        agent_scope="finance-agent",
+        roles=("finance",),
+    )
+    default_curated = agent_context.load_workspace_curated_memory(
+        agent_scope="default",
+        roles=("approved",),
+    )
+
+    assert "preferensi finansial khusus" not in restricted_curated
+    assert "preferensi finansial khusus" in allowed_curated
+    assert "preferensi default umum" in default_curated
+    assert "preferensi finansial khusus" not in default_curated
+
+
 def test_redaction_policy_can_be_disabled_for_local_debugging(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setenv("OTONOMASSIST_PROMPT_REDACTION", "0")

@@ -245,7 +245,12 @@ def load_markdown(path: Path, max_chars: int = 1600) -> str:
     return text[:max_chars].rstrip() + "\n... (truncated)"
 
 
-def load_recent_memories(limit: int = 8) -> list[dict[str, Any]]:
+def load_recent_memories(
+    limit: int = 8,
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
     """Load recent memory entries."""
     ensure_agent_storage()
     entries: list[dict[str, Any]] = []
@@ -258,12 +263,17 @@ def load_recent_memories(limit: int = 8) -> list[dict[str, Any]]:
             entries.append(json.loads(line))
         except json.JSONDecodeError:
             continue
-    return entries[-limit:]
+    visible = filter_memory_entries_by_scope(entries, agent_scope=agent_scope, roles=roles)
+    return visible[-limit:]
 
 
-def load_all_memories() -> list[dict[str, Any]]:
+def load_all_memories(
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
     """Load the full memory journal."""
-    return load_recent_memories(limit=10_000)
+    return load_recent_memories(limit=10_000, agent_scope=agent_scope, roles=roles)
 
 
 def replace_memory_entries(entries: list[dict[str, Any]]) -> None:
@@ -498,9 +508,16 @@ def build_agent_context_block(query: str | None = None) -> str:
     return "\n".join(parts)
 
 
-def build_runtime_context_block(query: str | None = None, *, session_mode: str = "main") -> str:
+def build_runtime_context_block(
+    query: str | None = None,
+    *,
+    session_mode: str = "main",
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> str:
     """Build planner, lessons, and memory context without personality/profile."""
     ensure_agent_storage()
+    normalized_scope = _normalize_scope_name(agent_scope)
     parts = [
         "Persistent runtime context:",
         "",
@@ -524,19 +541,33 @@ def build_runtime_context_block(query: str | None = None, *, session_mode: str =
 
     normalized_session_mode = str(session_mode or "main").strip().lower()
     parts.extend(["", "## Daily Journal"])
-    daily_notes = load_recent_workspace_daily_notes(days=2, max_chars=1200)
+    daily_notes = load_recent_workspace_daily_notes(
+        days=2,
+        max_chars=1200,
+        agent_scope=normalized_scope,
+        roles=roles,
+    )
     parts.append(daily_notes or "- belum ada daily journal workspace")
     parts.extend(["", "## Session Memory Boundary"])
     parts.append(f"- session_mode: {normalized_session_mode}")
+    parts.append(f"- agent_scope: {normalized_scope}")
     if normalized_session_mode == "main":
         parts.extend(["", "## Curated Memory"])
-        curated_memory = load_workspace_curated_memory(max_chars=1200)
+        curated_memory = load_workspace_curated_memory(
+            max_chars=1200,
+            agent_scope=normalized_scope,
+            roles=roles,
+        )
         parts.append(curated_memory or "- belum ada curated memory workspace")
     else:
         parts.extend(["", "## Curated Memory"])
         parts.append("- tidak dimuat pada shared session")
 
-    memories = retrieve_relevant_memories(query, limit=5) if query and query.strip() else load_recent_memories(limit=5)
+    memories = (
+        retrieve_relevant_memories(query, limit=5, agent_scope=normalized_scope, roles=roles)
+        if query and query.strip()
+        else load_recent_memories(limit=5, agent_scope=normalized_scope, roles=roles)
+    )
     parts.extend(["", "## Relevant Memories" if query and query.strip() else "## Recent Memories"])
     if memories:
         for entry in memories:
@@ -547,13 +578,24 @@ def build_runtime_context_block(query: str | None = None, *, session_mode: str =
     return "\n".join(parts)
 
 
-def load_workspace_curated_memory(max_chars: int = 1600) -> str:
+def load_workspace_curated_memory(
+    max_chars: int = 1600,
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> str:
     """Load workspace curated long-term memory when present."""
     ensure_agent_storage()
     memory_file = get_workspace_root() / "MEMORY.md"
     if not memory_file.exists():
         return ""
-    return load_markdown(memory_file, max_chars=max_chars)
+    ensure_read_allowed(memory_file)
+    text = memory_file.read_text(encoding="utf-8", errors="replace")
+    filtered = _filter_curated_memory_text(text, agent_scope=agent_scope, roles=roles)
+    filtered = filtered.strip()
+    if len(filtered) <= max_chars:
+        return filtered
+    return filtered[:max_chars].rstrip() + "\n... (truncated)"
 
 
 def get_daily_memory_dir() -> Path:
@@ -614,7 +656,13 @@ def append_daily_memory_note(
     return payload
 
 
-def load_recent_workspace_daily_notes(days: int = 2, max_chars: int = 1600) -> str:
+def load_recent_workspace_daily_notes(
+    days: int = 2,
+    max_chars: int = 1600,
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> str:
     """Load recent workspace daily memory journals for session startup context."""
     ensure_agent_storage()
     snippets: list[str] = []
@@ -626,7 +674,9 @@ def load_recent_workspace_daily_notes(days: int = 2, max_chars: int = 1600) -> s
         ensure_read_allowed(journal_path)
         text = journal_path.read_text(encoding="utf-8", errors="replace").strip()
         if text:
-            snippets.append(text)
+            filtered = _filter_daily_journal_text(text, agent_scope=agent_scope, roles=roles)
+            if filtered:
+                snippets.append(filtered)
     combined = "\n\n".join(reversed(snippets))
     if len(combined) <= max_chars:
         return combined
@@ -819,13 +869,34 @@ def update_planner_task_fields(task_id: int, **fields: Any) -> bool:
     return False
 
 
-def retrieve_relevant_memories(query: str, limit: int = 5) -> list[dict[str, Any]]:
+def retrieve_relevant_memories(
+    query: str,
+    limit: int = 5,
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
     """Retrieve memory entries via semantic ranking service."""
     return SemanticMemoryService().retrieve(
-        load_recent_memories(limit=10_000),
+        load_recent_memories(limit=10_000, agent_scope=agent_scope, roles=roles),
         query,
         limit=limit,
     )
+
+
+def filter_memory_entries_by_scope(
+    entries: list[dict[str, Any]],
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """Filter memory entries by scope visibility and role access."""
+    normalized_scope = _normalize_scope_name(agent_scope)
+    return [
+        entry
+        for entry in entries
+        if _is_scope_visible(str(entry.get("agent_scope", "default") or "default"), normalized_scope, roles=roles)
+    ]
 
 
 def load_job_queue_state() -> dict[str, Any]:
@@ -1002,6 +1073,90 @@ def _tokenize_text(text: str) -> set[str]:
         for cleaned in [raw.strip(".,:;!?()[]{}\"'")]
         if len(cleaned) >= 4
     }
+
+
+def _filter_daily_journal_text(text: str, *, agent_scope: str, roles: tuple[str, ...]) -> str:
+    filtered_lines: list[str] = []
+    for line in text.splitlines():
+        if _daily_journal_line_visible(line, agent_scope=agent_scope, roles=roles):
+            filtered_lines.append(line)
+    return "\n".join(filtered_lines).strip()
+
+
+def _filter_curated_memory_text(text: str, *, agent_scope: str, roles: tuple[str, ...]) -> str:
+    filtered_lines: list[str] = []
+    for line in text.splitlines():
+        if _curated_memory_line_visible(line, agent_scope=agent_scope, roles=roles):
+            filtered_lines.append(line)
+    return "\n".join(filtered_lines).strip()
+
+
+def _daily_journal_line_visible(line: str, *, agent_scope: str, roles: tuple[str, ...]) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return True
+    if not stripped.startswith("- "):
+        return True
+    marker = _extract_bracket_marker(stripped)
+    if not marker:
+        return _normalize_scope_name(agent_scope) == "default"
+    parts = marker.split("|")
+    if len(parts) < 3:
+        return _normalize_scope_name(agent_scope) == "default"
+    return _is_scope_visible(parts[1], _normalize_scope_name(agent_scope), roles=roles)
+
+
+def _curated_memory_line_visible(line: str, *, agent_scope: str, roles: tuple[str, ...]) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return True
+    if not stripped.startswith("- "):
+        return True
+    marker = _extract_bracket_marker(stripped)
+    if not marker:
+        return _normalize_scope_name(agent_scope) == "default"
+    parts = marker.split("|")
+    if len(parts) < 2:
+        return _normalize_scope_name(agent_scope) == "default"
+    return _is_scope_visible(parts[0], _normalize_scope_name(agent_scope), roles=roles)
+
+
+def _extract_bracket_marker(line: str) -> str:
+    start = line.find("[")
+    end = line.find("]", start + 1)
+    if start < 0 or end < 0:
+        return ""
+    return line[start + 1 : end].strip()
+
+
+def _is_scope_visible(entry_scope: str, requested_scope: str, *, roles: tuple[str, ...]) -> bool:
+    from otonomassist.services.personality.agent_scope_service import AgentScopeService
+
+    normalized_requested = _normalize_scope_name(requested_scope)
+    normalized_entry = _normalize_scope_name(entry_scope)
+    if normalized_entry != normalized_requested:
+        return False
+    scope_entry = AgentScopeService().get_scope(normalized_requested)
+    if not bool(scope_entry.get("declared", True)) and normalized_requested != "default":
+        return False
+    allowed_roles = {
+        item_text
+        for item_text in (str(item).strip().lower() for item in scope_entry.get("allowed_roles", []))
+        if item_text
+    }
+    if not allowed_roles:
+        return True
+    request_roles = {
+        item_text
+        for item_text in (str(item).strip().lower() for item in roles)
+        if item_text
+    }
+    return bool(request_roles.intersection(allowed_roles))
+
+
+def _normalize_scope_name(value: str) -> str:
+    normalized = str(value or "").strip().lower().replace(" ", "-")
+    return normalized or "default"
 
 
 def _write_text_atomic(path: Path, text: str) -> None:

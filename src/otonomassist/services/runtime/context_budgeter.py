@@ -35,7 +35,12 @@ class ContextBudgeter:
                 agent_scope=agent_scope,
                 roles=roles,
             ),
-            runtime_context=build_runtime_context_block(command, session_mode=session_mode),
+            runtime_context=build_runtime_context_block(
+                command,
+                session_mode=session_mode,
+                agent_scope=agent_scope,
+                roles=roles,
+            ),
         )
 
     def build_general_reasoning_context(
@@ -56,7 +61,12 @@ class ContextBudgeter:
                 agent_scope=agent_scope,
                 roles=roles,
             ),
-            runtime_context=build_runtime_context_block(query, session_mode=session_mode),
+            runtime_context=build_runtime_context_block(
+                query,
+                session_mode=session_mode,
+                agent_scope=agent_scope,
+                roles=roles,
+            ),
         )
 
     def compose(
