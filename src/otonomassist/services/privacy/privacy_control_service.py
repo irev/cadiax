@@ -187,10 +187,73 @@ class PrivacyControlService:
             return True, "quiet_hours_active"
         return False, ""
 
-    def get_diagnostics(self) -> dict[str, Any]:
+    def get_diagnostics(
+        self,
+        *,
+        agent_scope: str | None = None,
+        roles: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
         """Return machine-readable privacy governance diagnostics."""
         state = self.get_settings()
-        memories = agent_context.load_all_memories()
+        memories = (
+            agent_context.load_all_memories(agent_scope=agent_scope or "default", roles=roles)
+            if agent_scope
+            else agent_context.load_all_memories()
+        )
+        notifications = (
+            agent_context.filter_notification_entries_by_scope(
+                agent_context.load_notification_state().get("notifications", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_notification_state().get("notifications", [])
+        )
+        email_messages = (
+            agent_context.filter_email_messages_by_scope(
+                agent_context.load_email_message_state().get("messages", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_email_message_state().get("messages", [])
+        )
+        whatsapp_messages = (
+            agent_context.filter_whatsapp_messages_by_scope(
+                agent_context.load_whatsapp_message_state().get("messages", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_whatsapp_message_state().get("messages", [])
+        )
+        proactive_insights = (
+            agent_context.filter_proactive_insights_by_scope(
+                agent_context.load_proactive_insight_state().get("insights", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_proactive_insight_state().get("insights", [])
+        )
+        identities = (
+            agent_context.filter_identity_entries_by_scope(
+                agent_context.load_identity_state().get("identities", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_identity_state().get("identities", [])
+        )
+        sessions = (
+            agent_context.filter_session_entries_by_scope(
+                agent_context.load_session_state().get("sessions", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_session_state().get("sessions", [])
+        )
         retention_candidates = self.get_retention_candidates()
         return {
             "quiet_hours": state.get("quiet_hours", {}),
@@ -202,38 +265,113 @@ class PrivacyControlService:
             "scope_count": len(dict(state.get("scoped_controls", {}))),
             "memory_entry_count": len(memories),
             "memory_summary_count": len(agent_context.load_memory_summary_state().get("summaries", [])),
-            "notification_count": len(agent_context.load_notification_state().get("notifications", [])),
-            "email_count": len(agent_context.load_email_message_state().get("messages", [])),
-            "whatsapp_count": len(agent_context.load_whatsapp_message_state().get("messages", [])),
+            "notification_count": len(notifications),
+            "email_count": len(email_messages),
+            "whatsapp_count": len(whatsapp_messages),
             "episode_count": len(agent_context.load_episode_state().get("episodes", [])),
-            "proactive_insight_count": len(agent_context.load_proactive_insight_state().get("insights", [])),
+            "proactive_insight_count": len(proactive_insights),
+            "identity_count": len(identities),
+            "session_count": len(sessions),
             "retention_candidates": retention_candidates,
+            "filter_agent_scope": str(agent_scope or ""),
+            "filter_roles": list(roles),
             "updated_at": str(state.get("updated_at", "")),
         }
 
-    def export_user_data(self) -> dict[str, Any]:
+    def export_user_data(
+        self,
+        *,
+        agent_scope: str | None = None,
+        roles: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
         """Export privacy-relevant user data for local inspection or download."""
+        scoped_memories = (
+            agent_context.load_all_memories(agent_scope=agent_scope or "default", roles=roles)
+            if agent_scope
+            else agent_context.load_all_memories()
+        )
+        scoped_identities = (
+            agent_context.filter_identity_entries_by_scope(
+                agent_context.load_identity_state().get("identities", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_identity_state().get("identities", [])
+        )
+        scoped_sessions = (
+            agent_context.filter_session_entries_by_scope(
+                agent_context.load_session_state().get("sessions", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_session_state().get("sessions", [])
+        )
+        scoped_notifications = (
+            agent_context.filter_notification_entries_by_scope(
+                agent_context.load_notification_state().get("notifications", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_notification_state().get("notifications", [])
+        )
+        scoped_email = (
+            agent_context.filter_email_messages_by_scope(
+                agent_context.load_email_message_state().get("messages", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_email_message_state().get("messages", [])
+        )
+        scoped_whatsapp = (
+            agent_context.filter_whatsapp_messages_by_scope(
+                agent_context.load_whatsapp_message_state().get("messages", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_whatsapp_message_state().get("messages", [])
+        )
+        scoped_proactive = (
+            agent_context.filter_proactive_insights_by_scope(
+                agent_context.load_proactive_insight_state().get("insights", []),
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else agent_context.load_proactive_insight_state().get("insights", [])
+        )
         return {
-            "privacy_controls": self.get_settings(),
-            "memory_entries": agent_context.load_all_memories(),
+            "privacy_controls": self.get_diagnostics(agent_scope=agent_scope, roles=roles),
+            "export_scope": {"agent_scope": str(agent_scope or ""), "roles": list(roles)},
+            "memory_entries": scoped_memories,
             "memory_summaries": agent_context.load_memory_summary_state(),
             "preferences": agent_context.load_preference_state(),
             "habits": agent_context.load_habit_state(),
-            "identities": agent_context.load_identity_state(),
-            "sessions": agent_context.load_session_state(),
-            "notifications": agent_context.load_notification_state(),
-            "email": agent_context.load_email_message_state(),
-            "whatsapp": agent_context.load_whatsapp_message_state(),
+            "identities": {"identities": scoped_identities, "updated_at": agent_context.load_identity_state().get("updated_at", "")},
+            "sessions": {"sessions": scoped_sessions, "updated_at": agent_context.load_session_state().get("updated_at", "")},
+            "notifications": {"notifications": scoped_notifications, "updated_at": agent_context.load_notification_state().get("updated_at", "")},
+            "email": {"messages": scoped_email, "updated_at": agent_context.load_email_message_state().get("updated_at", "")},
+            "whatsapp": {"messages": scoped_whatsapp, "updated_at": agent_context.load_whatsapp_message_state().get("updated_at", "")},
             "episodes": agent_context.load_episode_state(),
-            "proactive_insights": agent_context.load_proactive_insight_state(),
+            "proactive_insights": {"insights": scoped_proactive, "updated_at": agent_context.load_proactive_insight_state().get("updated_at", "")},
             "heartbeat": agent_context.load_heartbeat_state(),
         }
 
-    def export_user_data_to_path(self, output_path: Path) -> Path:
+    def export_user_data_to_path(
+        self,
+        output_path: Path,
+        *,
+        agent_scope: str | None = None,
+        roles: tuple[str, ...] = (),
+    ) -> Path:
         """Write exported user data to a JSON file."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
-            json.dumps(self.export_user_data(), ensure_ascii=False, indent=2),
+            json.dumps(self.export_user_data(agent_scope=agent_scope, roles=roles), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         append_execution_event(
@@ -242,7 +380,7 @@ class PrivacyControlService:
             status="ok",
             source="privacy",
             command="privacy export",
-            data={"output_path": str(output_path)},
+            data={"output_path": str(output_path), "agent_scope": str(agent_scope or ""), "roles": list(roles)},
         )
         return output_path
 

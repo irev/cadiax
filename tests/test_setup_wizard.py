@@ -389,6 +389,106 @@ def test_cli_privacy_show_and_quiet_hours_configuration(tmp_path, monkeypatch):
     assert payload["quiet_hours"]["end"] == "06:30"
 
 
+def test_cli_privacy_show_and_export_support_scope_filter(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    agent_context.replace_memory_entries(
+        [
+            {
+                "id": 1,
+                "timestamp": "2026-03-12T00:00:00+00:00",
+                "source": "manual",
+                "text": "catatan default",
+                "agent_scope": "default",
+            },
+            {
+                "id": 2,
+                "timestamp": "2026-03-12T01:00:00+00:00",
+                "source": "manual",
+                "text": "catatan finance",
+                "agent_scope": "finance-agent",
+            },
+        ]
+    )
+    agent_context.save_notification_state(
+        {
+            "notifications": [
+                {
+                    "id": 1,
+                    "channel": "internal",
+                    "title": "default",
+                    "message": "default",
+                    "target": "",
+                    "trace_id": "",
+                    "status": "queued",
+                    "agent_scope": "default",
+                    "roles": ["approved"],
+                    "metadata": {},
+                    "created_at": "2026-03-12T00:00:00+00:00",
+                },
+                {
+                    "id": 2,
+                    "channel": "internal",
+                    "title": "finance",
+                    "message": "finance",
+                    "target": "",
+                    "trace_id": "",
+                    "status": "queued",
+                    "agent_scope": "finance-agent",
+                    "roles": ["finance"],
+                    "metadata": {},
+                    "created_at": "2026-03-12T01:00:00+00:00",
+                },
+            ],
+            "updated_at": "2026-03-12T01:00:00+00:00",
+        }
+    )
+    agent_context.save_identity_state(
+        {
+            "identities": [
+                {"id": "identity_1", "agent_scopes": ["default"], "last_agent_scope": "default"},
+                {"id": "identity_2", "agent_scopes": ["finance-agent"], "last_agent_scope": "finance-agent"},
+            ],
+            "updated_at": "2026-03-12T01:00:00+00:00",
+        }
+    )
+    agent_context.save_session_state(
+        {
+            "sessions": [
+                {"id": "session_1", "identity_id": "identity_1", "source": "api", "raw_session_id": "default", "agent_scope": "default"},
+                {"id": "session_2", "identity_id": "identity_2", "source": "api", "raw_session_id": "finance", "agent_scope": "finance-agent", "roles": ["finance"]},
+            ],
+            "updated_at": "2026-03-12T01:00:00+00:00",
+        }
+    )
+
+    runner = CliRunner()
+    show_result = runner.invoke(main, ["privacy", "show", "--json", "--scope", "finance-agent", "--role", "finance"])
+    export_path = tmp_path / "privacy-finance.json"
+    export_result = runner.invoke(
+        main,
+        ["privacy", "export", "--output", str(export_path), "--scope", "finance-agent", "--role", "finance"],
+    )
+
+    payload = json.loads(show_result.output)
+    exported = json.loads(export_path.read_text(encoding="utf-8"))
+    assert show_result.exit_code == 0
+    assert export_result.exit_code == 0
+    assert payload["filter_agent_scope"] == "finance-agent"
+    assert payload["memory_entry_count"] == 1
+    assert payload["notification_count"] == 1
+    assert payload["identity_count"] == 1
+    assert payload["session_count"] == 1
+    assert exported["export_scope"]["agent_scope"] == "finance-agent"
+    assert len(exported["memory_entries"]) == 1
+    assert exported["memory_entries"][0]["agent_scope"] == "finance-agent"
+    assert len(exported["notifications"]["notifications"]) == 1
+    assert exported["notifications"]["notifications"][0]["agent_scope"] == "finance-agent"
+
+
 def test_cli_privacy_scope_updates_scoped_controls(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 

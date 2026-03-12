@@ -65,7 +65,12 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
     if route == "/privacy":
         from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
-        return 200, {"privacy_controls": PrivacyControlService().get_diagnostics()}
+        return 200, {
+            "privacy_controls": PrivacyControlService().get_diagnostics(
+                agent_scope=agent_scope or None,
+                roles=roles,
+            )
+        }
     if route == "/proactive":
         from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 

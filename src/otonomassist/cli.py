@@ -523,11 +523,13 @@ def privacy_group() -> None:
 
 @privacy_group.command("show")
 @click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON privacy controls")
-def privacy_show_command(as_json: bool) -> None:
+@click.option("--scope", "scope_name", default="", help="Optional scope filter")
+@click.option("--role", "roles", multiple=True, help="Optional role filter, repeatable")
+def privacy_show_command(as_json: bool, scope_name: str, roles: tuple[str, ...]) -> None:
     """Show privacy governance controls."""
     from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
-    payload = PrivacyControlService().get_diagnostics()
+    payload = PrivacyControlService().get_diagnostics(agent_scope=scope_name or None, roles=roles)
     if as_json:
         click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
@@ -544,6 +546,13 @@ def privacy_show_command(as_json: bool) -> None:
                 f"- proactive_assistance_enabled: {'yes' if payload['proactive_assistance_enabled'] else 'no'}",
                 f"- memory_retention_days: {payload['memory_retention_days']}",
                 f"- memory_entry_count: {payload['memory_entry_count']}",
+                f"- notification_count: {payload['notification_count']}",
+                f"- email_count: {payload['email_count']}",
+                f"- whatsapp_count: {payload['whatsapp_count']}",
+                f"- identity_count: {payload['identity_count']}",
+                f"- session_count: {payload['session_count']}",
+                f"- filter_agent_scope: {payload['filter_agent_scope'] or '-'}",
+                f"- filter_roles: {', '.join(payload['filter_roles']) or '-'}",
             ]
         )
     )
@@ -610,11 +619,17 @@ def privacy_retention_command(days: int) -> None:
     show_default=True,
     help="Destination JSON file",
 )
-def privacy_export_command(output: Path) -> None:
+@click.option("--scope", "scope_name", default="", help="Optional scope filter")
+@click.option("--role", "roles", multiple=True, help="Optional role filter, repeatable")
+def privacy_export_command(output: Path, scope_name: str, roles: tuple[str, ...]) -> None:
     """Export privacy-relevant local user data."""
     from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
-    written = PrivacyControlService().export_user_data_to_path(output)
+    written = PrivacyControlService().export_user_data_to_path(
+        output,
+        agent_scope=scope_name or None,
+        roles=roles,
+    )
     click.echo(f"Privacy export written to {written}")
 
 
