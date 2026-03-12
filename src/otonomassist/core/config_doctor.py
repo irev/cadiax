@@ -21,6 +21,7 @@ from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
 from otonomassist.services.personality import AgentScopeService, HabitModelService, HeartbeatService, PersonalityService
+from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 from otonomassist.services.policy.policy_service import PolicyService
 from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
 from otonomassist.services.runtime.budget_manager import BudgetManager
@@ -64,12 +65,12 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
     preference_profile = personality.get_structured_profile()
     habits = HabitModelService().load_or_refresh()
     episodes = agent_context.load_episode_state()
-    proactive = agent_context.load_proactive_insight_state()
+    proactive = ProactiveAssistanceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)
     heartbeat = HeartbeatService().load_state()
     memory_summary = agent_context.load_memory_summary_state()
     identity_state = agent_context.load_identity_state()
     session_state = agent_context.load_session_state()
-    notifications = NotificationDispatcher().get_snapshot()
+    notifications = NotificationDispatcher().get_snapshot(agent_scope=agent_scope or None, roles=roles)
     email = EmailInterfaceService().get_snapshot()
     whatsapp = WhatsAppInterfaceService().get_snapshot()
     from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
@@ -471,7 +472,8 @@ def get_config_status_report() -> str:
         lines.append(
             f"- scope:{item['scope']} -> planner={item['planner_task_count']} "
             f"(todo={item['planner_todo_count']}, done={item['planner_done_count']}, blocked={item['planner_blocked_count']}), "
-            f"memory={item['memory_entry_count']}, latest_memory_id={item['latest_memory_id'] or '-'}"
+            f"memory={item['memory_entry_count']}, notifications={item['notification_count']}, "
+            f"proactive={item['proactive_insight_count']}, latest_memory_id={item['latest_memory_id'] or '-'}"
         )
     lines.extend(
         [
@@ -482,6 +484,8 @@ def get_config_status_report() -> str:
             f"- visible_memory_entries: {data['scope_filter']['visible_memory_entries']}",
             f"- visible_planner_tasks: {data['scope_filter']['visible_planner_tasks']}",
             f"- visible_planner_todo: {data['scope_filter']['visible_planner_todo']}",
+            f"- visible_notifications: {data['scope_filter']['visible_notifications']}",
+            f"- visible_proactive_insights: {data['scope_filter']['visible_proactive_insights']}",
         ]
     )
     lines.extend(
@@ -874,6 +878,8 @@ def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, .
             "visible_memory_entries": 0,
             "visible_planner_tasks": 0,
             "visible_planner_todo": 0,
+            "visible_notifications": 0,
+            "visible_proactive_insights": 0,
         }
     visible_memories = agent_context.load_all_memories(agent_scope=normalized_scope, roles=roles)
     planner = agent_context.load_planner_state()
@@ -882,10 +888,22 @@ def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, .
         for task in planner.get("tasks", [])
         if str(task.get("agent_scope") or "default").strip().lower() == normalized_scope
     ]
+    visible_notifications = agent_context.filter_notification_entries_by_scope(
+        agent_context.load_notification_state().get("notifications", []),
+        agent_scope=normalized_scope,
+        roles=roles,
+    )
+    visible_proactive = agent_context.filter_proactive_insights_by_scope(
+        agent_context.load_proactive_insight_state().get("insights", []),
+        agent_scope=normalized_scope,
+        roles=roles,
+    )
     return {
         "agent_scope": normalized_scope,
         "roles": list(roles),
         "visible_memory_entries": len(visible_memories),
         "visible_planner_tasks": len(visible_tasks),
         "visible_planner_todo": sum(1 for task in visible_tasks if str(task.get("status") or "").strip().lower() == "todo"),
+        "visible_notifications": len(visible_notifications),
+        "visible_proactive_insights": len(visible_proactive),
     }

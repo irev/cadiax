@@ -69,7 +69,12 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
     if route == "/proactive":
         from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 
-        return 200, {"proactive": ProactiveAssistanceService().load_or_refresh()}
+        return 200, {
+            "proactive": ProactiveAssistanceService().load_or_refresh(
+                agent_scope=agent_scope or None,
+                roles=roles,
+            )
+        }
     return 404, {"error": "not_found", "path": route}
 
 

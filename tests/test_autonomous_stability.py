@@ -1240,6 +1240,55 @@ def test_admin_api_scope_filtered_history_and_events(tmp_path, monkeypatch):
     assert all((event.get("data") or {}).get("agent_scope") == "finance-agent" for event in events_payload["events"])
 
 
+def test_admin_api_scope_filtered_notifications_and_proactive(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    dispatcher = NotificationDispatcher()
+    dispatcher.dispatch(channel="internal", title="Default", message="default notice")
+    with bind_interaction_context(session_mode="main", agent_scope="finance-agent", roles=("finance",)):
+        dispatcher.dispatch(channel="internal", title="Finance", message="finance notice")
+
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "default_scope_insight",
+                    "confidence": "medium",
+                    "summary": "Insight default.",
+                    "suggested_action": "review default",
+                    "reason": "default_scope",
+                    "agent_scope": "default",
+                },
+                {
+                    "kind": "finance_scope_insight",
+                    "confidence": "high",
+                    "summary": "Insight finance.",
+                    "suggested_action": "review finance",
+                    "reason": "finance_scope",
+                    "agent_scope": "finance-agent",
+                },
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "insights_generated": 2,
+        }
+    )
+
+    status_code, status_payload = build_admin_snapshot("/status?agent_scope=finance-agent&roles=finance")
+    proactive_code, proactive_payload = build_admin_snapshot("/proactive?agent_scope=finance-agent&roles=finance")
+
+    assert status_code == 200
+    assert proactive_code == 200
+    assert status_payload["scope_filter"]["visible_notifications"] == 1
+    assert status_payload["scope_filter"]["visible_proactive_insights"] == 1
+    assert status_payload["notifications"]["notification_count"] == 1
+    assert status_payload["notifications"]["latest_notification"]["agent_scope"] == "finance-agent"
+    assert proactive_payload["proactive"]["visible_insight_count"] == 1
+    assert proactive_payload["proactive"]["insights"][0]["agent_scope"] == "finance-agent"
+
+
 def test_admin_api_requires_token_when_configured(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setenv("OTONOMASSIST_ADMIN_TOKEN", "token-rahasia")

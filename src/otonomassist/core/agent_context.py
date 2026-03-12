@@ -315,7 +315,35 @@ def load_notification_state() -> dict[str, Any]:
 
 def save_notification_state(state: dict[str, Any]) -> None:
     """Persist notification dispatch state."""
-    _save_durable_json_state(NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, state)
+    normalized_notifications: list[dict[str, Any]] = []
+    for raw in list(state.get("notifications", [])):
+        if not isinstance(raw, dict):
+            continue
+        metadata = raw.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        normalized_notifications.append(
+            {
+                **raw,
+                "agent_scope": _normalize_scope_name(
+                    str(raw.get("agent_scope") or metadata.get("agent_scope") or "default")
+                ),
+                "roles": [
+                    item_text
+                    for item_text in (
+                        str(item).strip().lower()
+                        for item in list(raw.get("roles", metadata.get("roles", [])) or [])
+                    )
+                    if item_text
+                ],
+                "metadata": metadata,
+            }
+        )
+    normalized = {
+        "notifications": normalized_notifications,
+        "updated_at": str(state.get("updated_at", "")),
+    }
+    _save_durable_json_state(NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, normalized)
 
 
 def load_email_message_state() -> dict[str, Any]:
@@ -431,8 +459,26 @@ def load_proactive_insight_state() -> dict[str, Any]:
 
 def save_proactive_insight_state(state: dict[str, Any]) -> None:
     """Persist durable proactive assistance insight state."""
+    normalized_insights: list[dict[str, Any]] = []
+    for raw in list(state.get("insights", [])):
+        if not isinstance(raw, dict):
+            continue
+        normalized_insights.append(
+            {
+                **raw,
+                "agent_scope": _normalize_scope_name(str(raw.get("agent_scope") or "default")),
+                "roles": [
+                    item_text
+                    for item_text in (
+                        str(item).strip().lower()
+                        for item in list(raw.get("roles", []))
+                    )
+                    if item_text
+                ],
+            }
+        )
     normalized = {
-        "insights": list(state.get("insights", [])),
+        "insights": normalized_insights,
         "updated_at": str(state.get("updated_at", "")),
         "insights_generated": int(state.get("insights_generated", 0) or 0),
     }
@@ -918,6 +964,44 @@ def filter_memory_entries_by_scope(
     ]
 
 
+def filter_notification_entries_by_scope(
+    entries: list[dict[str, Any]],
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """Filter notification entries by scope visibility and role access."""
+    normalized_scope = _normalize_scope_name(agent_scope)
+    return [
+        entry
+        for entry in entries
+        if _is_scope_visible(
+            str(entry.get("agent_scope") or (entry.get("metadata") or {}).get("agent_scope") or "default"),
+            normalized_scope,
+            roles=roles,
+        )
+    ]
+
+
+def filter_proactive_insights_by_scope(
+    insights: list[dict[str, Any]],
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """Filter proactive insights by scope visibility and role access."""
+    normalized_scope = _normalize_scope_name(agent_scope)
+    return [
+        insight
+        for insight in insights
+        if _is_scope_visible(
+            str(insight.get("agent_scope") or "default"),
+            normalized_scope,
+            roles=roles,
+        )
+    ]
+
+
 def get_scope_state_summary() -> dict[str, Any]:
     """Return operator-facing state counts grouped by agent scope."""
     planner = load_planner_state()
@@ -934,6 +1018,8 @@ def get_scope_state_summary() -> dict[str, Any]:
                 "planner_done_count": 0,
                 "planner_blocked_count": 0,
                 "memory_entry_count": 0,
+                "notification_count": 0,
+                "proactive_insight_count": 0,
                 "latest_memory_id": 0,
             }
         return scopes[normalized]
@@ -953,6 +1039,14 @@ def get_scope_state_summary() -> dict[str, Any]:
         bucket = ensure_scope(str(entry.get("agent_scope") or "default"))
         bucket["memory_entry_count"] += 1
         bucket["latest_memory_id"] = max(bucket["latest_memory_id"], int(entry.get("id", 0) or 0))
+
+    for entry in load_notification_state().get("notifications", []):
+        bucket = ensure_scope(str(entry.get("agent_scope") or (entry.get("metadata") or {}).get("agent_scope") or "default"))
+        bucket["notification_count"] += 1
+
+    for insight in load_proactive_insight_state().get("insights", []):
+        bucket = ensure_scope(str(insight.get("agent_scope") or "default"))
+        bucket["proactive_insight_count"] += 1
 
     return {
         "scope_count": len(scopes),
