@@ -789,6 +789,8 @@ def add_planner_task(text: str, status: str = "todo") -> dict[str, Any]:
     """Add a task to planner.json."""
     state = load_planner_state()
     tasks = state.setdefault("tasks", [])
+    resolved_session_mode = _resolve_write_session_mode(None)
+    resolved_agent_scope = _resolve_write_agent_scope(None)
     task = {
         "id": len(tasks) + 1,
         "text": text,
@@ -797,6 +799,8 @@ def add_planner_task(text: str, status: str = "todo") -> dict[str, Any]:
         "retry_count": 0,
         "max_retries": 2,
         "last_error": "",
+        "session_mode": resolved_session_mode,
+        "agent_scope": resolved_agent_scope,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     tasks.append(task)
@@ -809,6 +813,8 @@ def add_planner_note(task_id: int, note: str) -> bool:
     """Append a note to a planner task."""
     state = load_planner_state()
     for task in state.get("tasks", []):
+        if not _planner_task_visible(task):
+            continue
         if task.get("id") == task_id:
             task.setdefault("notes", []).append(note)
             state["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -820,7 +826,7 @@ def add_planner_note(task_id: int, note: str) -> bool:
 def get_next_planner_task() -> dict[str, Any] | None:
     """Return the highest-priority ready todo task."""
     state = load_planner_state()
-    tasks = state.get("tasks", [])
+    tasks = _filter_planner_tasks_by_active_scope(state.get("tasks", []))
     done_ids = {int(task.get("id", 0)) for task in tasks if task.get("status") == "done"}
     ready_tasks = [
         task
@@ -838,7 +844,7 @@ def get_next_planner_task() -> dict[str, Any] | None:
 def list_ready_planner_tasks() -> list[dict[str, Any]]:
     """List planner tasks that are currently ready to run."""
     state = load_planner_state()
-    tasks = state.get("tasks", [])
+    tasks = _filter_planner_tasks_by_active_scope(state.get("tasks", []))
     done_ids = {int(task.get("id", 0)) for task in tasks if task.get("status") == "done"}
     return [
         task
@@ -854,6 +860,8 @@ def update_planner_task_status(task_id: int, status: str) -> bool:
     """Update planner task status."""
     state = load_planner_state()
     for task in state.get("tasks", []):
+        if not _planner_task_visible(task):
+            continue
         if task.get("id") == task_id:
             task["status"] = status
             state["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -865,13 +873,22 @@ def update_planner_task_status(task_id: int, status: str) -> bool:
 def get_planner_task(task_id: int) -> dict[str, Any] | None:
     """Return a planner task by id."""
     state = load_planner_state()
-    return next((task for task in state.get("tasks", []) if task.get("id") == task_id), None)
+    return next(
+        (
+            task
+            for task in state.get("tasks", [])
+            if task.get("id") == task_id and _planner_task_visible(task)
+        ),
+        None,
+    )
 
 
 def update_planner_task_fields(task_id: int, **fields: Any) -> bool:
     """Update arbitrary planner task fields."""
     state = load_planner_state()
     for task in state.get("tasks", []):
+        if not _planner_task_visible(task):
+            continue
         if task.get("id") == task_id:
             task.update(fields)
             state["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -1194,6 +1211,22 @@ def _resolve_write_agent_scope(value: str | None) -> str:
     if inherited and normalized != inherited_scope:
         raise PermissionError("Memory write agent_scope harus mengikuti interaction context aktif.")
     return normalized
+
+
+def _planner_task_visible(task: dict[str, Any]) -> bool:
+    from otonomassist.core.runtime_interaction import get_current_interaction_context
+
+    inherited = get_current_interaction_context()
+    if not inherited:
+        return True
+    requested_scope = _normalize_scope_name(str(inherited.get("agent_scope") or "default"))
+    request_roles = tuple(inherited.get("roles") or ())
+    task_scope = _normalize_scope_name(str(task.get("agent_scope") or "default"))
+    return _is_scope_visible(task_scope, requested_scope, roles=request_roles)
+
+
+def _filter_planner_tasks_by_active_scope(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [task for task in tasks if _planner_task_visible(task)]
 
 
 def _write_text_atomic(path: Path, text: str) -> None:

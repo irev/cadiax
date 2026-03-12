@@ -500,7 +500,8 @@ def test_executor_nested_command_inherits_active_interaction_scope(tmp_path, mon
         "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
         encoding="utf-8",
     )
-    agent_context.add_planner_task("memory add catatan nested executor", status="todo")
+    with bind_interaction_context(session_mode="main", agent_scope="finance-agent", roles=("finance",)):
+        agent_context.add_planner_task("memory add catatan nested executor", status="todo")
     assistant = Assistant(skills_dir=ROOT / "skills")
     assistant.initialize()
 
@@ -533,6 +534,56 @@ def test_memory_write_rejects_scope_override_mismatch_under_active_context(tmp_p
                 source="manual",
                 agent_scope="default",
             )
+
+
+def test_planner_follow_up_inherits_active_interaction_scope(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    module = _load_module(ROOT / "skills" / "self-review" / "script" / "handler.py", "self_review_scope_test")
+
+    with bind_interaction_context(session_mode="main", agent_scope="finance-agent", roles=("finance",)):
+        result = module.handle("text TODO dan api_key")
+
+    planner_state = agent_context.load_planner_state()
+    scoped_tasks = [task for task in planner_state["tasks"] if task.get("agent_scope") == "finance-agent"]
+    assert result["data"]["persistence"]["follow_up_tasks"]
+    assert any(task["text"] == "agent-loop next" for task in scoped_tasks)
+    assert any("memory add follow-up self-review" in task["text"] for task in scoped_tasks)
+
+
+def test_executor_next_uses_only_visible_scope_tasks(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    agent_context.add_planner_task("memory add default task", status="todo")
+    with bind_interaction_context(session_mode="main", agent_scope="finance-agent", roles=("finance",)):
+        agent_context.add_planner_task("memory add finance task", status="todo")
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    result = assistant.handle_message(
+        "executor next",
+        context=TransportContext(
+            source="cli",
+            roles=("finance",),
+            session_mode="main",
+            agent_scope="finance-agent",
+        ),
+    )
+
+    planner_state = agent_context.load_planner_state()
+    default_task = next(task for task in planner_state["tasks"] if task["text"] == "memory add default task")
+    finance_task = next(task for task in planner_state["tasks"] if task["text"] == "memory add finance task")
+    finance_entries = agent_context.load_all_memories(agent_scope="finance-agent", roles=("finance",))
+    assert "Task #2 selesai dieksekusi." in result
+    assert default_task["status"] == "todo"
+    assert finance_task["status"] == "done"
+    assert any("finance task" in entry["text"] for entry in finance_entries)
 
 
 def test_redaction_policy_can_be_disabled_for_local_debugging(tmp_path, monkeypatch):
