@@ -1797,6 +1797,29 @@ def test_assistant_times_out_slow_skill_and_records_timeout_status(tmp_path, mon
     assert any(event["event_type"] == "command_completed" and event["status"] == "timeout" for event in events)
 
 
+def test_skill_completed_event_includes_skill_contract_metadata(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    trace_id = "trace-skill-contract"
+    assistant.handle_message(
+        "workspace tree .",
+        context=TransportContext(source="cli", roles=("approved",), session_mode="main", agent_scope="default", trace_id=trace_id),
+    )
+    events = load_execution_events(limit=20)
+    skill_event = next(
+        event
+        for event in events
+        if event.get("event_type") == "skill_completed" and event.get("trace_id") == trace_id
+    )
+
+    contract = (skill_event.get("data") or {}).get("skill_contract") or {}
+    assert contract["schema_version"] == "v1"
+    assert contract["timeout_behavior"] == "fail_fast"
+    assert contract["retry_policy"] == "none"
+
+
 def test_scheduler_skips_cycles_during_quiet_hours(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     PrivacyControlService().set_quiet_hours(start="00:00", end="23:59", enabled=True)

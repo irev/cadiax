@@ -55,6 +55,9 @@ class SkillRegistry:
                 "side_effects": list(skill.definition.side_effects),
                 "requires": list(skill.definition.requires),
                 "idempotency": skill.definition.idempotency,
+                "schema_version": skill.definition.schema_version,
+                "timeout_behavior": skill.definition.timeout_behavior,
+                "retry_policy": skill.definition.retry_policy,
             }
             categories.setdefault(skill.definition.autonomy_category or "general", []).append(entry)
 

@@ -107,6 +107,9 @@ class SkillLoader:
         side_effects: list[str] = []
         requires: list[str] = []
         idempotency = "unknown"
+        schema_version = "v1"
+        timeout_behavior = "fail_fast"
+        retry_policy = "none"
         triggers: list[str] = []
         ai_instructions = ""
 
@@ -160,6 +163,12 @@ class SkillLoader:
                         requires = self._parse_list(value)
                     elif key == "idempotency":
                         idempotency = value.strip()
+                    elif key == "schema_version":
+                        schema_version = value.strip()
+                    elif key == "timeout_behavior":
+                        timeout_behavior = value.strip()
+                    elif key == "retry_policy":
+                        retry_policy = value.strip()
 
             elif in_ai_instructions:
                 ai_instructions += line + "\n"
@@ -186,6 +195,9 @@ class SkillLoader:
             side_effects=side_effects,
             requires=requires,
             idempotency=idempotency,
+            schema_version=schema_version,
+            timeout_behavior=timeout_behavior,
+            retry_policy=retry_policy,
             triggers=triggers,
             handler_code="",
             response_template="{result}",
@@ -301,6 +313,9 @@ class SkillLoader:
         side_effects: list[str] = []
         requires: list[str] = []
         idempotency = "unknown"
+        schema_version = "v1"
+        timeout_behavior = "fail_fast"
+        retry_policy = "none"
         triggers: list[str] = []
         handler_code = ""
         response_template = "{result}"
@@ -344,6 +359,12 @@ class SkillLoader:
                         requires = self._parse_list(value)
                     elif key == "idempotency":
                         idempotency = value.strip()
+                    elif key == "schema_version":
+                        schema_version = value.strip()
+                    elif key == "timeout_behavior":
+                        timeout_behavior = value.strip()
+                    elif key == "retry_policy":
+                        retry_policy = value.strip()
 
             if in_handlers:
                 match = self.TRIGGER_PATTERN.match(line)
@@ -368,6 +389,9 @@ class SkillLoader:
             side_effects=side_effects,
             requires=requires,
             idempotency=idempotency,
+            schema_version=schema_version,
+            timeout_behavior=timeout_behavior,
+            retry_policy=retry_policy,
             triggers=triggers,
             handler_code=handler_code,
             response_template=response_template,

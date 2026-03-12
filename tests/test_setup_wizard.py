@@ -2346,6 +2346,9 @@ def test_skill_loader_parses_autonomy_metadata(tmp_path):
                 "- side_effects: [planner_write, memory_write]",
                 "- requires: [ai_provider, workspace_access]",
                 "- idempotency: non_idempotent",
+                "- schema_version: v1",
+                "- timeout_behavior: fail_fast",
+                "- retry_policy: planner_transient_retry",
                 "",
                 "## Triggers",
                 "- taxonomy-skill",
@@ -2374,6 +2377,9 @@ def test_skill_loader_parses_autonomy_metadata(tmp_path):
     assert skill.definition.side_effects == ["planner_write", "memory_write"]
     assert skill.definition.requires == ["ai_provider", "workspace_access"]
     assert skill.definition.idempotency == "non_idempotent"
+    assert skill.definition.schema_version == "v1"
+    assert skill.definition.timeout_behavior == "fail_fast"
+    assert skill.definition.retry_policy == "planner_transient_retry"
 
 
 def test_assistant_and_cli_expose_skill_layer_audit(tmp_path, monkeypatch):
@@ -2403,7 +2409,7 @@ def test_assistant_and_cli_expose_skill_layer_audit(tmp_path, monkeypatch):
     assert "[planning]" in audit_text
     assert "[governance]" in audit_text
     assert "secrets [risk=critical" in audit_text
-    assert "workspace [risk=medium, idempotency=idempotent]" in audit_text
+    assert "workspace [risk=medium, idempotency=idempotent, schema=v1, timeout=fail_fast, retry=none]" in audit_text
 
     runner = CliRunner()
     cli_result = runner.invoke(main, ["skills", "audit"])

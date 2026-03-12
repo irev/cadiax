@@ -94,6 +94,9 @@ class Assistant:
                 lines.append(f"  Requires: {', '.join(defn.requires)}")
             if defn.idempotency and defn.idempotency != "unknown":
                 lines.append(f"  Idempotency: {defn.idempotency}")
+            lines.append(
+                f"  Contract: schema={defn.schema_version}, timeout={defn.timeout_behavior}, retry={defn.retry_policy}"
+            )
             # Add AI-specific instructions if available
             if defn.ai_instructions:
                 lines.append(f"  AI Instructions: {defn.ai_instructions[:200]}...")
@@ -114,7 +117,8 @@ class Assistant:
             lines.extend(["", f"[{category}]"])
             for item in skills:
                 lines.append(
-                    f"- {item['name']} [risk={item['risk_level']}, idempotency={item['idempotency']}]"
+                    f"- {item['name']} [risk={item['risk_level']}, idempotency={item['idempotency']}, "
+                    f"schema={item['schema_version']}, timeout={item['timeout_behavior']}, retry={item['retry_policy']}]"
                 )
                 if item["requires"]:
                     lines.append("  requires: " + ", ".join(item["requires"]))

@@ -243,6 +243,12 @@ class ExecutionService:
                     "view": presentation.view,
                     "timed_out": timed_out,
                     "timeout_seconds": timeout_seconds,
+                    "skill_contract": {
+                        "schema_version": skill.definition.schema_version,
+                        "timeout_behavior": skill.definition.timeout_behavior,
+                        "retry_policy": skill.definition.retry_policy,
+                        "idempotency": skill.definition.idempotency,
+                    },
                 },
             )
             record_execution_metric(
