@@ -338,6 +338,22 @@ def test_curated_memory_write_requires_main_session(tmp_path, monkeypatch):
         )
 
 
+def test_memory_entry_projects_to_daily_workspace_journal(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    entry = agent_context.append_memory_entry(
+        "catatan operasional harian",
+        source="manual",
+        session_mode="shared",
+        agent_scope="default",
+    )
+
+    journal_path = tmp_path / "memory" / f"{datetime.now(timezone.utc).date().isoformat()}.md"
+    assert entry["daily_journal_written"] is True
+    assert journal_path.exists()
+    assert "catatan operasional harian" in journal_path.read_text(encoding="utf-8")
+
+
 def test_redaction_policy_can_be_disabled_for_local_debugging(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setenv("OTONOMASSIST_PROMPT_REDACTION", "0")

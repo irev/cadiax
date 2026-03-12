@@ -12,9 +12,13 @@ from otonomassist.core.agent_context import (
     LESSONS_FILE,
     append_lesson,
     append_curated_memory,
+    append_daily_memory_note,
     append_memory_entry,
     ensure_agent_storage,
+    get_daily_memory_dir,
+    get_daily_memory_journal_path,
     load_memory_summary_state,
+    load_recent_workspace_daily_notes,
     save_memory_summary_state,
     retrieve_relevant_memories,
 )
@@ -53,17 +57,20 @@ def handle(args: str) -> str:
         return _consolidate_memories(remainder)
     if command == "context":
         return _memory_context()
+    if command == "journal":
+        return _journal_memory(remainder)
 
     return _add_memory(args)
 
 
 def _usage() -> str:
     return (
-        "Usage: memory <add|list|search|get|summarize|consolidate|context> ...\n"
+        "Usage: memory <add|curate|list|search|get|summarize|consolidate|context|journal> ...\n"
         "Examples:\n"
         "- memory add private ai harus fokus lokal\n"
         "- memory curate user suka ringkasan singkat\n"
         "- memory search planner\n"
+        "- memory journal\n"
         "- memory summarize\n"
         "- memory consolidate"
     )
@@ -261,12 +268,27 @@ def _memory_context() -> str:
             "files": [
                 {"name": "jsonl", "path": str(MEMORY_FILE.relative_to(PROJECT_ROOT))},
                 {"name": "lessons", "path": str(LESSONS_FILE.relative_to(PROJECT_ROOT))},
+                {"name": "daily_journal_dir", "path": str(get_daily_memory_dir().relative_to(PROJECT_ROOT))},
+                {"name": "today_journal", "path": str(get_daily_memory_journal_path().relative_to(PROJECT_ROOT))},
             ],
             "summary_state": load_memory_summary_state(),
             "summary": "Lokasi file memory agent.",
         },
         default_view="table",
     )
+
+
+def _journal_memory(args: str) -> str:
+    text = args.strip()
+    if text:
+        payload = append_daily_memory_note(text, source="memory-journal")
+        if payload["written"]:
+            return f"Daily journal tersimpan ke {payload['path']}."
+        return f"Daily journal dilewati karena workspace tidak writable: {payload['path']}"
+    content = load_recent_workspace_daily_notes(days=2, max_chars=2200)
+    if not content:
+        return "Belum ada daily journal workspace."
+    return content
 
 
 def _consolidate_recent_entries(entries_to_merge: int) -> None:

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -27,6 +29,14 @@ import otonomassist.core.external_installer as external_installer  # noqa: E402
 from otonomassist.core.event_bus import get_event_bus_snapshot  # noqa: E402
 from otonomassist.platform import run_process  # noqa: E402
 from otonomassist.services.interactions import InteractionRequest  # noqa: E402
+
+
+def _load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    return module
 
 
 def _configure_temp_agent_state(tmp_path, monkeypatch):
@@ -1292,6 +1302,18 @@ def test_shared_session_blocks_curated_memory_command(tmp_path, monkeypatch):
     assert "Curated memory hanya boleh ditulis dari main session." in response.response
     memory_file = tmp_path / "MEMORY.md"
     assert not memory_file.exists() or "rahasia utama" not in memory_file.read_text(encoding="utf-8", errors="replace")
+
+
+def test_memory_skill_journal_writes_workspace_daily_log(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    module = _load_module(ROOT / "skills" / "memory" / "script" / "handler.py", "memory_handler_journal_test")
+
+    result = module.handle("journal catatan dari jurnal harian")
+    journal_path = tmp_path / "memory" / f"{datetime.now(timezone.utc).date().isoformat()}.md"
+
+    assert "Daily journal tersimpan" in result
+    assert journal_path.exists()
+    assert "catatan dari jurnal harian" in journal_path.read_text(encoding="utf-8")
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 import os
@@ -523,6 +523,9 @@ def build_runtime_context_block(query: str | None = None, *, session_mode: str =
         parts.append(f"- next_task: #{next_task.get('id')} {next_task.get('text')}")
 
     normalized_session_mode = str(session_mode or "main").strip().lower()
+    parts.extend(["", "## Daily Journal"])
+    daily_notes = load_recent_workspace_daily_notes(days=2, max_chars=1200)
+    parts.append(daily_notes or "- belum ada daily journal workspace")
     parts.extend(["", "## Session Memory Boundary"])
     parts.append(f"- session_mode: {normalized_session_mode}")
     if normalized_session_mode == "main":
@@ -553,6 +556,78 @@ def load_workspace_curated_memory(max_chars: int = 1600) -> str:
     return load_markdown(memory_file, max_chars=max_chars)
 
 
+def get_daily_memory_dir() -> Path:
+    """Return the workspace directory for daily memory journals."""
+    return get_workspace_root() / "memory"
+
+
+def get_daily_memory_journal_path(day: date | None = None) -> Path:
+    """Return the workspace path for one daily memory journal file."""
+    target_day = day or datetime.now(timezone.utc).date()
+    return get_daily_memory_dir() / f"{target_day.isoformat()}.md"
+
+
+def append_daily_memory_note(
+    text: str,
+    source: str = "manual",
+    *,
+    session_mode: str = "main",
+    agent_scope: str = "default",
+    timestamp: datetime | None = None,
+) -> dict[str, Any]:
+    """Project one operational memory note into the workspace daily journal."""
+    ensure_agent_storage()
+    moment = timestamp or datetime.now(timezone.utc)
+    journal_path = get_daily_memory_journal_path(moment.date())
+    payload = {
+        "path": str(journal_path),
+        "written": False,
+        "session_mode": str(session_mode or "main").strip().lower() or "main",
+        "agent_scope": str(agent_scope or "default").strip().lower() or "default",
+    }
+    try:
+        journal_dir = get_daily_memory_dir()
+        ensure_write_allowed(journal_dir)
+        journal_dir.mkdir(parents=True, exist_ok=True)
+        if not journal_path.exists():
+            ensure_write_allowed(journal_path)
+            journal_path.write_text(
+                f"# Daily Memory {moment.date().isoformat()}\n\n",
+                encoding="utf-8",
+            )
+        ensure_read_allowed(journal_path)
+        content = journal_path.read_text(encoding="utf-8", errors="replace").rstrip()
+        line = (
+            f"- {moment.astimezone(timezone.utc).strftime('%H:%M:%S')} "
+            f"[{payload['session_mode']}|{payload['agent_scope']}|{source}]: {text}"
+        )
+        ensure_write_allowed(journal_path)
+        journal_path.write_text(f"{content}\n{line}\n", encoding="utf-8")
+        payload["written"] = True
+    except PermissionError:
+        payload["written"] = False
+    return payload
+
+
+def load_recent_workspace_daily_notes(days: int = 2, max_chars: int = 1600) -> str:
+    """Load recent workspace daily memory journals for session startup context."""
+    ensure_agent_storage()
+    snippets: list[str] = []
+    today = datetime.now(timezone.utc).date()
+    for offset in range(max(1, days)):
+        journal_path = get_daily_memory_journal_path(today - timedelta(days=offset))
+        if not journal_path.exists():
+            continue
+        ensure_read_allowed(journal_path)
+        text = journal_path.read_text(encoding="utf-8", errors="replace").strip()
+        if text:
+            snippets.append(text)
+    combined = "\n\n".join(reversed(snippets))
+    if len(combined) <= max_chars:
+        return combined
+    return combined[:max_chars].rstrip() + "\n... (truncated)"
+
+
 def append_memory_entry(
     text: str,
     source: str = "manual",
@@ -574,6 +649,15 @@ def append_memory_entry(
     ensure_internal_state_write_allowed(MEMORY_FILE)
     with MEMORY_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=True) + "\n")
+    journal = append_daily_memory_note(
+        text,
+        source=source,
+        session_mode=entry["session_mode"],
+        agent_scope=entry["agent_scope"],
+        timestamp=datetime.fromisoformat(entry["timestamp"]),
+    )
+    entry["daily_journal_path"] = journal["path"]
+    entry["daily_journal_written"] = journal["written"]
     return entry
 
 
