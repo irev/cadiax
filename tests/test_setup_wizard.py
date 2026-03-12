@@ -1272,6 +1272,8 @@ def test_cli_startup_show_reads_workspace_startup_documents(tmp_path, monkeypatc
 
 def test_conversation_service_marks_shared_session_for_chat_channels(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text("# AGENTS\n\n- aturan shared startup\n", encoding="utf-8")
+    (tmp_path / "SOUL.md").write_text("# SOUL\n\n- reflektif\n", encoding="utf-8")
     (tmp_path / "MEMORY.md").write_text("# Memory\n\n- konteks privat\n", encoding="utf-8")
     assistant = Assistant(skills_dir=ROOT / "skills")
     service = cli_module.ConversationService(assistant)
@@ -1287,10 +1289,15 @@ def test_conversation_service_marks_shared_session_for_chat_channels(tmp_path, m
     )
 
     assert response.metadata["canonical_session_id"]
+    assert response.metadata["session_mode"] == "shared"
+    assert response.metadata["startup_document_names"] == ["agents", "soul"]
+    assert response.metadata["startup_curated_memory_loaded"] is False
 
 
 def test_conversation_service_accepts_main_session_override(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "IDENTITY.md").write_text("# IDENTITY\n\n- main mode aktif\n", encoding="utf-8")
+    (tmp_path / "MEMORY.md").write_text("# Memory\n\n- curated utama\n", encoding="utf-8")
     assistant = Assistant(skills_dir=ROOT / "skills")
     service = cli_module.ConversationService(assistant)
 
@@ -1303,6 +1310,9 @@ def test_conversation_service_accepts_main_session_override(tmp_path, monkeypatc
     )
 
     assert response.status == "ok"
+    assert response.metadata["session_mode"] == "main"
+    assert "identity" in response.metadata["startup_document_names"]
+    assert response.metadata["startup_curated_memory_loaded"] is True
 
 
 def test_shared_session_blocks_curated_memory_command(tmp_path, monkeypatch):

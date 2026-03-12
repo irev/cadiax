@@ -906,6 +906,8 @@ def test_durable_state_store_imports_newer_legacy_planner_file(tmp_path, monkeyp
 def test_admin_api_snapshot_exposes_status_metrics_and_history(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     (tmp_path / "README.md").write_text("README untuk admin api\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("# AGENTS\n\n- aturan startup admin\n", encoding="utf-8")
+    (tmp_path / "IDENTITY.md").write_text("# IDENTITY\n\n- observability aktif\n", encoding="utf-8")
 
     assistant = Assistant(skills_dir=ROOT / "skills")
     assistant.initialize()
@@ -915,16 +917,20 @@ def test_admin_api_snapshot_exposes_status_metrics_and_history(tmp_path, monkeyp
     history_code, history_payload = build_admin_snapshot("/history?limit=5")
     jobs_code, jobs_payload = build_admin_snapshot("/jobs")
     events_code, events_payload = build_admin_snapshot("/events?limit=5")
+    startup_code, startup_payload = build_admin_snapshot("/startup?session_mode=shared")
 
     assert status_code == 200
     assert history_code == 200
     assert jobs_code == 200
     assert events_code == 200
+    assert startup_code == 200
     assert metrics_payload["summary"]["commands_total"] >= 1
     assert "queue_depth" in metrics_payload
     assert len(history_payload["events"]) >= 1
     assert events_payload["total_events"] >= 1
     assert "summary" in jobs_payload
+    assert startup_payload["startup"]["session_mode"] == "shared"
+    assert startup_payload["startup"]["documents"][0]["name"] == "agents"
 
 
 def test_admin_api_requires_token_when_configured(tmp_path, monkeypatch):

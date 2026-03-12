@@ -11,6 +11,7 @@ from otonomassist.core.execution_metrics import record_execution_metric
 from otonomassist.core.transport import TransportContext
 from otonomassist.services.interactions.identity_service import IdentitySessionService
 from otonomassist.services.interactions.models import InteractionRequest, InteractionResponse
+from otonomassist.services.personality.startup_document_service import StartupDocumentService
 
 
 class ConversationService:
@@ -19,6 +20,7 @@ class ConversationService:
     def __init__(self, assistant: Any) -> None:
         self.assistant = assistant
         self.identity_service = IdentitySessionService()
+        self.startup_documents = StartupDocumentService()
 
     def handle(self, request: InteractionRequest) -> InteractionResponse:
         """Handle one canonical interaction request."""
@@ -26,6 +28,8 @@ class ConversationService:
         started = time.perf_counter()
         resolution = self.identity_service.resolve(request)
         session_id = resolution.session_id
+        session_mode = _resolve_session_mode(request)
+        startup_snapshot = self.startup_documents.get_snapshot(session_mode=session_mode, max_chars=160)
         context = TransportContext(
             source=request.source,
             user_id=request.user_id,
@@ -34,7 +38,7 @@ class ConversationService:
             identity_id=resolution.identity_id,
             roles=request.roles,
             trace_id=trace_id,
-            session_mode=_resolve_session_mode(request),
+            session_mode=session_mode,
         )
         append_execution_event(
             "interaction_received",
@@ -89,6 +93,15 @@ class ConversationService:
                 "identity_created": resolution.identity_created,
                 "session_created": resolution.session_created,
                 "canonical_session_id": session_id,
+                "session_mode": session_mode,
+                "startup_document_names": [
+                    item["name"] for item in startup_snapshot["documents"] if item.get("preview")
+                ],
+                "startup_document_count": sum(
+                    1 for item in startup_snapshot["documents"] if item.get("preview")
+                ),
+                "startup_daily_notes_loaded": bool(startup_snapshot.get("daily_notes")),
+                "startup_curated_memory_loaded": bool(startup_snapshot.get("curated_memory")),
                 **request.metadata,
             },
         )

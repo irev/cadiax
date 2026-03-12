@@ -15,6 +15,7 @@ from otonomassist.core.job_runtime import get_job_queue_summary
 from otonomassist.core.workspace_bootstrap import get_workspace_bootstrap_status
 from otonomassist.core.agent_context import load_job_queue_state
 from otonomassist.core.scheduler_runtime import get_scheduler_summary
+from otonomassist.services.personality.startup_document_service import StartupDocumentService
 
 
 def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tuple[int, dict[str, object]]:
@@ -43,6 +44,9 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
         return 200, get_event_bus_snapshot(limit=limit)
     if route == "/bootstrap":
         return 200, {"bootstrap": get_workspace_bootstrap_status()}
+    if route == "/startup":
+        session_mode = (query.get("session_mode") or ["main"])[0]
+        return 200, {"startup": StartupDocumentService().get_snapshot(session_mode=session_mode)}
     if route == "/privacy":
         from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
