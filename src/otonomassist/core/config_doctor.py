@@ -24,6 +24,7 @@ from otonomassist.services.personality import AgentScopeService, HabitModelServi
 from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 from otonomassist.services.policy.policy_service import PolicyService
 from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
+from otonomassist.services.interactions.identity_service import IdentitySessionService
 from otonomassist.services.runtime.budget_manager import BudgetManager
 from otonomassist.services.runtime.context_budgeter import ContextBudgeter
 from otonomassist.services.runtime.redaction_policy import RedactionPolicy
@@ -68,8 +69,7 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
     proactive = ProactiveAssistanceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)
     heartbeat = HeartbeatService().load_state()
     memory_summary = agent_context.load_memory_summary_state()
-    identity_state = agent_context.load_identity_state()
-    session_state = agent_context.load_session_state()
+    identity_snapshot = IdentitySessionService().get_snapshot(agent_scope=agent_scope or None, roles=roles)
     notifications = NotificationDispatcher().get_snapshot(agent_scope=agent_scope or None, roles=roles)
     email = EmailInterfaceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)
     whatsapp = WhatsAppInterfaceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)
@@ -149,8 +149,8 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
             "state_db_file": state_storage["path"],
             "preference_count": len(personality.list_preferences()),
             "habit_count": len(habits.get("habits", [])),
-            "identity_count": len(identity_state.get("identities", [])),
-            "session_count": len(session_state.get("sessions", [])),
+            "identity_count": identity_snapshot["total_identity_count"],
+            "session_count": identity_snapshot["total_session_count"],
             "portable_key_file": str(PORTABLE_KEY_FILE),
             "skill_timeout_seconds": get_skill_timeout_seconds(),
         },
@@ -178,10 +178,7 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
         },
         "scope_filter": scope_filter,
         "identity": {
-            "identity_count": len(identity_state.get("identities", [])),
-            "session_count": len(session_state.get("sessions", [])),
-            "latest_identity_id": str(identity_state.get("identities", [])[-1].get("id", "")) if identity_state.get("identities") else "",
-            "latest_session_id": str(session_state.get("sessions", [])[-1].get("id", "")) if session_state.get("sessions") else "",
+            **identity_snapshot,
         },
         "notifications": notifications,
         "email": email,
@@ -474,7 +471,8 @@ def get_config_status_report() -> str:
             f"(todo={item['planner_todo_count']}, done={item['planner_done_count']}, blocked={item['planner_blocked_count']}), "
             f"memory={item['memory_entry_count']}, notifications={item['notification_count']}, "
             f"proactive={item['proactive_insight_count']}, email={item['email_message_count']}, "
-            f"whatsapp={item['whatsapp_message_count']}, latest_memory_id={item['latest_memory_id'] or '-'}"
+            f"whatsapp={item['whatsapp_message_count']}, identities={item['identity_count']}, "
+            f"sessions={item['session_count']}, latest_memory_id={item['latest_memory_id'] or '-'}"
         )
     lines.extend(
         [
@@ -489,6 +487,8 @@ def get_config_status_report() -> str:
             f"- visible_proactive_insights: {data['scope_filter']['visible_proactive_insights']}",
             f"- visible_email_messages: {data['scope_filter']['visible_email_messages']}",
             f"- visible_whatsapp_messages: {data['scope_filter']['visible_whatsapp_messages']}",
+            f"- visible_identities: {data['scope_filter']['visible_identities']}",
+            f"- visible_sessions: {data['scope_filter']['visible_sessions']}",
         ]
     )
     lines.extend(
@@ -885,6 +885,8 @@ def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, .
             "visible_proactive_insights": 0,
             "visible_email_messages": 0,
             "visible_whatsapp_messages": 0,
+            "visible_identities": 0,
+            "visible_sessions": 0,
         }
     visible_memories = agent_context.load_all_memories(agent_scope=normalized_scope, roles=roles)
     planner = agent_context.load_planner_state()
@@ -913,6 +915,16 @@ def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, .
         agent_scope=normalized_scope,
         roles=roles,
     )
+    visible_identities = agent_context.filter_identity_entries_by_scope(
+        agent_context.load_identity_state().get("identities", []),
+        agent_scope=normalized_scope,
+        roles=roles,
+    )
+    visible_sessions = agent_context.filter_session_entries_by_scope(
+        agent_context.load_session_state().get("sessions", []),
+        agent_scope=normalized_scope,
+        roles=roles,
+    )
     return {
         "agent_scope": normalized_scope,
         "roles": list(roles),
@@ -923,4 +935,6 @@ def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, .
         "visible_proactive_insights": len(visible_proactive),
         "visible_email_messages": len(visible_email),
         "visible_whatsapp_messages": len(visible_whatsapp),
+        "visible_identities": len(visible_identities),
+        "visible_sessions": len(visible_sessions),
     }

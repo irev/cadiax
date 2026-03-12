@@ -38,6 +38,7 @@ from otonomassist.services.personality.proactive_assistance_service import Proac
 from otonomassist.services.privacy.privacy_control_service import PrivacyControlService  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
     ConversationService,
+    IdentitySessionService,
     InteractionRequest,
     NotificationDispatcher,
     build_conversation_response,
@@ -1328,6 +1329,49 @@ def test_admin_api_scope_filtered_email_and_whatsapp_snapshots(tmp_path, monkeyp
     assert status_payload["whatsapp"]["message_count"] == 1
     assert email_payload["email"]["latest_message"]["agent_scope"] == "finance-agent"
     assert whatsapp_payload["whatsapp"]["latest_message"]["agent_scope"] == "finance-agent"
+
+
+def test_identity_session_service_separates_sessions_by_scope_and_filters_snapshot(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    service = IdentitySessionService()
+
+    default_resolution = service.resolve(
+        InteractionRequest(
+            message="halo default",
+            source="api",
+            user_id="user-1",
+            session_id="shared-session",
+            roles=("approved",),
+            agent_scope="default",
+        )
+    )
+    finance_resolution = service.resolve(
+        InteractionRequest(
+            message="halo finance",
+            source="api",
+            user_id="user-1",
+            session_id="shared-session",
+            roles=("finance",),
+            agent_scope="finance-agent",
+        )
+    )
+
+    identity_code, identity_payload = build_admin_snapshot("/identity?agent_scope=finance-agent&roles=finance")
+    status_code, status_payload = build_admin_snapshot("/status?agent_scope=finance-agent&roles=finance")
+
+    assert default_resolution.identity_id == finance_resolution.identity_id
+    assert default_resolution.session_id != finance_resolution.session_id
+    assert identity_code == 200
+    assert status_code == 200
+    assert identity_payload["identity"]["identity_count"] == 1
+    assert identity_payload["identity"]["session_count"] == 1
+    assert identity_payload["identity"]["sessions"][0]["agent_scope"] == "finance-agent"
+    assert status_payload["scope_filter"]["visible_identities"] == 1
+    assert status_payload["scope_filter"]["visible_sessions"] == 1
 
 
 def test_admin_api_requires_token_when_configured(tmp_path, monkeypatch):

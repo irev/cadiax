@@ -83,6 +83,10 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
         from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 
         return 200, {"whatsapp": WhatsAppInterfaceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)}
+    if route == "/identity":
+        from otonomassist.services.interactions.identity_service import IdentitySessionService
+
+        return 200, {"identity": IdentitySessionService().get_snapshot(agent_scope=agent_scope or None, roles=roles)}
     return 404, {"error": "not_found", "path": route}
 
 

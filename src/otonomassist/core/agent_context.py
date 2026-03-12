@@ -295,7 +295,37 @@ def load_identity_state() -> dict[str, Any]:
 
 def save_identity_state(state: dict[str, Any]) -> None:
     """Persist canonical identity mapping state."""
-    _save_durable_json_state(IDENTITY_STATE_KEY, IDENTITIES_FILE, state)
+    normalized_identities: list[dict[str, Any]] = []
+    for raw in list(state.get("identities", [])):
+        if not isinstance(raw, dict):
+            continue
+        normalized_identities.append(
+            {
+                **raw,
+                "agent_scopes": sorted(
+                    {
+                        _normalize_scope_name(str(item))
+                        for item in list(raw.get("agent_scopes", []))
+                        if str(item).strip()
+                    }
+                    or {_normalize_scope_name(str(raw.get("last_agent_scope") or "default"))}
+                ),
+                "last_agent_scope": _normalize_scope_name(str(raw.get("last_agent_scope") or "default")),
+                "roles": [
+                    item_text
+                    for item_text in (
+                        str(item).strip().lower()
+                        for item in list(raw.get("roles", []))
+                    )
+                    if item_text
+                ],
+            }
+        )
+    normalized = {
+        "identities": normalized_identities,
+        "updated_at": str(state.get("updated_at", "")),
+    }
+    _save_durable_json_state(IDENTITY_STATE_KEY, IDENTITIES_FILE, normalized)
 
 
 def load_session_state() -> dict[str, Any]:
@@ -305,7 +335,29 @@ def load_session_state() -> dict[str, Any]:
 
 def save_session_state(state: dict[str, Any]) -> None:
     """Persist canonical cross-channel session state."""
-    _save_durable_json_state(SESSION_STATE_KEY, SESSIONS_FILE, state)
+    normalized_sessions: list[dict[str, Any]] = []
+    for raw in list(state.get("sessions", [])):
+        if not isinstance(raw, dict):
+            continue
+        normalized_sessions.append(
+            {
+                **raw,
+                "agent_scope": _normalize_scope_name(str(raw.get("agent_scope") or "default")),
+                "roles": [
+                    item_text
+                    for item_text in (
+                        str(item).strip().lower()
+                        for item in list(raw.get("roles", []))
+                    )
+                    if item_text
+                ],
+            }
+        )
+    normalized = {
+        "sessions": normalized_sessions,
+        "updated_at": str(state.get("updated_at", "")),
+    }
+    _save_durable_json_state(SESSION_STATE_KEY, SESSIONS_FILE, normalized)
 
 
 def load_notification_state() -> dict[str, Any]:
@@ -1096,6 +1148,47 @@ def filter_whatsapp_messages_by_scope(
     ]
 
 
+def filter_identity_entries_by_scope(
+    entries: list[dict[str, Any]],
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """Filter identity continuity state by scope visibility and role access."""
+    normalized_scope = _normalize_scope_name(agent_scope)
+    filtered: list[dict[str, Any]] = []
+    for entry in entries:
+        scopes = [
+            _normalize_scope_name(str(item))
+            for item in list(entry.get("agent_scopes", []))
+            if str(item).strip()
+        ]
+        if not scopes:
+            scopes = [_normalize_scope_name(str(entry.get("last_agent_scope") or "default"))]
+        if any(_is_scope_visible(scope_name, normalized_scope, roles=roles) for scope_name in scopes):
+            filtered.append(entry)
+    return filtered
+
+
+def filter_session_entries_by_scope(
+    entries: list[dict[str, Any]],
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """Filter session continuity state by scope visibility and role access."""
+    normalized_scope = _normalize_scope_name(agent_scope)
+    return [
+        entry
+        for entry in entries
+        if _is_scope_visible(
+            str(entry.get("agent_scope") or "default"),
+            normalized_scope,
+            roles=roles,
+        )
+    ]
+
+
 def get_scope_state_summary() -> dict[str, Any]:
     """Return operator-facing state counts grouped by agent scope."""
     planner = load_planner_state()
@@ -1116,6 +1209,8 @@ def get_scope_state_summary() -> dict[str, Any]:
                 "proactive_insight_count": 0,
                 "email_message_count": 0,
                 "whatsapp_message_count": 0,
+                "identity_count": 0,
+                "session_count": 0,
                 "latest_memory_id": 0,
             }
         return scopes[normalized]
@@ -1151,6 +1246,27 @@ def get_scope_state_summary() -> dict[str, Any]:
     for entry in load_whatsapp_message_state().get("messages", []):
         bucket = ensure_scope(str(entry.get("agent_scope") or (entry.get("metadata") or {}).get("agent_scope") or "default"))
         bucket["whatsapp_message_count"] += 1
+
+    seen_identity_scope_pairs: set[tuple[str, str]] = set()
+    for entry in load_identity_state().get("identities", []):
+        identity_scopes = [
+            _normalize_scope_name(str(item))
+            for item in list(entry.get("agent_scopes", []))
+            if str(item).strip()
+        ]
+        if not identity_scopes:
+            identity_scopes = [_normalize_scope_name(str(entry.get("last_agent_scope") or "default"))]
+        identity_id = str(entry.get("id") or "")
+        for scope_name in identity_scopes:
+            pair = (scope_name, identity_id)
+            if pair in seen_identity_scope_pairs:
+                continue
+            seen_identity_scope_pairs.add(pair)
+            ensure_scope(scope_name)["identity_count"] += 1
+
+    for entry in load_session_state().get("sessions", []):
+        bucket = ensure_scope(str(entry.get("agent_scope") or "default"))
+        bucket["session_count"] += 1
 
     return {
         "scope_count": len(scopes),

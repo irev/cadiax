@@ -29,6 +29,12 @@ class IdentitySessionService:
         sessions_state = agent_context.load_session_state()
         identities = identities_state.setdefault("identities", [])
         sessions = sessions_state.setdefault("sessions", [])
+        normalized_scope = str(request.agent_scope or "default").strip().lower() or "default"
+        normalized_roles = tuple(
+            item_text
+            for item_text in (str(item).strip().lower() for item in request.roles)
+            if item_text
+        )
 
         principal_keys = self._build_principal_keys(request)
         identity_hint = str(request.metadata.get("identity_hint", "")).strip()
@@ -44,11 +50,31 @@ class IdentitySessionService:
                 "created_at": _utc_now_iso(),
                 "last_seen_at": _utc_now_iso(),
                 "interaction_count": 0,
+                "agent_scopes": [normalized_scope],
+                "last_agent_scope": normalized_scope,
+                "roles": list(normalized_roles),
             }
             identities.append(identity)
 
         identity["sources"] = sorted(set(identity.get("sources", [])) | {request.source})
         identity["principals"] = sorted(set(identity.get("principals", [])) | principal_keys)
+        identity["agent_scopes"] = sorted(
+            {
+                str(item).strip().lower()
+                for item in list(identity.get("agent_scopes", []))
+                if str(item).strip()
+            }
+            | {normalized_scope}
+        )
+        identity["last_agent_scope"] = normalized_scope
+        identity["roles"] = sorted(
+            {
+                str(item).strip().lower()
+                for item in list(identity.get("roles", []))
+                if str(item).strip()
+            }
+            | set(normalized_roles)
+        )
         if identity_hint and not str(identity.get("identity_hint", "")).strip():
             identity["identity_hint"] = identity_hint
         identity["last_seen_at"] = _utc_now_iso()
@@ -59,6 +85,7 @@ class IdentitySessionService:
             source=request.source,
             raw_session_id=request.session_id or request.chat_id or request.user_id or "",
             identity_id=str(identity["id"]),
+            agent_scope=normalized_scope,
         )
         session_created = False
         if session is None:
@@ -73,12 +100,23 @@ class IdentitySessionService:
                 "created_at": _utc_now_iso(),
                 "last_seen_at": _utc_now_iso(),
                 "interaction_count": 0,
+                "agent_scope": normalized_scope,
+                "roles": list(normalized_roles),
             }
             sessions.append(session)
 
         session["identity_id"] = str(identity["id"])
         session["channel_user_id"] = request.user_id or str(session.get("channel_user_id", ""))
         session["channel_chat_id"] = request.chat_id or str(session.get("channel_chat_id", ""))
+        session["agent_scope"] = normalized_scope
+        session["roles"] = sorted(
+            {
+                str(item).strip().lower()
+                for item in list(session.get("roles", []))
+                if str(item).strip()
+            }
+            | set(normalized_roles)
+        )
         session["last_seen_at"] = _utc_now_iso()
         session["interaction_count"] = int(session.get("interaction_count", 0) or 0) + 1
 
@@ -94,17 +132,55 @@ class IdentitySessionService:
             session_created=session_created,
         )
 
-    def get_snapshot(self) -> dict[str, Any]:
+    def get_snapshot(
+        self,
+        *,
+        agent_scope: str | None = None,
+        roles: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
         """Return machine-readable snapshot of identity/session continuity state."""
-        identities = agent_context.load_identity_state().get("identities", [])
-        sessions = agent_context.load_session_state().get("sessions", [])
+        identities = list(agent_context.load_identity_state().get("identities", []))
+        sessions = list(agent_context.load_session_state().get("sessions", []))
+        filtered_identities = (
+            agent_context.filter_identity_entries_by_scope(
+                identities,
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else identities
+        )
+        filtered_sessions = (
+            agent_context.filter_session_entries_by_scope(
+                sessions,
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+            if agent_scope
+            else sessions
+        )
+        by_scope: dict[str, dict[str, int]] = {}
+        for item in filtered_identities:
+            scopes = list(item.get("agent_scopes", [])) or [str(item.get("last_agent_scope") or "default")]
+            for scope_name in scopes:
+                bucket = by_scope.setdefault(str(scope_name), {"identities": 0, "sessions": 0})
+                bucket["identities"] += 1
+        for item in filtered_sessions:
+            scope_name = str(item.get("agent_scope") or "default")
+            bucket = by_scope.setdefault(scope_name, {"identities": 0, "sessions": 0})
+            bucket["sessions"] += 1
         return {
-            "identity_count": len(identities),
-            "session_count": len(sessions),
-            "latest_identity_id": str(identities[-1].get("id", "")) if identities else "",
-            "latest_session_id": str(sessions[-1].get("id", "")) if sessions else "",
-            "identities": identities,
-            "sessions": sessions,
+            "identity_count": len(filtered_identities),
+            "session_count": len(filtered_sessions),
+            "total_identity_count": len(identities),
+            "total_session_count": len(sessions),
+            "latest_identity_id": str(filtered_identities[-1].get("id", "")) if filtered_identities else "",
+            "latest_session_id": str(filtered_sessions[-1].get("id", "")) if filtered_sessions else "",
+            "identities": filtered_identities,
+            "sessions": filtered_sessions,
+            "by_scope": by_scope,
+            "filter_agent_scope": str(agent_scope or ""),
+            "filter_roles": list(roles),
         }
 
     def _find_identity(
@@ -137,6 +213,7 @@ class IdentitySessionService:
         source: str,
         raw_session_id: str,
         identity_id: str,
+        agent_scope: str,
     ) -> dict[str, Any] | None:
         if raw_session_id:
             found = next(
@@ -144,13 +221,19 @@ class IdentitySessionService:
                     item for item in sessions
                     if str(item.get("source", "")) == source
                     and str(item.get("raw_session_id", "")) == raw_session_id
+                    and str(item.get("agent_scope", "") or "default").strip().lower() == agent_scope
                 ),
                 None,
             )
             if found is not None:
                 return found
         return next(
-            (item for item in sessions if str(item.get("identity_id", "")) == identity_id and str(item.get("source", "")) == source),
+            (
+                item for item in sessions
+                if str(item.get("identity_id", "")) == identity_id
+                and str(item.get("source", "")) == source
+                and str(item.get("agent_scope", "") or "default").strip().lower() == agent_scope
+            ),
             None,
         )
 
