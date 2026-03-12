@@ -22,12 +22,13 @@ class ContextBudgeter:
         command: str,
         skills_context: str,
         personality_service: PersonalityService,
+        session_mode: str = "main",
     ) -> str:
         """Build the assistant orchestration context under active budgets."""
         return self.compose(
             skills_context=skills_context,
             personality_context=personality_service.build_prompt_block(max_chars=self.get_profile_max_chars()),
-            runtime_context=build_runtime_context_block(command),
+            runtime_context=build_runtime_context_block(command, session_mode=session_mode),
         )
 
     def build_general_reasoning_context(
@@ -35,12 +36,13 @@ class ContextBudgeter:
         *,
         query: str,
         personality_service: PersonalityService,
+        session_mode: str = "main",
     ) -> str:
         """Build a general-purpose reasoning context for direct AI skills."""
         return self.compose(
             skills_context="",
             personality_context=personality_service.build_prompt_block(max_chars=self.get_profile_max_chars()),
-            runtime_context=build_runtime_context_block(query),
+            runtime_context=build_runtime_context_block(query, session_mode=session_mode),
         )
 
     def compose(

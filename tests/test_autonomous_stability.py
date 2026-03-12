@@ -19,6 +19,7 @@ from otonomassist.core.execution_history import load_execution_events  # noqa: E
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot  # noqa: E402
 from otonomassist.core import workspace_guard  # noqa: E402
 from otonomassist.core.admin_api import build_admin_snapshot  # noqa: E402
+from otonomassist.core.transport import TransportContext  # noqa: E402
 from otonomassist.ai.base import AIResponse  # noqa: E402
 from otonomassist.ai.factory import AIProviderFactory  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
@@ -291,6 +292,26 @@ def test_context_budgeter_redacts_secret_like_values_from_prompt_context(tmp_pat
     assert "sk-live-1234567890abcdefgh" not in prompt
     assert "secret-token-abcdef123456" not in prompt
     assert "[REDACTED]" in prompt
+
+
+def test_runtime_context_loads_curated_memory_only_for_main_session(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "MEMORY.md").write_text("# Memory\n\n- fakta privat utama\n", encoding="utf-8")
+
+    main_prompt = ContextBudgeter().build_general_reasoning_context(
+        query="cek konteks",
+        personality_service=PersonalityService(),
+        session_mode="main",
+    )
+    shared_prompt = ContextBudgeter().build_general_reasoning_context(
+        query="cek konteks",
+        personality_service=PersonalityService(),
+        session_mode="shared",
+    )
+
+    assert "fakta privat utama" in main_prompt
+    assert "tidak dimuat pada shared session" in shared_prompt
+    assert "fakta privat utama" not in shared_prompt
 
 
 def test_redaction_policy_can_be_disabled_for_local_debugging(tmp_path, monkeypatch):

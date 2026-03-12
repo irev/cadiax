@@ -498,7 +498,7 @@ def build_agent_context_block(query: str | None = None) -> str:
     return "\n".join(parts)
 
 
-def build_runtime_context_block(query: str | None = None) -> str:
+def build_runtime_context_block(query: str | None = None, *, session_mode: str = "main") -> str:
     """Build planner, lessons, and memory context without personality/profile."""
     ensure_agent_storage()
     parts = [
@@ -522,6 +522,17 @@ def build_runtime_context_block(query: str | None = None) -> str:
     if next_task:
         parts.append(f"- next_task: #{next_task.get('id')} {next_task.get('text')}")
 
+    normalized_session_mode = str(session_mode or "main").strip().lower()
+    parts.extend(["", "## Session Memory Boundary"])
+    parts.append(f"- session_mode: {normalized_session_mode}")
+    if normalized_session_mode == "main":
+        parts.extend(["", "## Curated Memory"])
+        curated_memory = load_workspace_curated_memory(max_chars=1200)
+        parts.append(curated_memory or "- belum ada curated memory workspace")
+    else:
+        parts.extend(["", "## Curated Memory"])
+        parts.append("- tidak dimuat pada shared session")
+
     memories = retrieve_relevant_memories(query, limit=5) if query and query.strip() else load_recent_memories(limit=5)
     parts.extend(["", "## Relevant Memories" if query and query.strip() else "## Recent Memories"])
     if memories:
@@ -531,6 +542,15 @@ def build_runtime_context_block(query: str | None = None) -> str:
         parts.append("- tidak ada memori relevan" if query and query.strip() else "- belum ada memori")
 
     return "\n".join(parts)
+
+
+def load_workspace_curated_memory(max_chars: int = 1600) -> str:
+    """Load workspace curated long-term memory when present."""
+    ensure_agent_storage()
+    memory_file = get_workspace_root() / "MEMORY.md"
+    if not memory_file.exists():
+        return ""
+    return load_markdown(memory_file, max_chars=max_chars)
 
 
 def append_memory_entry(text: str, source: str = "manual") -> dict[str, Any]:

@@ -18,6 +18,7 @@ class InteractionRequest:
     identity_id: str | None = None
     roles: tuple[str, ...] = ()
     trace_id: str | None = None
+    session_mode: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -38,6 +39,7 @@ class InteractionRequest:
             identity_id=_coerce_optional_text(payload.get("identity_id")),
             roles=roles,
             trace_id=_coerce_optional_text(payload.get("trace_id")),
+            session_mode=_coerce_optional_text(payload.get("session_mode")),
             metadata=metadata if isinstance(metadata, dict) else {},
         )
 

@@ -37,7 +37,7 @@ class ExecutionService:
         policy_service: PolicyService,
         *,
         provider_getter: Callable[[], Any],
-        system_prompt_builder: Callable[[str], str],
+        system_prompt_builder: Callable[[str, TransportContext | None], str],
         error_formatter: Callable[[str, str], str],
         async_runner: Callable[[Any], Any],
         help_renderer: Callable[[], str],
@@ -65,7 +65,7 @@ class ExecutionService:
             ai_response = self._run_chat_completion(
                 provider,
                 command,
-                self.system_prompt_builder(command),
+                self.system_prompt_builder(command, context),
             )
             route_duration_ms = int((time.perf_counter() - route_started) * 1000)
             self._record_ai_route_usage(

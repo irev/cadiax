@@ -16,3 +16,4 @@ class TransportContext:
     identity_id: str | None = None
     roles: tuple[str, ...] = ()
     trace_id: str | None = None
+    session_mode: str = "main"

@@ -120,12 +120,13 @@ class Assistant:
                     lines.append("  side_effects: " + ", ".join(item["side_effects"]))
         return "\n".join(lines)
 
-    def _get_orchestration_system_prompt(self, command: str) -> str:
+    def _get_orchestration_system_prompt(self, command: str, context: TransportContext | None = None) -> str:
         """Build system prompt for AI orchestration."""
         context_block = self.context_budgeter.build_orchestration_context(
             command=command,
             skills_context=self._build_skills_context(),
             personality_service=self.personality_service,
+            session_mode=context.session_mode if context else "main",
         )
         return f"""Anda adalah asisten yang menentukan skill mana yang akan digunakan berdasarkan input user.
 

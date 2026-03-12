@@ -26,6 +26,7 @@ import otonomassist.core.external_assets as external_assets  # noqa: E402
 import otonomassist.core.external_installer as external_installer  # noqa: E402
 from otonomassist.core.event_bus import get_event_bus_snapshot  # noqa: E402
 from otonomassist.platform import run_process  # noqa: E402
+from otonomassist.services.interactions import InteractionRequest  # noqa: E402
 
 
 def _configure_temp_agent_state(tmp_path, monkeypatch):
@@ -1236,6 +1237,41 @@ def test_cli_agents_show_reads_scope_registry_from_agents_document(tmp_path, mon
     assert "finance-agent: Analisis finansial" in result.output
     assert payload["scope_count"] == 2
     assert payload["scopes"][1]["scope"] == "finance-agent"
+
+
+def test_conversation_service_marks_shared_session_for_chat_channels(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "MEMORY.md").write_text("# Memory\n\n- konteks privat\n", encoding="utf-8")
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    service = cli_module.ConversationService(assistant)
+
+    response = service.handle(
+        InteractionRequest(
+            message="list",
+            source="telegram",
+            user_id="1",
+            chat_id="100",
+            roles=("approved",),
+        )
+    )
+
+    assert response.metadata["canonical_session_id"]
+
+
+def test_conversation_service_accepts_main_session_override(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    service = cli_module.ConversationService(assistant)
+
+    response = service.handle(
+        InteractionRequest(
+            message="list",
+            source="api",
+            session_mode="main",
+        )
+    )
+
+    assert response.status == "ok"
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):

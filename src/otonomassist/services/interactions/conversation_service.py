@@ -34,6 +34,7 @@ class ConversationService:
             identity_id=resolution.identity_id,
             roles=request.roles,
             trace_id=trace_id,
+            session_mode=_resolve_session_mode(request),
         )
         append_execution_event(
             "interaction_received",
@@ -103,6 +104,7 @@ class ConversationService:
             identity_id=context.identity_id if context else None,
             roles=context.roles if context else (),
             trace_id=context.trace_id if context else None,
+            session_mode=context.session_mode if context else None,
         )
         response = self.handle(request)
         if context is not None and not context.trace_id and response.trace_id:
@@ -111,3 +113,14 @@ class ConversationService:
             context.session_id = str(response.metadata.get("canonical_session_id") or response.session_id or "")
             context.identity_id = response.identity_id
         return response.response
+
+
+def _resolve_session_mode(request: InteractionRequest) -> str:
+    explicit = str(request.session_mode or request.metadata.get("session_mode") or "").strip().lower()
+    if explicit in {"main", "shared"}:
+        return explicit
+    if request.source in {"cli"}:
+        return "main"
+    if request.source == "api" and not request.chat_id:
+        return "main"
+    return "shared"
