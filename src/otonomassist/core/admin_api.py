@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from otonomassist.core.config_doctor import get_config_status_data
 from otonomassist.core.event_bus import get_event_bus_snapshot
-from otonomassist.core.execution_history import export_execution_events
+from otonomassist.core.execution_history import append_execution_event, export_execution_events, new_trace_id
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
 from otonomassist.core.job_runtime import get_job_queue_snapshot, get_job_queue_summary
 from otonomassist.core.workspace_bootstrap import get_workspace_bootstrap_status
@@ -20,8 +20,6 @@ from otonomassist.services.personality.startup_document_service import StartupDo
 
 def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tuple[int, dict[str, object]]:
     """Build a read-only JSON payload for one admin API path."""
-    if not _is_authorized(headers or {}):
-        return 401, {"error": "unauthorized"}
     parsed = urlparse(path)
     route = parsed.path.rstrip("/") or "/"
     query = parse_qs(parsed.query)
@@ -31,6 +29,24 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
         item_text
         for item_text in (item.strip().lower() for item in role_query.split(","))
         if item_text
+    )
+    if not _is_authorized(headers or {}):
+        append_execution_event(
+            "admin_snapshot_requested",
+            trace_id=new_trace_id(),
+            status="unauthorized",
+            source="admin-api",
+            command=f"GET {route}",
+            data={"route": route, "agent_scope": agent_scope, "roles": list(roles)},
+        )
+        return 401, {"error": "unauthorized"}
+    append_execution_event(
+        "admin_snapshot_requested",
+        trace_id=new_trace_id(),
+        status="ok",
+        source="admin-api",
+        command=f"GET {route}",
+        data={"route": route, "agent_scope": agent_scope, "roles": list(roles)},
     )
     if route == "/health":
         status = get_config_status_data(agent_scope=agent_scope or None, roles=roles)

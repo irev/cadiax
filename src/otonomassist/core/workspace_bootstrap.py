@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from otonomassist.core import agent_context
+from otonomassist.core.execution_history import append_execution_event, new_trace_id
 from otonomassist.core.workspace_guard import get_workspace_root
 
 
@@ -38,7 +39,9 @@ def ensure_workspace_skeleton(
     workspace_root.mkdir(parents=True, exist_ok=True)
     agent_context.DATA_DIR.mkdir(parents=True, exist_ok=True)
     if only_if_workspace_empty and not _workspace_is_empty_enough(workspace_root):
-        return _build_result([], [], skipped="workspace_not_empty")
+        result = _build_result([], [], skipped="workspace_not_empty")
+        _record_bootstrap_event(result, workspace_root=workspace_root, force=force, only_if_workspace_empty=only_if_workspace_empty)
+        return result
 
     written: list[str] = []
     existing: list[str] = []
@@ -60,7 +63,9 @@ def ensure_workspace_skeleton(
         "workspace_root": str(workspace_root),
     }
     _write_manifest(manifest)
-    return _build_result(written, existing, skipped="")
+    result = _build_result(written, existing, skipped="")
+    _record_bootstrap_event(result, workspace_root=workspace_root, force=force, only_if_workspace_empty=only_if_workspace_empty)
+    return result
 
 
 def get_workspace_bootstrap_status() -> dict[str, Any]:
@@ -123,3 +128,27 @@ def _build_result(written: list[str], existing: list[str], *, skipped: str) -> d
         "existing_count": len(existing),
         "skipped": skipped,
     }
+
+
+def _record_bootstrap_event(
+    result: dict[str, Any],
+    *,
+    workspace_root: Path,
+    force: bool,
+    only_if_workspace_empty: bool,
+) -> None:
+    append_execution_event(
+        "workspace_bootstrap_completed",
+        trace_id=new_trace_id(),
+        status="skipped" if result.get("skipped") else "ok",
+        source="bootstrap",
+        command="bootstrap foundation",
+        data={
+            "workspace_root": str(workspace_root),
+            "force": bool(force),
+            "only_if_workspace_empty": bool(only_if_workspace_empty),
+            "written_count": int(result.get("written_count", 0) or 0),
+            "existing_count": int(result.get("existing_count", 0) or 0),
+            "skipped": str(result.get("skipped") or ""),
+        },
+    )

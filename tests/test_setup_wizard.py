@@ -19,6 +19,8 @@ if str(SRC) not in sys.path:
 from otonomassist.cli import main  # noqa: E402
 import otonomassist.cli as cli_module  # noqa: E402
 from otonomassist.core import agent_context, workspace_guard  # noqa: E402
+from otonomassist.core.admin_api import build_admin_snapshot  # noqa: E402
+from otonomassist.core.execution_history import load_execution_events  # noqa: E402
 from otonomassist.core.runtime_interaction import bind_interaction_context  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
 from otonomassist.core.skill_loader import SkillLoader  # noqa: E402
@@ -1344,6 +1346,29 @@ def test_cli_doctor_reports_retention_candidates(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "retention_candidate_memory_entries" in result.output
     assert payload["privacy_controls"]["retention_candidates"]["memory_entries"] >= 1
+
+
+def test_bootstrap_foundation_records_execution_event(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["bootstrap", "foundation"])
+    events = load_execution_events(limit=10)
+
+    assert result.exit_code == 0
+    assert any(event["event_type"] == "workspace_bootstrap_completed" for event in events)
+
+
+def test_admin_snapshot_request_records_execution_event(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    status_code, _ = build_admin_snapshot("/status")
+    events = load_execution_events(limit=10)
+
+    assert status_code == 200
+    assert any(
+        event["event_type"] == "admin_snapshot_requested" and (event.get("data") or {}).get("route") == "/status"
+        for event in events
+    )
 
 
 def test_cli_doctor_reports_scope_controls(tmp_path, monkeypatch):
