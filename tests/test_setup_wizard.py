@@ -488,6 +488,44 @@ def test_cli_proactive_notify_respects_scope_role_boundary(tmp_path, monkeypatch
     assert notifications["notifications"][0]["metadata"]["deferred_reason"] == "scope_role_denied"
 
 
+def test_cli_proactive_notify_defers_undeclared_scope(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "undeclared_scope_test",
+                    "confidence": "high",
+                    "summary": "Insight untuk scope belum terdaftar.",
+                    "suggested_action": "review scope",
+                    "reason": "scope_manifest_guard",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "insights_generated": 1,
+        }
+    )
+
+    runner = CliRunner()
+    notify_result = runner.invoke(
+        main,
+        [
+            "proactive",
+            "notify",
+            "--channel",
+            "internal",
+            "--consented",
+            "--scope",
+            "undeclared-agent",
+        ],
+    )
+
+    notifications = agent_context.load_notification_state()
+    assert notify_result.exit_code == 0
+    assert "status=deferred" in notify_result.output
+    assert notifications["notifications"][0]["metadata"]["deferred_reason"] == "scope_undeclared"
+
+
 def test_cli_service_status_reports_wrapper_targets(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 
@@ -854,6 +892,7 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "email" in payload
     assert "whatsapp" in payload
     assert "privacy_controls" in payload
+    assert "agent_scopes" in payload
     assert "bootstrap" in payload
     assert "proactive_insight_count" in payload["personality"]
     assert "delivery_batch_count" in payload["notifications"]
@@ -1169,6 +1208,34 @@ def test_cli_doctor_reports_scope_controls(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "scope:finance-agent -> proactive=no consent=yes roles=finance, owner" in result.output
     assert payload["privacy_controls"]["scope_count"] == 1
+
+
+def test_cli_agents_show_reads_scope_registry_from_agents_document(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "\n".join(
+            [
+                "# AGENTS",
+                "",
+                "## Agent Scopes",
+                "- default: Runtime umum | roles: owner, approved",
+                "- finance-agent: Analisis finansial | roles: owner, finance",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["agents", "show"])
+    json_result = runner.invoke(main, ["agents", "show", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "Agent Scopes" in result.output
+    assert "finance-agent: Analisis finansial" in result.output
+    assert payload["scope_count"] == 2
+    assert payload["scopes"][1]["scope"] == "finance-agent"
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):

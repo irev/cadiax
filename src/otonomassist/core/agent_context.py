@@ -892,8 +892,14 @@ def _ensure_preference_state_in_store(store: SQLiteStateStore) -> None:
         normalized_record = _normalize_preference_state(record.value)
         if normalized_record.get("preferences") or any(normalized_record.get("profile", {}).values()):
             store.upsert_json_state(PREFERENCE_STATE_KEY, normalized_record)
-            ensure_internal_state_write_allowed(PREFERENCES_FILE)
-            _write_text_atomic(PREFERENCES_FILE, json.dumps(normalized_record, indent=2))
+            serialized = json.dumps(normalized_record, indent=2)
+            existing_text = ""
+            if PREFERENCES_FILE.exists():
+                ensure_read_allowed(PREFERENCES_FILE)
+                existing_text = PREFERENCES_FILE.read_text(encoding="utf-8", errors="replace")
+            if existing_text.strip() != serialized.strip():
+                ensure_internal_state_write_allowed(PREFERENCES_FILE)
+                _write_text_atomic(PREFERENCES_FILE, serialized)
             return
     legacy_value, _ = _read_legacy_json_state(PREFERENCES_FILE, DEFAULT_PREFERENCE_STATE)
     preferences = [

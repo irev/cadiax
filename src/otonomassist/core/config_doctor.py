@@ -20,7 +20,7 @@ from otonomassist.interfaces.telegram import TelegramAuthService
 from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
-from otonomassist.services.personality import HabitModelService, HeartbeatService, PersonalityService
+from otonomassist.services.personality import AgentScopeService, HabitModelService, HeartbeatService, PersonalityService
 from otonomassist.services.policy.policy_service import PolicyService
 from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
 from otonomassist.services.runtime.budget_manager import BudgetManager
@@ -73,6 +73,7 @@ def get_config_status_data() -> dict[str, object]:
     from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
     privacy_controls = PrivacyControlService().get_diagnostics()
+    agent_scopes = AgentScopeService().get_snapshot()
     bootstrap = get_workspace_bootstrap_status()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
@@ -181,6 +182,7 @@ def get_config_status_data() -> dict[str, object]:
         "email": email,
         "whatsapp": whatsapp,
         "privacy_controls": privacy_controls,
+        "agent_scopes": agent_scopes,
         "bootstrap": bootstrap,
         "external_assets": {
             "asset_count": external_assets["asset_count"],
@@ -342,6 +344,19 @@ def get_config_status_report() -> str:
             f"- scope:{scope_name} -> proactive={'yes' if scope_payload.get('proactive_assistance_enabled', True) else 'no'} "
             f"consent={'yes' if scope_payload.get('consent_required_for_proactive', True) else 'no'} "
             f"roles={', '.join(scope_payload.get('allowed_roles', [])) or '-'}"
+        )
+    lines.extend(
+        [
+            "",
+            "[Agent Scopes]",
+            f"- scope_count: {data['agent_scopes']['scope_count']}",
+            f"- document_path: {data['agent_scopes']['document_path']}",
+        ]
+    )
+    for item in data["agent_scopes"].get("scopes", [])[:6]:
+        lines.append(
+            f"- {item.get('scope')}: {item.get('description') or '-'} "
+            f"(roles: {', '.join(item.get('allowed_roles', [])) or '-'})"
         )
 
     lines.extend(

@@ -41,6 +41,7 @@ from otonomassist.platform import (
 )
 from otonomassist.interfaces.email import EmailInterfaceService
 from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
+from otonomassist.services.personality.agent_scope_service import AgentScopeService
 from otonomassist.services.personality.heartbeat_service import HeartbeatService
 from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 from otonomassist.services.interactions import ConversationService, NotificationDispatcher, run_conversation_api
@@ -267,6 +268,22 @@ def worker_command(
 @main.group("config")
 def config_group() -> None:
     """Configuration commands."""
+
+
+@main.group("agents")
+def agents_group() -> None:
+    """Agent scope registry commands."""
+
+
+@agents_group.command("show")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON scope registry")
+def agents_show_command(as_json: bool) -> None:
+    """Show scope registry derived from AGENTS.md."""
+    payload = AgentScopeService().get_snapshot()
+    if as_json:
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(AgentScopeService().render_report())
 
 
 @main.group("bootstrap")

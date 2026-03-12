@@ -10,6 +10,7 @@ from otonomassist.services.interactions import (
     run_conversation_api,
 )
 from otonomassist.services.personality import (
+    AgentScopeService,
     EpisodicLearningService,
     HeartbeatService,
     HabitModelService,
@@ -22,6 +23,7 @@ from otonomassist.services.policy import PolicyDecision, PolicyService
 from otonomassist.services.runtime import BudgetManager, ContextBudgeter, ExecutionService, InteractionOrchestrator, ModelRouter, RedactionPolicy
 
 __all__ = [
+    "AgentScopeService",
     "BudgetManager",
     "ConversationService",
     "ContextBudgeter",

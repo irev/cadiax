@@ -9,6 +9,7 @@ from typing import Any
 
 import otonomassist.core.agent_context as agent_context
 from otonomassist.core.execution_history import append_execution_event, new_trace_id
+from otonomassist.services.personality.agent_scope_service import AgentScopeService
 
 
 class PrivacyControlService:
@@ -78,7 +79,7 @@ class PrivacyControlService:
         allowed_roles: list[str] | None = None,
     ) -> dict[str, Any]:
         """Persist privacy controls for one agent or domain scope."""
-        normalized_scope = _normalize_scope(scope)
+        normalized_scope = AgentScopeService().get_scope(scope)["scope"]
         state = self.get_settings()
         scoped = dict(state.get("scoped_controls", {}))
         current = dict(scoped.get(normalized_scope, {}))
@@ -116,18 +117,22 @@ class PrivacyControlService:
 
     def get_scope_controls(self, scope: str) -> dict[str, Any]:
         """Return merged privacy controls for one scope."""
-        normalized_scope = _normalize_scope(scope)
+        scope_entry = AgentScopeService().get_scope(scope)
+        normalized_scope = scope_entry["scope"]
         state = self.get_settings()
-        scoped = dict(state.get("scoped_controls", {})).get(normalized_scope, {})
+        scoped_controls = dict(state.get("scoped_controls", {}))
+        scoped = scoped_controls.get(normalized_scope, {})
         return {
             "scope": normalized_scope,
+            "declared": bool(scope_entry.get("declared", True) or normalized_scope in scoped_controls),
+            "description": str(scope_entry.get("description", "")),
             "proactive_assistance_enabled": bool(
                 scoped.get("proactive_assistance_enabled", state.get("proactive_assistance_enabled", True))
             ),
             "consent_required_for_proactive": bool(
                 scoped.get("consent_required_for_proactive", state.get("consent_required_for_proactive", True))
             ),
-            "allowed_roles": list(scoped.get("allowed_roles", [])),
+            "allowed_roles": list(scoped.get("allowed_roles", scope_entry.get("allowed_roles", []))),
             "updated_at": str(scoped.get("updated_at", "")),
         }
 
@@ -153,8 +158,10 @@ class PrivacyControlService:
         is_proactive = bool(payload.get("proactive", False))
         if not is_proactive:
             return False, ""
-        scope = _normalize_scope(str(payload.get("agent_scope") or payload.get("scope") or "default"))
+        scope = AgentScopeService().get_scope(str(payload.get("agent_scope") or payload.get("scope") or "default"))["scope"]
         scoped = self.get_scope_controls(scope)
+        if not scoped.get("declared", True):
+            return True, "scope_undeclared"
         if scoped.get("allowed_roles"):
             raw_roles = payload.get("roles", ())
             if isinstance(raw_roles, str):
