@@ -231,11 +231,16 @@ def test_personality_service_persists_structured_preference_profile(tmp_path, mo
 
 def test_personality_service_includes_identity_and_soul_documents(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text("# AGENTS\n\n- aturan workspace.\n", encoding="utf-8")
+    (tmp_path / "USER.md").write_text("# User\n\n- suka jawaban ringkas.\n", encoding="utf-8")
+    (tmp_path / "TOOLS.md").write_text("# Tools\n\n- tool lokal aktif.\n", encoding="utf-8")
     (tmp_path / "IDENTITY.md").write_text("# Identity\n\n- Fokus pada akurasi.\n", encoding="utf-8")
     (tmp_path / "SOUL.md").write_text("# Soul\n\n- Bergerak tenang dan reflektif.\n", encoding="utf-8")
 
     prompt = PersonalityService().build_prompt_block()
 
+    assert "## Session Startup Docs" in prompt
+    assert "aturan workspace" in prompt
     assert "## Identity" in prompt
     assert "Fokus pada akurasi." in prompt
     assert "## Soul" in prompt

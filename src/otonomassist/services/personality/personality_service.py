@@ -10,6 +10,7 @@ from otonomassist.services.personality.habit_model_service import HabitModelServ
 from otonomassist.services.personality.identity_service import IdentityService
 from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 from otonomassist.services.personality.soul_service import SoulService
+from otonomassist.services.personality.startup_document_service import StartupDocumentService
 
 
 class PersonalityService:
@@ -19,6 +20,7 @@ class PersonalityService:
         self.profile_path = profile_path or agent_context.PROFILE_FILE
         self.identity_service = IdentityService()
         self.soul_service = SoulService()
+        self.startup_document_service = StartupDocumentService()
 
     def show_profile(self, max_chars: int = 4000) -> str:
         """Return the persisted profile markdown."""
@@ -94,7 +96,7 @@ class PersonalityService:
         """Append one long-term context item."""
         agent_context.append_markdown_bullet(self.profile_path, "Long-term Context", text.strip())
 
-    def build_prompt_block(self, max_chars: int = 1200) -> str:
+    def build_prompt_block(self, max_chars: int = 1200, *, session_mode: str = "main") -> str:
         """Render the personality block for prompt assembly."""
         parts = [
             "Assistant personality context:",
@@ -121,6 +123,7 @@ class PersonalityService:
                 parts.append(f"- summary_style: {structured['summary_style']}")
         else:
             parts.append("- belum ada profil preferensi terstruktur")
+        parts.extend(["", self.startup_document_service.build_prompt_block(session_mode=session_mode, max_chars=max_chars)])
         habits = HabitModelService().list_habits(limit=3)
         parts.extend(["", self.identity_service.build_prompt_block()])
         parts.extend(["", self.soul_service.build_prompt_block()])

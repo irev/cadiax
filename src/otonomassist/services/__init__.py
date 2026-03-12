@@ -18,6 +18,7 @@ from otonomassist.services.personality import (
     PersonalityService,
     ProactiveAssistanceService,
     SoulService,
+    StartupDocumentService,
 )
 from otonomassist.services.policy import PolicyDecision, PolicyService
 from otonomassist.services.runtime import BudgetManager, ContextBudgeter, ExecutionService, InteractionOrchestrator, ModelRouter, RedactionPolicy
@@ -44,6 +45,7 @@ __all__ = [
     "ProactiveAssistanceService",
     "RedactionPolicy",
     "SoulService",
+    "StartupDocumentService",
     "build_conversation_response",
     "run_conversation_api",
 ]

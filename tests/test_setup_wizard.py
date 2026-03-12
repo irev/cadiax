@@ -1249,6 +1249,27 @@ def test_cli_agents_show_reads_scope_registry_from_agents_document(tmp_path, mon
     assert payload["scopes"][1]["scope"] == "finance-agent"
 
 
+def test_cli_startup_show_reads_workspace_startup_documents(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text("# AGENTS\n\n- aturan startup.\n", encoding="utf-8")
+    (tmp_path / "SOUL.md").write_text("# SOUL\n\n- reflektif.\n", encoding="utf-8")
+    (tmp_path / "USER.md").write_text("# USER\n\n- ringkas.\n", encoding="utf-8")
+    (tmp_path / "IDENTITY.md").write_text("# IDENTITY\n\n- akurat.\n", encoding="utf-8")
+    (tmp_path / "TOOLS.md").write_text("# TOOLS\n\n- terminal.\n", encoding="utf-8")
+    (tmp_path / "MEMORY.md").write_text("# Memory\n\n- privat utama.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["startup", "show"])
+    json_result = runner.invoke(main, ["startup", "show", "--json", "--session-mode", "shared"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "## Session Startup Docs" in result.output
+    assert "aturan startup" in result.output
+    assert payload["session_mode"] == "shared"
+    assert payload["curated_memory"] == ""
+
+
 def test_conversation_service_marks_shared_session_for_chat_channels(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     (tmp_path / "MEMORY.md").write_text("# Memory\n\n- konteks privat\n", encoding="utf-8")

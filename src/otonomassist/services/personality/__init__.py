@@ -8,6 +8,7 @@ from otonomassist.services.personality.identity_service import IdentityService
 from otonomassist.services.personality.personality_service import PersonalityService
 from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 from otonomassist.services.personality.soul_service import SoulService
+from otonomassist.services.personality.startup_document_service import StartupDocumentService
 
 __all__ = [
     "AgentScopeService",
@@ -18,4 +19,5 @@ __all__ = [
     "PersonalityService",
     "ProactiveAssistanceService",
     "SoulService",
+    "StartupDocumentService",
 ]

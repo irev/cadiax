@@ -44,6 +44,7 @@ from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 from otonomassist.services.personality.agent_scope_service import AgentScopeService
 from otonomassist.services.personality.heartbeat_service import HeartbeatService
 from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
+from otonomassist.services.personality.startup_document_service import StartupDocumentService
 from otonomassist.services.interactions import ConversationService, NotificationDispatcher, run_conversation_api
 from otonomassist.telegram_cli import run_telegram_transport
 
@@ -284,6 +285,23 @@ def agents_show_command(as_json: bool) -> None:
         click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     click.echo(AgentScopeService().render_report())
+
+
+@main.group("startup")
+def startup_group() -> None:
+    """Workspace startup document commands."""
+
+
+@startup_group.command("show")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON startup snapshot")
+@click.option("--session-mode", type=click.Choice(["main", "shared"], case_sensitive=False), default="main", show_default=True)
+def startup_show_command(as_json: bool, session_mode: str) -> None:
+    """Show canonical startup document order and previews."""
+    payload = StartupDocumentService().get_snapshot(session_mode=session_mode)
+    if as_json:
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(StartupDocumentService().build_prompt_block(session_mode=session_mode))
 
 
 @main.group("bootstrap")
