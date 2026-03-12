@@ -27,6 +27,7 @@ from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
 from otonomassist.interfaces.telegram import TelegramPollingTransport as InterfaceTelegramPollingTransport  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
 from otonomassist.services import BudgetManager, ContextBudgeter, EpisodicLearningService, HabitModelService, ModelRouter, PersonalityService, PolicyService, RedactionPolicy  # noqa: E402
+from otonomassist.services.personality.heartbeat_service import HeartbeatService  # noqa: E402
 from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService  # noqa: E402
 from otonomassist.services.privacy.privacy_control_service import PrivacyControlService  # noqa: E402
 from otonomassist.services.interactions import (  # noqa: E402
@@ -350,6 +351,18 @@ def test_proactive_assistance_generates_contextual_insights(tmp_path, monkeypatc
     assert state["insights_generated"] >= 1
     assert any(item["reason"] == "planner_ready_task_detected" for item in state["insights"])
     assert "## Proactive Assistance Hints" in prompt
+
+
+def test_heartbeat_service_persists_runtime_pulse(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.add_planner_task("memory add heartbeat task", status="todo")
+
+    payload = HeartbeatService().pulse(trigger="test")
+
+    assert payload["pulse_count"] >= 1
+    assert payload["last_trigger"] == "test"
+    assert payload["last_mode"] in {"ready", "active", "reflective", "deferred"}
+    assert agent_context.load_heartbeat_state()["last_trigger"] == "test"
 
 
 def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypatch):

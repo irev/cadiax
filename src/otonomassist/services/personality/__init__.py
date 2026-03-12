@@ -1,6 +1,7 @@
 """Personality services."""
 
 from otonomassist.services.personality.episodic_learning_service import EpisodicLearningService
+from otonomassist.services.personality.heartbeat_service import HeartbeatService
 from otonomassist.services.personality.habit_model_service import HabitModelService
 from otonomassist.services.personality.identity_service import IdentityService
 from otonomassist.services.personality.personality_service import PersonalityService
@@ -9,6 +10,7 @@ from otonomassist.services.personality.soul_service import SoulService
 
 __all__ = [
     "EpisodicLearningService",
+    "HeartbeatService",
     "HabitModelService",
     "IdentityService",
     "PersonalityService",

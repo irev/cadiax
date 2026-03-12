@@ -53,6 +53,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
     monkeypatch.setattr(agent_context, "PROACTIVE_INSIGHTS_FILE", data_dir / "proactive_insights.json")
+    monkeypatch.setattr(agent_context, "HEARTBEAT_STATE_FILE", data_dir / "heartbeat.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
@@ -1278,6 +1279,7 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
     monkeypatch.setattr(agent_context, "PROACTIVE_INSIGHTS_FILE", data_dir / "proactive_insights.json")
+    monkeypatch.setattr(agent_context, "HEARTBEAT_STATE_FILE", data_dir / "heartbeat.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
@@ -1366,6 +1368,55 @@ def test_cli_doctor_reports_identity_and_soul_previews(tmp_path, monkeypatch):
     assert "- soul_preview:" in result.output
     assert "Akurat dan sabar." in payload["personality"]["identity_preview"]
     assert "Reflektif dan tenang." in payload["personality"]["soul_preview"]
+
+
+def test_cli_heartbeat_show_and_pulse_expose_runtime_state(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "HEARTBEAT.md").write_text("# Heartbeat\n\n- cek kesiapan queue dan planner.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    pulse_result = runner.invoke(main, ["heartbeat", "pulse", "--trigger", "cli-test"])
+    show_result = runner.invoke(main, ["heartbeat", "show"])
+    json_result = runner.invoke(main, ["heartbeat", "show", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert pulse_result.exit_code == 0
+    assert "Heartbeat pulse #" in pulse_result.output
+    assert show_result.exit_code == 0
+    assert "Heartbeat" in show_result.output
+    assert payload["last_trigger"] in {"cli-test", "cli-show"}
+
+
+def test_scheduler_updates_heartbeat_mode_in_status_report(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    runner = CliRunner()
+    runner.invoke(main, ["run", "planner add memory add heartbeat from scheduler"])
+    scheduler_result = runner.invoke(main, ["scheduler", "--cycles", "1", "--steps", "5"])
+    status_result = runner.invoke(main, ["status"])
+    status_json_result = runner.invoke(main, ["status", "--json"])
+
+    payload = json.loads(status_json_result.output)
+    assert scheduler_result.exit_code == 0
+    assert status_result.exit_code == 0
+    assert "- last_heartbeat_mode:" in status_result.output
+    assert payload["scheduler"]["last_heartbeat_mode"] in {"active", "ready", "reflective", "deferred"}
+    assert payload["personality"]["heartbeat"]["pulse_count"] >= 1
 
 
 def test_run_process_wrapper_executes_python_command():

@@ -20,7 +20,7 @@ from otonomassist.interfaces.telegram import TelegramAuthService
 from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 from otonomassist.core.secure_storage import PORTABLE_KEY_FILE, get_secret_storage_info
 from otonomassist.platform import get_process_manager_info, get_service_runtime_info, get_toolchain_info
-from otonomassist.services.personality import HabitModelService, PersonalityService
+from otonomassist.services.personality import HabitModelService, HeartbeatService, PersonalityService
 from otonomassist.services.policy.policy_service import PolicyService
 from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
 from otonomassist.services.runtime.budget_manager import BudgetManager
@@ -63,6 +63,7 @@ def get_config_status_data() -> dict[str, object]:
     habits = HabitModelService().load_or_refresh()
     episodes = agent_context.load_episode_state()
     proactive = agent_context.load_proactive_insight_state()
+    heartbeat = HeartbeatService().load_state()
     memory_summary = agent_context.load_memory_summary_state()
     identity_state = agent_context.load_identity_state()
     session_state = agent_context.load_session_state()
@@ -152,6 +153,8 @@ def get_config_status_data() -> dict[str, object]:
         "personality": {
             "identity_preview": personality.identity_service.show_identity(max_chars=240),
             "soul_preview": personality.soul_service.show_soul(max_chars=240),
+            "heartbeat_guide_preview": HeartbeatService().show_heartbeat(max_chars=240),
+            "heartbeat": heartbeat,
             "habit_count": len(habits.get("habits", [])),
             "habit_signals_analyzed": habits.get("signals_analyzed", 0),
             "habits": habits.get("habits", []),
@@ -405,6 +408,9 @@ def get_config_status_report() -> str:
     )
     lines.append(f"- identity_preview: {_single_line_preview(data['personality']['identity_preview'])}")
     lines.append(f"- soul_preview: {_single_line_preview(data['personality']['soul_preview'])}")
+    lines.append(f"- heartbeat_mode: {data['personality']['heartbeat'].get('last_mode') or '-'}")
+    lines.append(f"- heartbeat_summary: {_single_line_preview(data['personality']['heartbeat'].get('last_summary', ''))}")
+    lines.append(f"- heartbeat_guide_preview: {_single_line_preview(data['personality']['heartbeat_guide_preview'])}")
     preference_profile = data["personality"].get("preference_profile", {})
     if preference_profile.get("preferred_channels"):
         lines.append(f"- preferred_channels: {', '.join(preference_profile['preferred_channels'])}")
@@ -505,6 +511,7 @@ def get_config_status_report() -> str:
             f"- last_cycles: {data['scheduler']['last_cycles']}",
             f"- last_processed: {data['scheduler']['last_processed']}",
             f"- last_trace_id: {data['scheduler']['last_trace_id'] or '-'}",
+            f"- last_heartbeat_mode: {data['scheduler']['last_heartbeat_mode'] or '-'}",
         ]
     )
     lines.extend(

@@ -41,6 +41,7 @@ from otonomassist.platform import (
 )
 from otonomassist.interfaces.email import EmailInterfaceService
 from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
+from otonomassist.services.personality.heartbeat_service import HeartbeatService
 from otonomassist.services.personality.proactive_assistance_service import ProactiveAssistanceService
 from otonomassist.services.interactions import ConversationService, NotificationDispatcher, run_conversation_api
 from otonomassist.telegram_cli import run_telegram_transport
@@ -624,6 +625,33 @@ def proactive_notify_command(channel: str, target: str, consented: bool) -> None
     click.echo(
         f"Proactive notification #{payload['id']} status={payload['status']} "
         f"via {payload['channel']} to {payload['target'] or '-'}"
+    )
+
+
+@main.group("heartbeat")
+def heartbeat_group() -> None:
+    """Heartbeat rhythm commands."""
+
+
+@heartbeat_group.command("show")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON heartbeat state")
+def heartbeat_show_command(as_json: bool) -> None:
+    """Show durable heartbeat state."""
+    payload = HeartbeatService().load_or_pulse(trigger="cli-show")
+    if as_json:
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(HeartbeatService().render_report())
+
+
+@heartbeat_group.command("pulse")
+@click.option("--trigger", default="manual", show_default=True, help="Heartbeat trigger label")
+def heartbeat_pulse_command(trigger: str) -> None:
+    """Force one heartbeat pulse."""
+    payload = HeartbeatService().pulse(trigger=trigger)
+    click.echo(
+        f"Heartbeat pulse #{payload['pulse_count']} mode={payload['last_mode'] or '-'} "
+        f"summary={payload['last_summary'] or '-'}"
     )
 
 

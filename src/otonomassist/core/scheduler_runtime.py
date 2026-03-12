@@ -49,8 +49,12 @@ def run_scheduler(
         },
     )
     from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+    from otonomassist.services.personality.heartbeat_service import HeartbeatService
+
+    heartbeat = HeartbeatService()
 
     if PrivacyControlService().is_quiet_hours():
+        heartbeat_state = heartbeat.pulse(trigger="scheduler_quiet_hours", trace_id=scheduler_trace_id)
         save_scheduler_state(
             {
                 "last_run_at": datetime.now(timezone.utc).isoformat(),
@@ -58,6 +62,7 @@ def run_scheduler(
                 "last_cycles": 0,
                 "last_processed": 0,
                 "last_trace_id": scheduler_trace_id,
+                "last_heartbeat_mode": heartbeat_state.get("last_mode", ""),
             }
         )
         append_execution_event(
@@ -143,6 +148,7 @@ def run_scheduler(
             "last_cycles": max(1, cycles),
             "last_processed": total_processed,
             "last_trace_id": scheduler_trace_id,
+            "last_heartbeat_mode": heartbeat.pulse(trigger="scheduler_cycle", trace_id=scheduler_trace_id).get("last_mode", ""),
         }
     )
     total_duration_ms = int((time.perf_counter() - scheduler_started) * 1000)
@@ -184,4 +190,5 @@ def get_scheduler_summary() -> dict[str, Any]:
         "last_cycles": int(state.get("last_cycles", 0) or 0),
         "last_processed": int(state.get("last_processed", 0) or 0),
         "last_trace_id": state.get("last_trace_id", ""),
+        "last_heartbeat_mode": state.get("last_heartbeat_mode", ""),
     }

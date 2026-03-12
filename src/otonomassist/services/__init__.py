@@ -11,6 +11,7 @@ from otonomassist.services.interactions import (
 )
 from otonomassist.services.personality import (
     EpisodicLearningService,
+    HeartbeatService,
     HabitModelService,
     IdentityService,
     PersonalityService,
@@ -26,6 +27,7 @@ __all__ = [
     "ContextBudgeter",
     "EpisodicLearningService",
     "ExecutionService",
+    "HeartbeatService",
     "HabitModelService",
     "IdentityService",
     "IdentitySessionService",

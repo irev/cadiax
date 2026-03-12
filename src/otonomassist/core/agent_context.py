@@ -23,6 +23,7 @@ HABITS_FILE = DATA_DIR / "habits.json"
 MEMORY_SUMMARIES_FILE = DATA_DIR / "memory_summaries.json"
 EPISODES_FILE = DATA_DIR / "episodes.json"
 PROACTIVE_INSIGHTS_FILE = DATA_DIR / "proactive_insights.json"
+HEARTBEAT_STATE_FILE = DATA_DIR / "heartbeat.json"
 IDENTITIES_FILE = DATA_DIR / "identities.json"
 SESSIONS_FILE = DATA_DIR / "sessions.json"
 NOTIFICATIONS_FILE = DATA_DIR / "notifications.json"
@@ -76,6 +77,7 @@ HABIT_STATE_KEY = "habits"
 MEMORY_SUMMARY_STATE_KEY = "memory_summaries"
 EPISODE_STATE_KEY = "episodes"
 PROACTIVE_INSIGHT_STATE_KEY = "proactive_insights"
+HEARTBEAT_STATE_KEY = "heartbeat"
 IDENTITY_STATE_KEY = "identities"
 SESSION_STATE_KEY = "sessions"
 NOTIFICATION_STATE_KEY = "notifications"
@@ -86,7 +88,13 @@ PRIVACY_CONTROL_STATE_KEY = "privacy_controls"
 DEFAULT_PLANNER_STATE = {"goal": "", "tasks": []}
 DEFAULT_METRICS_STATE = {"counters": {}, "timings": {}, "updated_at": ""}
 DEFAULT_JOB_QUEUE_STATE = {"jobs": []}
-DEFAULT_SCHEDULER_STATE = {"last_run_at": "", "last_status": "", "last_cycles": 0, "last_processed": 0}
+DEFAULT_SCHEDULER_STATE = {
+    "last_run_at": "",
+    "last_status": "",
+    "last_cycles": 0,
+    "last_processed": 0,
+    "last_heartbeat_mode": "",
+}
 DEFAULT_PREFERENCE_STATE = {
     "preferences": [],
     "profile": {
@@ -101,6 +109,14 @@ DEFAULT_HABIT_STATE = {"habits": [], "updated_at": "", "signals_analyzed": 0}
 DEFAULT_MEMORY_SUMMARY_STATE = {"summaries": [], "updated_at": "", "prune_candidates": 0}
 DEFAULT_EPISODE_STATE = {"episodes": [], "updated_at": "", "episodes_analyzed": 0}
 DEFAULT_PROACTIVE_INSIGHT_STATE = {"insights": [], "updated_at": "", "insights_generated": 0}
+DEFAULT_HEARTBEAT_STATE = {
+    "pulse_count": 0,
+    "last_pulse_at": "",
+    "last_mode": "",
+    "last_summary": "",
+    "last_trigger": "",
+    "last_actions": [],
+}
 DEFAULT_IDENTITY_STATE = {"identities": [], "updated_at": ""}
 DEFAULT_SESSION_STATE = {"sessions": [], "updated_at": ""}
 DEFAULT_NOTIFICATION_STATE = {"notifications": [], "updated_at": ""}
@@ -145,6 +161,9 @@ def ensure_agent_storage() -> None:
     if not PROACTIVE_INSIGHTS_FILE.exists():
         ensure_internal_state_write_allowed(PROACTIVE_INSIGHTS_FILE)
         PROACTIVE_INSIGHTS_FILE.write_text(json.dumps(DEFAULT_PROACTIVE_INSIGHT_STATE, indent=2), encoding="utf-8")
+    if not HEARTBEAT_STATE_FILE.exists():
+        ensure_internal_state_write_allowed(HEARTBEAT_STATE_FILE)
+        HEARTBEAT_STATE_FILE.write_text(json.dumps(DEFAULT_HEARTBEAT_STATE, indent=2), encoding="utf-8")
     if not IDENTITIES_FILE.exists():
         ensure_internal_state_write_allowed(IDENTITIES_FILE)
         IDENTITIES_FILE.write_text(json.dumps(DEFAULT_IDENTITY_STATE, indent=2), encoding="utf-8")
@@ -395,6 +414,28 @@ def save_proactive_insight_state(state: dict[str, Any]) -> None:
         "insights_generated": int(state.get("insights_generated", 0) or 0),
     }
     _save_durable_json_state(PROACTIVE_INSIGHT_STATE_KEY, PROACTIVE_INSIGHTS_FILE, normalized)
+
+
+def load_heartbeat_state() -> dict[str, Any]:
+    """Load current heartbeat state."""
+    return _load_durable_json_state(
+        HEARTBEAT_STATE_KEY,
+        HEARTBEAT_STATE_FILE,
+        DEFAULT_HEARTBEAT_STATE,
+    )
+
+
+def save_heartbeat_state(state: dict[str, Any]) -> None:
+    """Persist heartbeat state."""
+    normalized = {
+        "pulse_count": int(state.get("pulse_count", 0) or 0),
+        "last_pulse_at": str(state.get("last_pulse_at", "") or ""),
+        "last_mode": str(state.get("last_mode", "") or ""),
+        "last_summary": str(state.get("last_summary", "") or ""),
+        "last_trigger": str(state.get("last_trigger", "") or ""),
+        "last_actions": [str(item) for item in list(state.get("last_actions", []))[:6]],
+    }
+    _save_durable_json_state(HEARTBEAT_STATE_KEY, HEARTBEAT_STATE_FILE, normalized)
 
 
 def build_agent_context_block(query: str | None = None) -> str:
@@ -801,6 +842,7 @@ def _bootstrap_durable_state() -> None:
     _ensure_state_in_store(store, MEMORY_SUMMARY_STATE_KEY, MEMORY_SUMMARIES_FILE, DEFAULT_MEMORY_SUMMARY_STATE)
     _ensure_state_in_store(store, EPISODE_STATE_KEY, EPISODES_FILE, DEFAULT_EPISODE_STATE)
     _ensure_state_in_store(store, PROACTIVE_INSIGHT_STATE_KEY, PROACTIVE_INSIGHTS_FILE, DEFAULT_PROACTIVE_INSIGHT_STATE)
+    _ensure_state_in_store(store, HEARTBEAT_STATE_KEY, HEARTBEAT_STATE_FILE, DEFAULT_HEARTBEAT_STATE)
     _ensure_state_in_store(store, IDENTITY_STATE_KEY, IDENTITIES_FILE, DEFAULT_IDENTITY_STATE)
     _ensure_state_in_store(store, SESSION_STATE_KEY, SESSIONS_FILE, DEFAULT_SESSION_STATE)
     _ensure_state_in_store(store, NOTIFICATION_STATE_KEY, NOTIFICATIONS_FILE, DEFAULT_NOTIFICATION_STATE)
