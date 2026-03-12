@@ -127,6 +127,8 @@ class Assistant:
             skills_context=self._build_skills_context(),
             personality_service=self.personality_service,
             session_mode=context.session_mode if context else "main",
+            agent_scope=context.agent_scope if context else "default",
+            roles=context.roles if context else (),
         )
         return f"""Anda adalah asisten yang menentukan skill mana yang akan digunakan berdasarkan input user.
 

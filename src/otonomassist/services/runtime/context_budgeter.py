@@ -23,6 +23,8 @@ class ContextBudgeter:
         skills_context: str,
         personality_service: PersonalityService,
         session_mode: str = "main",
+        agent_scope: str = "default",
+        roles: tuple[str, ...] = (),
     ) -> str:
         """Build the assistant orchestration context under active budgets."""
         return self.compose(
@@ -30,6 +32,8 @@ class ContextBudgeter:
             personality_context=personality_service.build_prompt_block(
                 max_chars=self.get_profile_max_chars(),
                 session_mode=session_mode,
+                agent_scope=agent_scope,
+                roles=roles,
             ),
             runtime_context=build_runtime_context_block(command, session_mode=session_mode),
         )
@@ -40,6 +44,8 @@ class ContextBudgeter:
         query: str,
         personality_service: PersonalityService,
         session_mode: str = "main",
+        agent_scope: str = "default",
+        roles: tuple[str, ...] = (),
     ) -> str:
         """Build a general-purpose reasoning context for direct AI skills."""
         return self.compose(
@@ -47,6 +53,8 @@ class ContextBudgeter:
             personality_context=personality_service.build_prompt_block(
                 max_chars=self.get_profile_max_chars(),
                 session_mode=session_mode,
+                agent_scope=agent_scope,
+                roles=roles,
             ),
             runtime_context=build_runtime_context_block(query, session_mode=session_mode),
         )

@@ -96,7 +96,14 @@ class PersonalityService:
         """Append one long-term context item."""
         agent_context.append_markdown_bullet(self.profile_path, "Long-term Context", text.strip())
 
-    def build_prompt_block(self, max_chars: int = 1200, *, session_mode: str = "main") -> str:
+    def build_prompt_block(
+        self,
+        max_chars: int = 1200,
+        *,
+        session_mode: str = "main",
+        agent_scope: str = "default",
+        roles: tuple[str, ...] = (),
+    ) -> str:
         """Render the personality block for prompt assembly."""
         parts = [
             "Assistant personality context:",
@@ -123,7 +130,17 @@ class PersonalityService:
                 parts.append(f"- summary_style: {structured['summary_style']}")
         else:
             parts.append("- belum ada profil preferensi terstruktur")
-        parts.extend(["", self.startup_document_service.build_prompt_block(session_mode=session_mode, max_chars=max_chars)])
+        parts.extend(
+            [
+                "",
+                self.startup_document_service.build_prompt_block(
+                    session_mode=session_mode,
+                    agent_scope=agent_scope,
+                    roles=roles,
+                    max_chars=max_chars,
+                ),
+            ]
+        )
         habits = HabitModelService().list_habits(limit=3)
         parts.extend(["", self.identity_service.build_prompt_block()])
         parts.extend(["", self.soul_service.build_prompt_block()])

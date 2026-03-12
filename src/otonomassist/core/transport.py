@@ -17,3 +17,4 @@ class TransportContext:
     roles: tuple[str, ...] = ()
     trace_id: str | None = None
     session_mode: str = "main"
+    agent_scope: str = "default"

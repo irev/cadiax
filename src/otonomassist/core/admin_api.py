@@ -46,7 +46,20 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
         return 200, {"bootstrap": get_workspace_bootstrap_status()}
     if route == "/startup":
         session_mode = (query.get("session_mode") or ["main"])[0]
-        return 200, {"startup": StartupDocumentService().get_snapshot(session_mode=session_mode)}
+        agent_scope = (query.get("agent_scope") or ["default"])[0]
+        role_query = ",".join(query.get("role") or query.get("roles") or [])
+        roles = tuple(
+            item_text
+            for item_text in (item.strip().lower() for item in role_query.split(","))
+            if item_text
+        )
+        return 200, {
+            "startup": StartupDocumentService().get_snapshot(
+                session_mode=session_mode,
+                agent_scope=agent_scope,
+                roles=roles,
+            )
+        }
     if route == "/privacy":
         from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 

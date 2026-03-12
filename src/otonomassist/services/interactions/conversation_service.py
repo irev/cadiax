@@ -29,7 +29,13 @@ class ConversationService:
         resolution = self.identity_service.resolve(request)
         session_id = resolution.session_id
         session_mode = _resolve_session_mode(request)
-        startup_snapshot = self.startup_documents.get_snapshot(session_mode=session_mode, max_chars=160)
+        agent_scope = _resolve_agent_scope(request)
+        startup_snapshot = self.startup_documents.get_snapshot(
+            session_mode=session_mode,
+            agent_scope=agent_scope,
+            roles=request.roles,
+            max_chars=160,
+        )
         context = TransportContext(
             source=request.source,
             user_id=request.user_id,
@@ -39,6 +45,7 @@ class ConversationService:
             roles=request.roles,
             trace_id=trace_id,
             session_mode=session_mode,
+            agent_scope=agent_scope,
         )
         append_execution_event(
             "interaction_received",
@@ -53,6 +60,7 @@ class ConversationService:
                 "chat_id": request.chat_id or "",
                 "roles": list(request.roles),
                 "metadata": request.metadata,
+                "agent_scope": agent_scope,
             },
         )
         result = self.assistant.handle_message(request.message, context=context)
@@ -72,6 +80,7 @@ class ConversationService:
                 "chat_id": request.chat_id or "",
                 "roles": list(request.roles),
                 "result_preview": result[:240],
+                "agent_scope": agent_scope,
             },
         )
         record_execution_metric(
@@ -94,12 +103,16 @@ class ConversationService:
                 "session_created": resolution.session_created,
                 "canonical_session_id": session_id,
                 "session_mode": session_mode,
+                "agent_scope": agent_scope,
                 "startup_document_names": [
-                    item["name"] for item in startup_snapshot["documents"] if item.get("preview")
+                    item["name"] for item in startup_snapshot["documents"] if item.get("availability") == "available"
                 ],
                 "startup_document_count": sum(
-                    1 for item in startup_snapshot["documents"] if item.get("preview")
+                    1 for item in startup_snapshot["documents"] if item.get("availability") == "available"
                 ),
+                "startup_restricted_document_names": [
+                    item["name"] for item in startup_snapshot["documents"] if item.get("availability") == "restricted"
+                ],
                 "startup_daily_notes_loaded": bool(startup_snapshot.get("daily_notes")),
                 "startup_curated_memory_loaded": bool(startup_snapshot.get("curated_memory")),
                 **request.metadata,
@@ -118,6 +131,7 @@ class ConversationService:
             roles=context.roles if context else (),
             trace_id=context.trace_id if context else None,
             session_mode=context.session_mode if context else None,
+            agent_scope=context.agent_scope if context else None,
         )
         response = self.handle(request)
         if context is not None and not context.trace_id and response.trace_id:
@@ -137,3 +151,8 @@ def _resolve_session_mode(request: InteractionRequest) -> str:
     if request.source == "api" and not request.chat_id:
         return "main"
     return "shared"
+
+
+def _resolve_agent_scope(request: InteractionRequest) -> str:
+    explicit = str(request.agent_scope or request.metadata.get("agent_scope") or request.metadata.get("scope") or "").strip().lower()
+    return explicit or "default"

@@ -1272,8 +1272,12 @@ def test_cli_startup_show_reads_workspace_startup_documents(tmp_path, monkeypatc
 
 def test_conversation_service_marks_shared_session_for_chat_channels(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
-    (tmp_path / "AGENTS.md").write_text("# AGENTS\n\n- aturan shared startup\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n- aturan shared startup\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
     (tmp_path / "SOUL.md").write_text("# SOUL\n\n- reflektif\n", encoding="utf-8")
+    (tmp_path / "USER.md").write_text("# USER\n\n- data sensitif.\n", encoding="utf-8")
     (tmp_path / "MEMORY.md").write_text("# Memory\n\n- konteks privat\n", encoding="utf-8")
     assistant = Assistant(skills_dir=ROOT / "skills")
     service = cli_module.ConversationService(assistant)
@@ -1285,17 +1289,24 @@ def test_conversation_service_marks_shared_session_for_chat_channels(tmp_path, m
             user_id="1",
             chat_id="100",
             roles=("approved",),
+            agent_scope="finance-agent",
         )
     )
 
     assert response.metadata["canonical_session_id"]
     assert response.metadata["session_mode"] == "shared"
-    assert response.metadata["startup_document_names"] == ["agents", "soul"]
+    assert response.metadata["agent_scope"] == "finance-agent"
+    assert response.metadata["startup_document_names"] == ["agents"]
+    assert response.metadata["startup_restricted_document_names"] == ["soul", "user", "identity"]
     assert response.metadata["startup_curated_memory_loaded"] is False
 
 
 def test_conversation_service_accepts_main_session_override(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
     (tmp_path / "IDENTITY.md").write_text("# IDENTITY\n\n- main mode aktif\n", encoding="utf-8")
     (tmp_path / "MEMORY.md").write_text("# Memory\n\n- curated utama\n", encoding="utf-8")
     assistant = Assistant(skills_dir=ROOT / "skills")
@@ -1306,11 +1317,14 @@ def test_conversation_service_accepts_main_session_override(tmp_path, monkeypatc
             message="list",
             source="api",
             session_mode="main",
+            agent_scope="finance-agent",
+            roles=("finance",),
         )
     )
 
     assert response.status == "ok"
     assert response.metadata["session_mode"] == "main"
+    assert response.metadata["agent_scope"] == "finance-agent"
     assert "identity" in response.metadata["startup_document_names"]
     assert response.metadata["startup_curated_memory_loaded"] is True
 

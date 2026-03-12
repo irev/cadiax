@@ -247,6 +247,33 @@ def test_personality_service_includes_identity_and_soul_documents(tmp_path, monk
     assert "Bergerak tenang dan reflektif." in prompt
 
 
+def test_personality_service_filters_sensitive_startup_docs_by_scope_roles(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Ruang finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "USER.md").write_text("# User\n\n- data privat finansial.\n", encoding="utf-8")
+    (tmp_path / "IDENTITY.md").write_text("# Identity\n\n- jaga akurasi finansial.\n", encoding="utf-8")
+    (tmp_path / "SOUL.md").write_text("# Soul\n\n- reflektif.\n", encoding="utf-8")
+
+    restricted_prompt = PersonalityService().build_prompt_block(
+        session_mode="main",
+        agent_scope="finance-agent",
+        roles=("approved",),
+    )
+    allowed_prompt = PersonalityService().build_prompt_block(
+        session_mode="main",
+        agent_scope="finance-agent",
+        roles=("finance",),
+    )
+
+    assert "- user: - dibatasi oleh scope policy" in restricted_prompt
+    assert "- identity: - dibatasi oleh scope policy" in restricted_prompt
+    assert "data privat finansial" not in restricted_prompt
+    assert "jaga akurasi finansial" in allowed_prompt
+
+
 def test_profile_skill_supports_structured_profile_commands(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     module = _load_module(ROOT / "skills" / "profile" / "script" / "handler.py", "profile_handler_structured_test")
@@ -906,7 +933,10 @@ def test_durable_state_store_imports_newer_legacy_planner_file(tmp_path, monkeyp
 def test_admin_api_snapshot_exposes_status_metrics_and_history(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     (tmp_path / "README.md").write_text("README untuk admin api\n", encoding="utf-8")
-    (tmp_path / "AGENTS.md").write_text("# AGENTS\n\n- aturan startup admin\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n- aturan startup admin\n\n## Agent Scopes\n- finance-agent: Admin startup | roles: owner, finance\n",
+        encoding="utf-8",
+    )
     (tmp_path / "IDENTITY.md").write_text("# IDENTITY\n\n- observability aktif\n", encoding="utf-8")
 
     assistant = Assistant(skills_dir=ROOT / "skills")
@@ -917,7 +947,7 @@ def test_admin_api_snapshot_exposes_status_metrics_and_history(tmp_path, monkeyp
     history_code, history_payload = build_admin_snapshot("/history?limit=5")
     jobs_code, jobs_payload = build_admin_snapshot("/jobs")
     events_code, events_payload = build_admin_snapshot("/events?limit=5")
-    startup_code, startup_payload = build_admin_snapshot("/startup?session_mode=shared")
+    startup_code, startup_payload = build_admin_snapshot("/startup?session_mode=shared&agent_scope=finance-agent&roles=approved")
 
     assert status_code == 200
     assert history_code == 200
@@ -930,7 +960,10 @@ def test_admin_api_snapshot_exposes_status_metrics_and_history(tmp_path, monkeyp
     assert events_payload["total_events"] >= 1
     assert "summary" in jobs_payload
     assert startup_payload["startup"]["session_mode"] == "shared"
+    assert startup_payload["startup"]["agent_scope"] == "finance-agent"
     assert startup_payload["startup"]["documents"][0]["name"] == "agents"
+    identity_entry = next(item for item in startup_payload["startup"]["documents"] if item["name"] == "identity")
+    assert identity_entry["availability"] == "restricted"
 
 
 def test_admin_api_requires_token_when_configured(tmp_path, monkeypatch):
