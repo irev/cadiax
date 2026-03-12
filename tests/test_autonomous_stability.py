@@ -28,7 +28,9 @@ from otonomassist.ai.factory import AIProviderFactory  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
 from otonomassist.core.job_runtime import process_job_queue  # noqa: E402
 from otonomassist.core.scheduler_runtime import run_scheduler  # noqa: E402
+from otonomassist.interfaces.email import EmailInterfaceService  # noqa: E402
 from otonomassist.interfaces.telegram import TelegramPollingTransport as InterfaceTelegramPollingTransport  # noqa: E402
+from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService  # noqa: E402
 from otonomassist.platform import run_worker_service  # noqa: E402
 from otonomassist.services import BudgetManager, ContextBudgeter, EpisodicLearningService, HabitModelService, ModelRouter, PersonalityService, PolicyService, RedactionPolicy  # noqa: E402
 from otonomassist.services.personality.heartbeat_service import HeartbeatService  # noqa: E402
@@ -1287,6 +1289,45 @@ def test_admin_api_scope_filtered_notifications_and_proactive(tmp_path, monkeypa
     assert status_payload["notifications"]["latest_notification"]["agent_scope"] == "finance-agent"
     assert proactive_payload["proactive"]["visible_insight_count"] == 1
     assert proactive_payload["proactive"]["insights"][0]["agent_scope"] == "finance-agent"
+
+
+def test_admin_api_scope_filtered_email_and_whatsapp_snapshots(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    EmailInterfaceService().send(
+        to_address="ops-default@example.com",
+        subject="Default Alert",
+        body="default delivery",
+        metadata={"agent_scope": "default", "roles": ["approved"]},
+    )
+    with bind_interaction_context(session_mode="main", agent_scope="finance-agent", roles=("finance",)):
+        EmailInterfaceService().send(
+            to_address="ops-finance@example.com",
+            subject="Finance Alert",
+            body="finance delivery",
+        )
+        WhatsAppInterfaceService().send(
+            phone_number="+628123456789",
+            display_name="Budi",
+            body="finance whatsapp",
+        )
+
+    status_code, status_payload = build_admin_snapshot("/status?agent_scope=finance-agent&roles=finance")
+    email_code, email_payload = build_admin_snapshot("/email?agent_scope=finance-agent&roles=finance")
+    whatsapp_code, whatsapp_payload = build_admin_snapshot("/whatsapp?agent_scope=finance-agent&roles=finance")
+
+    assert status_code == 200
+    assert email_code == 200
+    assert whatsapp_code == 200
+    assert status_payload["scope_filter"]["visible_email_messages"] == 1
+    assert status_payload["scope_filter"]["visible_whatsapp_messages"] == 1
+    assert status_payload["email"]["message_count"] == 1
+    assert status_payload["whatsapp"]["message_count"] == 1
+    assert email_payload["email"]["latest_message"]["agent_scope"] == "finance-agent"
+    assert whatsapp_payload["whatsapp"]["latest_message"]["agent_scope"] == "finance-agent"
 
 
 def test_admin_api_requires_token_when_configured(tmp_path, monkeypatch):

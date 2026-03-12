@@ -71,8 +71,8 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
     identity_state = agent_context.load_identity_state()
     session_state = agent_context.load_session_state()
     notifications = NotificationDispatcher().get_snapshot(agent_scope=agent_scope or None, roles=roles)
-    email = EmailInterfaceService().get_snapshot()
-    whatsapp = WhatsAppInterfaceService().get_snapshot()
+    email = EmailInterfaceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)
+    whatsapp = WhatsAppInterfaceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)
     from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
 
     privacy_controls = PrivacyControlService().get_diagnostics()
@@ -473,7 +473,8 @@ def get_config_status_report() -> str:
             f"- scope:{item['scope']} -> planner={item['planner_task_count']} "
             f"(todo={item['planner_todo_count']}, done={item['planner_done_count']}, blocked={item['planner_blocked_count']}), "
             f"memory={item['memory_entry_count']}, notifications={item['notification_count']}, "
-            f"proactive={item['proactive_insight_count']}, latest_memory_id={item['latest_memory_id'] or '-'}"
+            f"proactive={item['proactive_insight_count']}, email={item['email_message_count']}, "
+            f"whatsapp={item['whatsapp_message_count']}, latest_memory_id={item['latest_memory_id'] or '-'}"
         )
     lines.extend(
         [
@@ -486,6 +487,8 @@ def get_config_status_report() -> str:
             f"- visible_planner_todo: {data['scope_filter']['visible_planner_todo']}",
             f"- visible_notifications: {data['scope_filter']['visible_notifications']}",
             f"- visible_proactive_insights: {data['scope_filter']['visible_proactive_insights']}",
+            f"- visible_email_messages: {data['scope_filter']['visible_email_messages']}",
+            f"- visible_whatsapp_messages: {data['scope_filter']['visible_whatsapp_messages']}",
         ]
     )
     lines.extend(
@@ -880,6 +883,8 @@ def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, .
             "visible_planner_todo": 0,
             "visible_notifications": 0,
             "visible_proactive_insights": 0,
+            "visible_email_messages": 0,
+            "visible_whatsapp_messages": 0,
         }
     visible_memories = agent_context.load_all_memories(agent_scope=normalized_scope, roles=roles)
     planner = agent_context.load_planner_state()
@@ -898,6 +903,16 @@ def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, .
         agent_scope=normalized_scope,
         roles=roles,
     )
+    visible_email = agent_context.filter_email_messages_by_scope(
+        agent_context.load_email_message_state().get("messages", []),
+        agent_scope=normalized_scope,
+        roles=roles,
+    )
+    visible_whatsapp = agent_context.filter_whatsapp_messages_by_scope(
+        agent_context.load_whatsapp_message_state().get("messages", []),
+        agent_scope=normalized_scope,
+        roles=roles,
+    )
     return {
         "agent_scope": normalized_scope,
         "roles": list(roles),
@@ -906,4 +921,6 @@ def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, .
         "visible_planner_todo": sum(1 for task in visible_tasks if str(task.get("status") or "").strip().lower() == "todo"),
         "visible_notifications": len(visible_notifications),
         "visible_proactive_insights": len(visible_proactive),
+        "visible_email_messages": len(visible_email),
+        "visible_whatsapp_messages": len(visible_whatsapp),
     }

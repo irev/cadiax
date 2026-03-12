@@ -357,7 +357,35 @@ def load_email_message_state() -> dict[str, Any]:
 
 def save_email_message_state(state: dict[str, Any]) -> None:
     """Persist email interface message history state."""
-    _save_durable_json_state(EMAIL_MESSAGE_STATE_KEY, EMAIL_MESSAGES_FILE, state)
+    normalized_messages: list[dict[str, Any]] = []
+    for raw in list(state.get("messages", [])):
+        if not isinstance(raw, dict):
+            continue
+        metadata = raw.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        normalized_messages.append(
+            {
+                **raw,
+                "agent_scope": _normalize_scope_name(
+                    str(raw.get("agent_scope") or metadata.get("agent_scope") or "default")
+                ),
+                "roles": [
+                    item_text
+                    for item_text in (
+                        str(item).strip().lower()
+                        for item in list(raw.get("roles", metadata.get("roles", [])) or [])
+                    )
+                    if item_text
+                ],
+                "metadata": metadata,
+            }
+        )
+    normalized = {
+        "messages": normalized_messages,
+        "updated_at": str(state.get("updated_at", "")),
+    }
+    _save_durable_json_state(EMAIL_MESSAGE_STATE_KEY, EMAIL_MESSAGES_FILE, normalized)
 
 
 def load_whatsapp_message_state() -> dict[str, Any]:
@@ -371,10 +399,38 @@ def load_whatsapp_message_state() -> dict[str, Any]:
 
 def save_whatsapp_message_state(state: dict[str, Any]) -> None:
     """Persist WhatsApp interface message history state."""
+    normalized_messages: list[dict[str, Any]] = []
+    for raw in list(state.get("messages", [])):
+        if not isinstance(raw, dict):
+            continue
+        metadata = raw.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        normalized_messages.append(
+            {
+                **raw,
+                "agent_scope": _normalize_scope_name(
+                    str(raw.get("agent_scope") or metadata.get("agent_scope") or "default")
+                ),
+                "roles": [
+                    item_text
+                    for item_text in (
+                        str(item).strip().lower()
+                        for item in list(raw.get("roles", metadata.get("roles", [])) or [])
+                    )
+                    if item_text
+                ],
+                "metadata": metadata,
+            }
+        )
+    normalized = {
+        "messages": normalized_messages,
+        "updated_at": str(state.get("updated_at", "")),
+    }
     _save_durable_json_state(
         WHATSAPP_MESSAGE_STATE_KEY,
         WHATSAPP_MESSAGES_FILE,
-        state,
+        normalized,
     )
 
 
@@ -1002,6 +1058,44 @@ def filter_proactive_insights_by_scope(
     ]
 
 
+def filter_email_messages_by_scope(
+    entries: list[dict[str, Any]],
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """Filter email interface history by scope visibility and role access."""
+    normalized_scope = _normalize_scope_name(agent_scope)
+    return [
+        entry
+        for entry in entries
+        if _is_scope_visible(
+            str(entry.get("agent_scope") or (entry.get("metadata") or {}).get("agent_scope") or "default"),
+            normalized_scope,
+            roles=roles,
+        )
+    ]
+
+
+def filter_whatsapp_messages_by_scope(
+    entries: list[dict[str, Any]],
+    *,
+    agent_scope: str = "default",
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """Filter WhatsApp interface history by scope visibility and role access."""
+    normalized_scope = _normalize_scope_name(agent_scope)
+    return [
+        entry
+        for entry in entries
+        if _is_scope_visible(
+            str(entry.get("agent_scope") or (entry.get("metadata") or {}).get("agent_scope") or "default"),
+            normalized_scope,
+            roles=roles,
+        )
+    ]
+
+
 def get_scope_state_summary() -> dict[str, Any]:
     """Return operator-facing state counts grouped by agent scope."""
     planner = load_planner_state()
@@ -1020,6 +1114,8 @@ def get_scope_state_summary() -> dict[str, Any]:
                 "memory_entry_count": 0,
                 "notification_count": 0,
                 "proactive_insight_count": 0,
+                "email_message_count": 0,
+                "whatsapp_message_count": 0,
                 "latest_memory_id": 0,
             }
         return scopes[normalized]
@@ -1047,6 +1143,14 @@ def get_scope_state_summary() -> dict[str, Any]:
     for insight in load_proactive_insight_state().get("insights", []):
         bucket = ensure_scope(str(insight.get("agent_scope") or "default"))
         bucket["proactive_insight_count"] += 1
+
+    for entry in load_email_message_state().get("messages", []):
+        bucket = ensure_scope(str(entry.get("agent_scope") or (entry.get("metadata") or {}).get("agent_scope") or "default"))
+        bucket["email_message_count"] += 1
+
+    for entry in load_whatsapp_message_state().get("messages", []):
+        bucket = ensure_scope(str(entry.get("agent_scope") or (entry.get("metadata") or {}).get("agent_scope") or "default"))
+        bucket["whatsapp_message_count"] += 1
 
     return {
         "scope_count": len(scopes),

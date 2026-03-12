@@ -75,6 +75,14 @@ def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tu
                 roles=roles,
             )
         }
+    if route == "/email":
+        from otonomassist.interfaces.email import EmailInterfaceService
+
+        return 200, {"email": EmailInterfaceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)}
+    if route == "/whatsapp":
+        from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
+
+        return 200, {"whatsapp": WhatsAppInterfaceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)}
     return 404, {"error": "not_found", "path": route}
 
 
