@@ -13,6 +13,7 @@
 
 ## Operations
 
+- [Install Guide](/d:/PROJECT/otonomAssist/docs/operations/INSTALL.md)
 - [Operations Guide](/d:/PROJECT/otonomAssist/docs/operations/OPERATIONS.md)
 - [Monitoring Dashboard](/d:/PROJECT/otonomAssist/docs/operations/MONITORING_DASHBOARD.md)
 

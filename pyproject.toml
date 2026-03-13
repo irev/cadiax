@@ -42,8 +42,8 @@ dev = [
 ]
 
 [project.scripts]
-cadiax = "otonomassist.cli:main"
-cadiax-telegram = "otonomassist.telegram_cli:main"
+cadiax = "cadiax.cli:main"
+cadiax-telegram = "cadiax.telegram_cli:main"
 autonomiq = "otonomassist.cli:main"
 autonomiq-telegram = "otonomassist.telegram_cli:main"
 otonomassist = "otonomassist.cli:main"

@@ -16,6 +16,7 @@ Pronunciation: cha-di-aks (`/tʃa.di.aks/`)
 ## Repository
 
 - Docs index: `docs/README.md`
+- Install guide: `docs/operations/INSTALL.md`
 - Release notes: `docs/release/RELEASE_NOTES.md`
 - Deployment checklist: `docs/release/DEPLOYMENT_CHECKLIST.md`
 - Security policy: `SECURITY.md`
@@ -221,13 +222,49 @@ assistant: ai apa langkah berikutnya berdasarkan seluruh state yang ada?
 - `secrets`
 - `research`
 
+## Install
+
+Jalur install resmi:
+
+### Windows
+
+```powershell
+./install.ps1
+```
+
+### Linux
+
+```bash
+chmod +x ./install.sh
+./install.sh
+```
+
+Installer ini:
+
+- memastikan dependency dasar tersedia
+- membuat `.venv`
+- menginstall paket `cadiax`
+- opsional menyiapkan dashboard dependency
+- menjalankan `cadiax setup`
+
+Catatan:
+`pip` memang menampilkan format standar seperti `Successfully installed cadiax-1.1.1`.
+Itu perilaku normal `pip`. Installer Cadiax menutup proses dengan pesan publik yang lebih bersih: `Cadiax installed`.
+
 ## Menjalankan Aplikasi
 
 ```bash
-pip install -e .
-cadiax setup
-cadiax status
-cadiax chat
+.venv/bin/cadiax setup
+.venv/bin/cadiax status
+.venv/bin/cadiax chat
+```
+
+Di Windows:
+
+```powershell
+.venv\Scripts\cadiax.exe setup
+.venv\Scripts\cadiax.exe status
+.venv\Scripts\cadiax.exe chat
 ```
 
 CLI utama sekarang mendukung subcommand resmi:
