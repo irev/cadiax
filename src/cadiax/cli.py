@@ -56,6 +56,7 @@ from cadiax.platform.dashboard_runtime import (
 )
 from cadiax.interfaces.email import EmailInterfaceService
 from cadiax.interfaces.whatsapp import WhatsAppInterfaceService
+from cadiax.tui import run_tui
 from cadiax.services.personality.agent_scope_service import AgentScopeService
 from cadiax.services.personality.heartbeat_service import HeartbeatService
 from cadiax.services.personality.proactive_assistance_service import ProactiveAssistanceService
@@ -203,6 +204,19 @@ def paths_command(as_json: bool) -> None:
     click.echo(f"- dashboard_root: {snapshot['dashboard_root']}")
     click.echo(f"- python_executable: {snapshot['python_executable']}")
     click.echo(f"- venv_root: {snapshot['venv_root'] or '-'}")
+
+
+@main.command("tui")
+@click.option(
+    "--screen",
+    type=click.Choice(["home", "paths", "doctor", "channels"], case_sensitive=False),
+    default="home",
+    show_default=True,
+    help="Initial screen to show in the TUI.",
+)
+def tui_command(screen: str) -> None:
+    """Run the local Cadiax Textual operator surface."""
+    run_tui(initial_screen=screen.lower())
 
 
 @main.command("history")

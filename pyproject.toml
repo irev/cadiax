@@ -29,6 +29,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "openai>=1.0.0",
     "httpx>=0.25.0",
+    "textual>=0.80.0",
 ]
 
 [project.optional-dependencies]

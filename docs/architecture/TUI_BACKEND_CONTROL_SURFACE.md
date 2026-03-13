@@ -156,7 +156,22 @@ Menampilkan dan mengubah:
 - admin API URL
 - dependency/build status
 
-### 7. Doctor and Audit
+### 7. Channels
+
+Menampilkan status channel yang relevan untuk operator:
+
+- Telegram
+- dashboard
+- email
+- WhatsApp
+
+Catatan fase awal:
+
+- Telegram dan dashboard punya setup global
+- email dan WhatsApp saat ini tidak punya credential global sendiri
+- email dan WhatsApp dikonfigurasi pada level dispatch/API use, sehingga TUI cukup menampilkan snapshot dan status, bukan form credential
+
+### 8. Doctor and Audit
 
 Menyajikan hasil `doctor` dalam bentuk:
 
@@ -169,9 +184,9 @@ Menyajikan hasil `doctor` dalam bentuk:
   - dashboard
   - privacy
   - routing
-  - runtime
+- runtime
 
-### 8. Install Lifecycle
+### 9. Install Lifecycle
 
 Membantu operator menjalankan:
 
