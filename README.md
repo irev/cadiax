@@ -20,6 +20,7 @@ Pronunciation: cha-di-aks (`/tʃa.di.aks/`)
 - Deployment checklist: `docs/release/DEPLOYMENT_CHECKLIST.md`
 - Security policy: `SECURITY.md`
 - Code of conduct: `CODE_OF_CONDUCT.md`
+- Support guide: `SUPPORT.md`
 - Contributing guide: `CONTRIBUTING.md`
 
 Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
