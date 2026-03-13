@@ -210,6 +210,15 @@ uninstall_cadiax() {
   echo "Cadiax uninstalled"
 }
 
+confirm_implicit_reinstall() {
+  local app_root="$1"
+  local answer=""
+  printf 'Cadiax sudah terinstall di %s. Lanjutkan sebagai reinstall? [Y/n] ' "$app_root"
+  read -r answer || true
+  answer="$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')"
+  [[ -z "$answer" || "$answer" == "y" || "$answer" == "yes" ]]
+}
+
 sync_app_assets() {
   local source_root="$1"
   local app_root="$2"
@@ -343,8 +352,11 @@ mkdir -p "$APP_ROOT"
 sync_app_assets "$SOURCE_ROOT" "$APP_ROOT"
 
 if [[ "$MODE" == "install" && -d "$VENV_PATH" ]]; then
-  echo "Cadiax sudah terinstall di $APP_ROOT. Gunakan --mode reinstall untuk memperbarui instalasi, atau --mode uninstall untuk menghapusnya." >&2
-  exit 1
+  if ! confirm_implicit_reinstall "$APP_ROOT"; then
+    echo "Install dibatalkan. Gunakan --mode reinstall untuk memperbarui instalasi, atau --mode uninstall untuk menghapusnya." >&2
+    exit 1
+  fi
+  MODE="reinstall"
 fi
 
 if [[ "$MODE" == "reinstall" && -d "$VENV_PATH" && "$REUSE_VENV" -eq 0 ]]; then

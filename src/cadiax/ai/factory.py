@@ -11,6 +11,14 @@ from cadiax.ai.claude import ClaudeProvider
 from cadiax.core.agent_context import get_env_or_secret
 
 
+def _mask_value(value: str) -> str:
+    if not value:
+        return "(kosong)"
+    if len(value) <= 4:
+        return "*" * len(value)
+    return f"{'*' * 8}...{value[-4:]}"
+
+
 class AIProviderFactory:
     """Factory for creating AI providers."""
 
@@ -60,7 +68,7 @@ class AIProviderFactory:
             fallback_model = os.getenv("OPENAI_FALLBACK_MODEL")
             info["config"] = {"base_url": base_url, "model": model}
             if api_key:
-                info["config"]["api_key"] = api_key
+                info["config"]["api_key"] = _mask_value(api_key)
             if fallback_model:
                 info["config"]["fallback_model"] = fallback_model
             if not api_key:
@@ -74,7 +82,7 @@ class AIProviderFactory:
             model = os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307")
             info["config"] = {"base_url": base_url, "model": model}
             if api_key:
-                info["config"]["api_key"] = api_key
+                info["config"]["api_key"] = _mask_value(api_key)
             if not api_key:
                 info["issues"].append("ANTHROPIC_API_KEY tidak ditemukan di .env atau secrets")
 

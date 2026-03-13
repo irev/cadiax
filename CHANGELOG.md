@@ -4,6 +4,31 @@ Dokumen ini merangkum perubahan penting yang sudah mendarat di OtonomAssist.
 
 ## Unreleased
 
+## v1.1.6
+
+### Changed
+
+- clarified installer lifecycle into explicit `install`, `reinstall`, and `uninstall` modes
+- `install` now prompts for `Y/n` confirmation before switching into implicit reinstall when an existing runtime is detected
+- setup wizard now configures optional monitoring dashboard settings during first-run:
+  - enabled/disabled
+  - access mode
+  - port
+  - admin API URL
+- `doctor --json` and provider diagnostics now mask API key values instead of returning plaintext secrets
+
+### Validation
+
+- Windows smoke passed for:
+  - `install`
+  - implicit reinstall confirmation
+  - `uninstall`
+- Linux smoke passed in WSL for:
+  - `install`
+  - implicit reinstall confirmation
+  - `uninstall`
+- `pytest -q tests/test_setup_wizard.py tests/test_public_package.py` -> `83 passed`
+
 ## v1.1.5
 
 ### Changed

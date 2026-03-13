@@ -37,7 +37,7 @@ chmod +x ./install.sh
 ```
 
 Lifecycle installer yang sekarang didukung:
-- `install`: first install, gagal jika runtime sudah ada
+- `install`: first install; jika runtime sudah ada, installer akan meminta konfirmasi untuk lanjut sebagai `reinstall`
 - `reinstall`: rebuild/update runtime tanpa menghapus data user
 - `uninstall`: hapus runtime dan shim, data user tetap aman kecuali dipurge
 

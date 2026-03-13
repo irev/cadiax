@@ -229,6 +229,20 @@ function Invoke-Uninstall {
     Write-Host "Cadiax uninstalled"
 }
 
+function Confirm-ImplicitReinstall {
+    Param([string]$AppRoot)
+
+    $answer = Read-Host "Cadiax sudah terinstall di $AppRoot. Lanjutkan sebagai reinstall? [Y/n]"
+    if ($null -eq $answer) {
+        $answer = ""
+    }
+    $normalized = $answer.Trim().ToLowerInvariant()
+    if ($normalized -in @("", "y", "yes")) {
+        return $true
+    }
+    return $false
+}
+
 function Show-NextSteps {
     Param(
         [string]$VenvPath,
@@ -445,7 +459,10 @@ New-Item -ItemType Directory -Force -Path $AppRoot | Out-Null
 Sync-AppAssets -SourceRoot $SourceRoot -AppRoot $AppRoot
 
 if ($Mode -eq "install" -and (Test-Path $VenvPath)) {
-    throw "Cadiax sudah terinstall di $AppRoot. Gunakan -Mode reinstall untuk memperbarui instalasi, atau -Mode uninstall untuk menghapusnya."
+    if (-not (Confirm-ImplicitReinstall -AppRoot $AppRoot)) {
+        throw "Install dibatalkan. Gunakan -Mode reinstall untuk memperbarui instalasi, atau -Mode uninstall untuk menghapusnya."
+    }
+    $Mode = "reinstall"
 }
 
 if ((Test-Path $VenvPath) -and ($Mode -eq "reinstall") -and (-not $ReuseVenv)) {
