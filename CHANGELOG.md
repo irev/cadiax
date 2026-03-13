@@ -4,6 +4,21 @@ Dokumen ini merangkum perubahan penting yang sudah mendarat di OtonomAssist.
 
 ## Unreleased
 
+## v1.1.2
+
+### Changed
+
+- promoted `cadiax` as the primary public package namespace
+- switched public CLI entrypoints to `cadiax` and `cadiax-telegram`
+- aligned public docs and install flow with the Cadiax name
+- added first-run installer scripts for Windows and Linux
+
+### Compatibility
+
+- retained `otonomassist` as a compatibility shim for legacy imports
+- retained legacy CLI aliases during the migration window
+- accepted `CADIAX_*` as public environment variable aliases while keeping legacy mappings
+
 ### Added
 
 - setup wizard interaktif untuk first-run dan reconfigure

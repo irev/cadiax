@@ -18,6 +18,7 @@ Pronunciation: cha-di-aks (`/tʃa.di.aks/`)
 - Docs index: `docs/README.md`
 - Install guide: `docs/operations/INSTALL.md`
 - Release notes: `docs/release/RELEASE_NOTES.md`
+- Release notes `v1.1.2`: `docs/release/RELEASE_NOTES_v1.1.2.md`
 - Deployment checklist: `docs/release/DEPLOYMENT_CHECKLIST.md`
 - Security policy: `SECURITY.md`
 - Code of conduct: `CODE_OF_CONDUCT.md`
