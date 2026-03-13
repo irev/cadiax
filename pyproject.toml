@@ -44,16 +44,16 @@ dev = [
 [project.scripts]
 cadiax = "cadiax.cli:main"
 cadiax-telegram = "cadiax.telegram_cli:main"
-autonomiq = "otonomassist.cli:main"
-autonomiq-telegram = "otonomassist.telegram_cli:main"
-otonomassist = "otonomassist.cli:main"
-otonomassist-telegram = "otonomassist.telegram_cli:main"
+autonomiq = "cadiax.cli:main"
+autonomiq-telegram = "cadiax.telegram_cli:main"
+otonomassist = "cadiax.cli:main"
+otonomassist-telegram = "cadiax.telegram_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-otonomassist = [
+cadiax = [
     "py.typed",
     "bootstrap_assets/foundation/official/*.md",
 ]

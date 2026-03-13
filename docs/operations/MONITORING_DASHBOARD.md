@@ -62,4 +62,4 @@ cadiax service write dashboard
 
 - The dashboard build is stored under `monitoring-dashboard/dist/`.
 - Dependencies are installed under `monitoring-dashboard/node_modules/`.
-- The dashboard state file is stored in `.otonomassist/dashboard_state.json`.
+- The dashboard state file is stored in `.cadiax/dashboard_state.json`.

@@ -21,7 +21,7 @@ Release confidence can be treated as `98-99%` only if all items below are comple
 - Confirm Node.js and npm are available if the dashboard will be enabled.
 - Confirm writable paths:
   - repo root
-  - `.otonomassist/`
+  - `.cadiax/`
   - generated service wrapper directory
 - Confirm no unexpected port conflicts for:
   - `8787` admin API
@@ -41,9 +41,9 @@ Evidence to record:
 - Review `.env` on target host.
 - Confirm only intended channels are enabled.
 - Confirm real credentials exist only for enabled channels.
-- Confirm `OTONOMASSIST_WORKSPACE_ROOT` is correct.
-- Confirm `OTONOMASSIST_STATE_DIR` points to the intended durable storage path.
-- Confirm `OTONOMASSIST_ADMIN_TOKEN` policy is intentional.
+- Confirm `CADIAX_WORKSPACE_ROOT` is correct.
+- Confirm `CADIAX_STATE_DIR` points to the intended durable storage path.
+- Confirm `CADIAX_ADMIN_TOKEN` policy is intentional.
 - Confirm dashboard access mode is intentional:
   - local-only `127.0.0.1`
   - or explicitly exposed with network controls

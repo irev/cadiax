@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from otonomassist.core.result_builder import build_result
-from otonomassist.core.workspace_guard import get_workspace_root, resolve_workspace_path, should_skip_path
+from cadiax.core.result_builder import build_result
+from cadiax.core.workspace_guard import get_workspace_root, resolve_workspace_path, should_skip_path
 MAX_LINES = 80
 
 

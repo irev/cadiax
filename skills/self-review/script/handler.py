@@ -6,9 +6,9 @@ import ast
 import re
 from pathlib import Path
 
-from otonomassist.core.agent_context import add_planner_task, append_lesson, append_memory_entry, load_planner_state
-from otonomassist.core.result_builder import build_result
-from otonomassist.core.workspace_guard import get_workspace_root, resolve_workspace_path
+from cadiax.core.agent_context import add_planner_task, append_lesson, append_memory_entry, load_planner_state
+from cadiax.core.result_builder import build_result
+from cadiax.core.workspace_guard import get_workspace_root, resolve_workspace_path
 SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
     re.compile(r"api[_-]?key", re.IGNORECASE),
@@ -42,7 +42,7 @@ def _usage() -> str:
     return (
         "Usage: self-review <file|text> ...\n"
         "Examples:\n"
-        "- self-review file src/otonomassist/core/assistant.py\n"
+        "- self-review file src/cadiax/core/assistant.py\n"
         "- self-review text hasil implementasi memory dan planner"
     )
 

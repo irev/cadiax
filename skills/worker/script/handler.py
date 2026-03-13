@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from otonomassist.core.job_runtime import process_job_queue, render_job_queue
-from otonomassist.core.assistant import Assistant
+from cadiax.core.job_runtime import process_job_queue, render_job_queue
+from cadiax.core.assistant import Assistant
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]

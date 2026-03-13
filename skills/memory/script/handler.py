@@ -8,8 +8,8 @@ from pathlib import Path
 import re
 from typing import Any
 
-from otonomassist.core import agent_context
-from otonomassist.core.agent_context import (
+from cadiax.core import agent_context
+from cadiax.core.agent_context import (
     append_lesson,
     append_curated_memory,
     append_daily_memory_note,
@@ -22,8 +22,8 @@ from otonomassist.core.agent_context import (
     save_memory_summary_state,
     retrieve_relevant_memories,
 )
-from otonomassist.memory import MemoryConsolidationService
-from otonomassist.core.result_builder import build_result
+from cadiax.memory import MemoryConsolidationService
+from cadiax.core.result_builder import build_result
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{4,}")
 

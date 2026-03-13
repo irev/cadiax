@@ -6,8 +6,8 @@ import asyncio
 import os
 from pathlib import Path
 
-from otonomassist.ai.factory import AIProviderFactory
-from otonomassist.core.agent_context import (
+from cadiax.ai.factory import AIProviderFactory
+from cadiax.core.agent_context import (
     add_planner_note,
     append_lesson,
     append_memory_entry,
@@ -16,10 +16,10 @@ from otonomassist.core.agent_context import (
     update_planner_task_fields,
     update_planner_task_status,
 )
-from otonomassist.core.assistant import Assistant
-from otonomassist.core.execution_control import classify_error_kind, classify_result_status
-from otonomassist.services.personality import PersonalityService
-from otonomassist.services.runtime import ContextBudgeter
+from cadiax.core.assistant import Assistant
+from cadiax.core.execution_control import classify_error_kind, classify_result_status
+from cadiax.services.personality import PersonalityService
+from cadiax.services.runtime import ContextBudgeter
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]

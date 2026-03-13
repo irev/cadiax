@@ -107,7 +107,7 @@ Ini dipakai untuk memperkaya konteks routing AI dan audit skill layer.
 State agent disimpan di:
 
 ```text
-.otonomassist/
+.cadiax/
 ├── memory.jsonl
 ├── planner.json
 ├── profile.md
@@ -125,7 +125,7 @@ Makna file:
 - `secrets.json`: kredensial lokal
 - `telegram_auth.json`: allowlist dan request pairing Telegram
 
-`.otonomassist/` sekarang di-ignore oleh git, jadi data lokal dan secret tidak ikut ter-commit.
+`.cadiax/` sekarang di-ignore oleh git, jadi data lokal dan secret tidak ikut ter-commit.
 
 Di Windows, value secret sekarang disimpan terenkripsi lokal memakai DPAPI sebelum ditulis ke `secrets.json`.
 Di Linux/macOS, runtime memakai backend portable berbasis local file key agar service utama tetap bisa berjalan lintas OS.
@@ -138,13 +138,13 @@ Akses file workspace sekarang dibatasi oleh guard terpusat:
 - semua path harus tetap berada di dalam root workspace
 - traversal seperti `../..` ke luar workspace ditolak
 - symlink yang resolve ke luar workspace di-skip saat traversal
-- mode akses workspace default adalah read-only secara kebijakan: `OTONOMASSIST_WORKSPACE_ACCESS=ro`
+- mode akses workspace default adalah read-only secara kebijakan: `CADIAX_WORKSPACE_ACCESS=ro`
 
 Konfigurasi:
 
 ```bash
-OTONOMASSIST_WORKSPACE_ROOT=
-OTONOMASSIST_WORKSPACE_ACCESS=ro
+CADIAX_WORKSPACE_ROOT=
+CADIAX_WORKSPACE_ACCESS=ro
 ```
 
 Default workspace sekarang diarahkan ke folder `workspace/` di root project. Ini menjadi lokasi default untuk file kerja user, skill tambahan, dan aset eksternal yang dikelola di dalam boundary workspace.
@@ -349,7 +349,7 @@ Approval sekarang juga memerlukan capability declaration yang valid di `asset.js
 Secara default, capability yang diizinkan untuk skill eksternal hanya `workspace_read`. Capability lain harus dibuka eksplisit lewat:
 
 ```bash
-OTONOMASSIST_EXTERNAL_CAPABILITY_ALLOW=workspace_read,network
+CADIAX_EXTERNAL_CAPABILITY_ALLOW=workspace_read,network
 ```
 
 Contoh:
@@ -363,7 +363,7 @@ cadiax external reject my-skill
 Jika ingin perilaku lama yang langsung memuat semua skill eksternal, set:
 
 ```bash
-OTONOMASSIST_EXTERNAL_SKILL_POLICY=allow-all
+CADIAX_EXTERNAL_SKILL_POLICY=allow-all
 ```
 
 Telegram runner:
@@ -490,7 +490,7 @@ Policy authorization Telegram sekarang fail-closed:
 State authorization Telegram disimpan lokal di:
 
 ```text
-.otonomassist/telegram_auth.json
+.cadiax/telegram_auth.json
 ```
 
 Semua pesan Telegram tetap masuk ke jalur yang sama dengan CLI melalui `Assistant.handle_message(...)`, jadi loop agent inti tidak perlu diubah.
@@ -529,24 +529,24 @@ Suite test sekarang mencakup area yang paling riskan untuk operasi lebih serius:
 Fondasi observability minimum juga mulai aktif:
 
 - setiap command inbound sekarang punya `trace_id`
-- event inti seperti `command_received`, `skill_started`, `skill_completed`, dan `command_completed` ditulis ke `.otonomassist/execution_history.jsonl`
+- event inti seperti `command_received`, `skill_started`, `skill_completed`, dan `command_completed` ditulis ke `.cadiax/execution_history.jsonl`
 - operator bisa melihat jejak terbaru lewat `cadiax history`
 - operator bisa melihat agregat metrik lewat `cadiax metrics`
-- timeout skill global bisa diatur dengan `OTONOMASSIST_SKILL_TIMEOUT_SECONDS`
+- timeout skill global bisa diatur dengan `CADIAX_SKILL_TIMEOUT_SECONDS`
 - `doctor/status` sekarang juga mendukung output machine-readable lewat `--json`
 - report `doctor/status` sekarang juga memiliki section `[Runtime]` untuk queue worker
 - admin API read-only lokal tersedia untuk `/health`, `/status`, `/metrics`, `/jobs`, dan `/history`
-- jika `OTONOMASSIST_ADMIN_TOKEN` diisi, admin API memerlukan header `X-Cadiax-Token` atau `Authorization: Bearer ...`
+- jika `CADIAX_ADMIN_TOKEN` diisi, admin API memerlukan header `X-Cadiax-Token` atau `Authorization: Bearer ...`
 
 Fondasi runtime Phase 2 juga mulai aktif:
 
 - planner task sekarang bisa membawa `priority`, `depends_on`, `retry_count`, dan `blocked_reason`
 - `planner next` sekarang memilih task `ready` berdasarkan dependency dan priority
-- runtime job queue lokal disimpan di `.otonomassist/job_queue.json`
+- runtime job queue lokal disimpan di `.cadiax/job_queue.json`
 - command `jobs` dan `worker` memberi lapisan eksplisit antara planner dan executor
 - worker sekarang bisa berjalan `until-idle` dan mencatat `last_worker_run_at` / `last_worker_status`
 - context orchestration sekarang mulai memanfaatkan retrieval memori relevan berbasis token overlap, bukan recency-only
-- scheduler runtime sekarang tersedia untuk menjalankan cycle worker berkala dan mencatat state terakhir ke `.otonomassist/scheduler_state.json`
+- scheduler runtime sekarang tersedia untuk menjalankan cycle worker berkala dan mencatat state terakhir ke `.cadiax/scheduler_state.json`
 
 Perubahan ini membuat fondasi saat ini lebih layak dipakai sebagai sistem semi-otonom yang konsisten, bukan hanya eksperimen skill per skill.
 

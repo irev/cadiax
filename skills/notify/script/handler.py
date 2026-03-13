@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from otonomassist.core.result_builder import build_result
-from otonomassist.services.interactions.notification_dispatcher import NotificationDispatcher
+from cadiax.core.result_builder import build_result
+from cadiax.services.interactions.notification_dispatcher import NotificationDispatcher
 
 
 def handle(args: str) -> dict[str, object] | str:

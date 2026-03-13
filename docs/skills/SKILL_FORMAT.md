@@ -329,6 +329,6 @@ Sebelum menambahkan skill baru, pastikan:
 
 - Contoh implementasi: `skills/echo/`, `skills/calculator/`, `skills/ai-chat/`
 - Contoh structured result: `skills/research/`, `skills/workspace/`, `skills/planner/`, `skills/memory/`, `skills/self-review/`
-- Helper result: `src/otonomassist/core/result_builder.py`
-- Formatter universal: `src/otonomassist/core/result_formatter.py`
+- Helper result: `src/cadiax/core/result_builder.py`
+- Formatter universal: `src/cadiax/core/result_formatter.py`
 - Arsitektur runtime: `docs/architecture/ARCHITECTURE.md`

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from otonomassist.core.agent_context import ensure_agent_storage
-from otonomassist.services.personality import PersonalityService
+from cadiax.core.agent_context import ensure_agent_storage
+from cadiax.services.personality import PersonalityService
 
 
 def handle(args: str) -> str:

@@ -168,11 +168,11 @@ Implikasi:
 
 ### Interface Layer
 
-- `src/otonomassist/interfaces/cli/`
-- `src/otonomassist/interfaces/telegram/`
-- `src/otonomassist/interfaces/whatsapp/`
-- `src/otonomassist/interfaces/email/`
-- `src/otonomassist/interfaces/api/`
+- `src/cadiax/interfaces/cli/`
+- `src/cadiax/interfaces/telegram/`
+- `src/cadiax/interfaces/whatsapp/`
+- `src/cadiax/interfaces/email/`
+- `src/cadiax/interfaces/api/`
 
 Tanggung jawab:
 
@@ -182,11 +182,11 @@ Tanggung jawab:
 
 ### Runtime Services
 
-- `src/otonomassist/services/runtime/orchestrator.py`
-- `src/otonomassist/services/runtime/planner_service.py`
-- `src/otonomassist/services/runtime/execution_service.py`
-- `src/otonomassist/services/runtime/scheduler_service.py`
-- `src/otonomassist/services/runtime/trigger_service.py`
+- `src/cadiax/services/runtime/orchestrator.py`
+- `src/cadiax/services/runtime/planner_service.py`
+- `src/cadiax/services/runtime/execution_service.py`
+- `src/cadiax/services/runtime/scheduler_service.py`
+- `src/cadiax/services/runtime/trigger_service.py`
 
 Tanggung jawab:
 
@@ -196,11 +196,11 @@ Tanggung jawab:
 
 ### Personal Intelligence
 
-- `src/otonomassist/services/personality/profile_service.py`
-- `src/otonomassist/services/personality/preference_service.py`
-- `src/otonomassist/services/memory/memory_service.py`
-- `src/otonomassist/services/memory/retrieval_service.py`
-- `src/otonomassist/services/memory/consolidation_service.py`
+- `src/cadiax/services/personality/profile_service.py`
+- `src/cadiax/services/personality/preference_service.py`
+- `src/cadiax/services/memory/memory_service.py`
+- `src/cadiax/services/memory/retrieval_service.py`
+- `src/cadiax/services/memory/consolidation_service.py`
 
 Tanggung jawab:
 
@@ -210,10 +210,10 @@ Tanggung jawab:
 
 ### Governance and Safety
 
-- `src/otonomassist/services/policy/policy_service.py`
-- `src/otonomassist/services/policy/approval_service.py`
-- `src/otonomassist/services/policy/privacy_service.py`
-- `src/otonomassist/services/policy/external_asset_service.py`
+- `src/cadiax/services/policy/policy_service.py`
+- `src/cadiax/services/policy/approval_service.py`
+- `src/cadiax/services/policy/privacy_service.py`
+- `src/cadiax/services/policy/external_asset_service.py`
 
 Tanggung jawab:
 
@@ -224,9 +224,9 @@ Tanggung jawab:
 
 ### Model and Budget
 
-- `src/otonomassist/services/ai/model_router.py`
-- `src/otonomassist/services/ai/budget_manager.py`
-- `src/otonomassist/services/ai/context_budgeter.py`
+- `src/cadiax/services/ai/model_router.py`
+- `src/cadiax/services/ai/budget_manager.py`
+- `src/cadiax/services/ai/context_budgeter.py`
 
 Tanggung jawab:
 
@@ -236,9 +236,9 @@ Tanggung jawab:
 
 ### Runtime Isolation
 
-- `src/otonomassist/runtime/builtin/`
-- `src/otonomassist/runtime/external_runner/`
-- `src/otonomassist/runtime/connectors/`
+- `src/cadiax/runtime/builtin/`
+- `src/cadiax/runtime/external_runner/`
+- `src/cadiax/runtime/connectors/`
 
 Tanggung jawab:
 
@@ -248,10 +248,10 @@ Tanggung jawab:
 
 ### Observability and Operations
 
-- `src/otonomassist/observability/traces.py`
-- `src/otonomassist/observability/metrics.py`
-- `src/otonomassist/observability/audit.py`
-- `src/otonomassist/observability/admin_api.py`
+- `src/cadiax/observability/traces.py`
+- `src/cadiax/observability/metrics.py`
+- `src/cadiax/observability/audit.py`
+- `src/cadiax/observability/admin_api.py`
 
 Tanggung jawab:
 

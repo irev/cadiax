@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from otonomassist.core.agent_context import (
+from cadiax.core.agent_context import (
     append_lesson,
     append_memory_entry,
     get_next_planner_task,
 )
-from otonomassist.core.assistant import Assistant
+from cadiax.core.assistant import Assistant
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from otonomassist.core.result_builder import build_result
-from otonomassist.core.transport import TransportContext
-from otonomassist.services.policy import PolicyService
+from cadiax.core.result_builder import build_result
+from cadiax.core.transport import TransportContext
+from cadiax.services.policy import PolicyService
 
 
 def handle(args: str) -> dict[str, object] | str:

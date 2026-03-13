@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from otonomassist.core import agent_context
-from otonomassist.core.agent_context import get_next_planner_task, load_planner_state, save_planner_state
-from otonomassist.core.result_builder import build_result
-from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed
+from cadiax.core import agent_context
+from cadiax.core.agent_context import get_next_planner_task, load_planner_state, save_planner_state
+from cadiax.core.result_builder import build_result
+from cadiax.core.workspace_guard import ensure_internal_state_write_allowed
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]

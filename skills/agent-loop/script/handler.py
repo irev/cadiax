@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from otonomassist.ai.factory import AIProviderFactory
-from otonomassist.core.agent_context import (
+from cadiax.ai.factory import AIProviderFactory
+from cadiax.core.agent_context import (
     append_memory_entry,
     get_next_planner_task,
 )
-from otonomassist.services.personality import PersonalityService
-from otonomassist.services.runtime import ContextBudgeter
+from cadiax.services.personality import PersonalityService
+from cadiax.services.runtime import ContextBudgeter
 
 
 async def handle(args: str) -> str:

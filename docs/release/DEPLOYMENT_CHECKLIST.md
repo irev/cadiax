@@ -13,8 +13,8 @@
 - Verify `.env` contains the intended AI provider settings.
 - Verify admin and conversation API tokens if required.
 - Verify Telegram, email, and WhatsApp credentials only for channels that will be enabled.
-- Verify `OTONOMASSIST_WORKSPACE_ROOT` and workspace access mode.
-- Verify `OTONOMASSIST_STATE_DIR` and durable storage location.
+- Verify `CADIAX_WORKSPACE_ROOT` and workspace access mode.
+- Verify `CADIAX_STATE_DIR` and durable storage location.
 
 ## Runtime
 
