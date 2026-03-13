@@ -17,4 +17,9 @@ if not "%EXIT_CODE%"=="0" (
     echo [Cadiax] install.bat failed with exit code %EXIT_CODE%.
 )
 
+if "%EXIT_CODE%"=="0" (
+    echo.
+    echo [Cadiax] Jika shell ini masih memakai command global lama, tutup lalu buka PowerShell baru.
+)
+
 exit /b %EXIT_CODE%
