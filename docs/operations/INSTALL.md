@@ -132,7 +132,7 @@ Jika shell yang sedang terbuka masih memakai instalasi global lama, tutup lalu b
 `pip` memang selalu menampilkan format seperti:
 
 ```text
-Successfully installed cadiax-1.1.1
+Successfully installed cadiax-<version>
 ```
 
 Itu perilaku standar `pip`, bukan nama aplikasi yang salah.
