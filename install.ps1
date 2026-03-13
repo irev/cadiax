@@ -2,7 +2,9 @@ Param(
     [switch]$InstallNode,
     [switch]$SkipSetup,
     [string]$PythonCommand = "python",
-    [string]$VenvPath = ".venv"
+    [string]$VenvPath = ".venv",
+    [switch]$ReuseVenv,
+    [switch]$SkipUserShim
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,6 +48,71 @@ function Invoke-CheckedCommand {
     }
 }
 
+function Show-NextSteps {
+    Param(
+        [string]$VenvPath,
+        [string]$VenvPython,
+        [hashtable]$ShimInfo = $null
+    )
+
+    $VenvCadiax = Join-Path $PWD "$VenvPath\\Scripts\\cadiax.exe"
+    $ResolvedCadiax = Get-Command "cadiax" -ErrorAction SilentlyContinue
+
+    Write-Host ""
+    Write-Host "Cadiax installed"
+    Write-Host "CLI: $VenvPath\\Scripts\\cadiax.exe"
+    Write-Host "Telegram CLI: $VenvPath\\Scripts\\cadiax-telegram.exe"
+    Write-Host ""
+    Write-Host "Gunakan salah satu cara berikut:"
+    Write-Host "1. Langsung jalankan: $VenvPath\\Scripts\\cadiax.exe"
+    Write-Host "2. Aktifkan virtual environment terlebih dulu:"
+    Write-Host "   .\\$VenvPath\\Scripts\\Activate.ps1"
+    Write-Host "   cadiax"
+
+    $AcceptedPaths = @($VenvCadiax)
+    if ($ShimInfo) {
+        $AcceptedPaths += $ShimInfo.cadiax_cmd
+    }
+
+    if ($ResolvedCadiax -and ($AcceptedPaths -notcontains $ResolvedCadiax.Path)) {
+        Write-Host ""
+        Write-Warning "Command `cadiax` pada shell ini masih mengarah ke: $($ResolvedCadiax.Path)"
+        Write-Host "Itu bukan executable project ini. Aktifkan virtual environment atau gunakan path CLI di atas."
+    }
+}
+
+function Register-UserCommandShims {
+    Param(
+        [string]$ProjectRoot,
+        [string]$VenvPath
+    )
+
+    $ShimDir = Join-Path $HOME ".cadiax\\bin"
+    New-Item -ItemType Directory -Force -Path $ShimDir | Out-Null
+
+    $CadiaxExe = Join-Path $ProjectRoot "$VenvPath\\Scripts\\cadiax.exe"
+    $TelegramExe = Join-Path $ProjectRoot "$VenvPath\\Scripts\\cadiax-telegram.exe"
+    $CadiaxCmd = "@echo off`r`n""$CadiaxExe"" %*`r`n"
+    $TelegramCmd = "@echo off`r`n""$TelegramExe"" %*`r`n"
+
+    Set-Content -Path (Join-Path $ShimDir "cadiax.cmd") -Value $CadiaxCmd -Encoding ascii
+    Set-Content -Path (Join-Path $ShimDir "cadiax-telegram.cmd") -Value $TelegramCmd -Encoding ascii
+
+    $CurrentUserPath = [Environment]::GetEnvironmentVariable("Path", "User") ?? ""
+    $Parts = @($CurrentUserPath -split ";" | Where-Object { $_.Trim() -ne "" })
+    $NormalizedShimDir = [System.IO.Path]::GetFullPath($ShimDir)
+    $Filtered = @($Parts | Where-Object { [System.IO.Path]::GetFullPath($_) -ne $NormalizedShimDir })
+    $NewUserPath = ($NormalizedShimDir + ($(if ($Filtered.Count -gt 0) { ";" + ($Filtered -join ";") } else { "" })))
+    [Environment]::SetEnvironmentVariable("Path", $NewUserPath, "User")
+    $env:Path = "$NormalizedShimDir;$env:Path"
+
+    return @{
+        shim_dir = $NormalizedShimDir
+        cadiax_cmd = (Join-Path $ShimDir "cadiax.cmd")
+        telegram_cmd = (Join-Path $ShimDir "cadiax-telegram.cmd")
+    }
+}
+
 if (-not (Test-Command $PythonCommand)) {
     Ensure-WingetPackage -Id "Python.Python.3.12" -Label "Python"
 }
@@ -56,6 +123,11 @@ if (-not (Test-Command "git")) {
 
 if ($InstallNode -and -not (Test-Command "node")) {
     Ensure-WingetPackage -Id "OpenJS.NodeJS.LTS" -Label "Node.js LTS"
+}
+
+if ((Test-Path $VenvPath) -and (-not $ReuseVenv)) {
+    Write-Step "Menghapus virtual environment lama di $VenvPath"
+    Remove-Item -Recurse -Force $VenvPath
 }
 
 Write-Step "Menyiapkan virtual environment $VenvPath"
@@ -78,6 +150,12 @@ Invoke-CheckedCommand -Label "pip install ." -Command @($VenvPython, "-m", "pip"
 Write-Step "Menyiapkan dokumen workspace aktif"
 Invoke-CheckedCommand -Label "cadiax bootstrap foundation" -Command @($VenvPython, "-m", "cadiax.cli", "bootstrap", "foundation")
 
+$ShimInfo = $null
+if (-not $SkipUserShim) {
+    Write-Step "Mendaftarkan command Cadiax ke user PATH"
+    $ShimInfo = Register-UserCommandShims -ProjectRoot $PWD -VenvPath $VenvPath
+}
+
 if ($InstallNode) {
     Write-Step "Menyiapkan dashboard dependency"
     Invoke-CheckedCommand -Label "cadiax dashboard install" -Command @($VenvPython, "-m", "cadiax.cli", "dashboard", "install")
@@ -88,7 +166,12 @@ if (-not $SkipSetup) {
     Invoke-CheckedCommand -Label "cadiax setup" -Command @($VenvPython, "-m", "cadiax.cli", "setup")
 }
 
-Write-Host ""
-Write-Host "Cadiax installed"
-Write-Host "CLI: $VenvPath\\Scripts\\cadiax.exe"
-Write-Host "Telegram CLI: $VenvPath\\Scripts\\cadiax-telegram.exe"
+Show-NextSteps -VenvPath $VenvPath -VenvPython $VenvPython -ShimInfo $ShimInfo
+if ($ShimInfo) {
+    Write-Host ""
+    Write-Host "User command shims:"
+    Write-Host "- cadiax: $($ShimInfo.cadiax_cmd)"
+    Write-Host "- cadiax-telegram: $($ShimInfo.telegram_cmd)"
+    Write-Host "- user PATH updated: $($ShimInfo.shim_dir)"
+    Write-Host "Buka shell baru agar command `cadiax` memakai shim Cadiax yang baru."
+}

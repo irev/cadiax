@@ -42,6 +42,35 @@ chmod +x ./install.sh
 ./install.sh --install-node
 ```
 
+Secara default installer akan merecreate virtual environment target jika foldernya sudah ada. Jika Anda memang ingin memakai virtual environment yang sama tanpa dihapus, gunakan:
+
+```powershell
+./install.ps1 -ReuseVenv
+```
+
+atau:
+
+```bash
+./install.sh --reuse-venv
+```
+
+Secara default installer juga akan mendaftarkan command user-level:
+
+- Windows: `%USERPROFILE%\.cadiax\bin\cadiax.cmd`
+- Linux: `~/.local/bin/cadiax`
+
+Jika Anda tidak menginginkan itu:
+
+```powershell
+./install.ps1 -SkipUserShim
+```
+
+atau:
+
+```bash
+./install.sh --skip-user-shim
+```
+
 ## Yang Dilakukan Installer
 
 - memastikan `Python` tersedia
@@ -62,12 +91,48 @@ chmod +x ./install.sh
 Dokumen bootstrap aktif selalu disalin ke `workspace root`, bukan ke `.cadiax/`.
 Setelah setup selesai, dokumen inilah yang benar-benar dibaca Cadiax untuk startup context, identity, soul, scope, dan heartbeat behavior.
 
+## Setelah Install
+
+Pada install berbasis virtual environment, command `cadiax` global di shell Anda bisa saja masih menunjuk ke executable lama atau shim Python global.
+
+Jalur yang benar setelah install:
+
+### Windows
+
+```powershell
+.venv\Scripts\cadiax.exe
+```
+
+Atau aktifkan dulu:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+cadiax
+```
+
+### Linux
+
+```bash
+.venv/bin/cadiax
+```
+
+Atau aktifkan dulu:
+
+```bash
+source .venv/bin/activate
+cadiax
+```
+
+Cadiax installer sekarang juga membuat shim user-level agar command `cadiax` lebih mudah dipakai tanpa harus selalu mengetik path `.venv`.
+
+Jika shell yang sedang terbuka masih memakai instalasi global lama, tutup lalu buka shell baru setelah install selesai.
+
 ## Catatan Tentang Output `pip`
 
 `pip` memang selalu menampilkan format seperti:
 
 ```text
-Successfully installed cadiax-1.1.1
+Successfully installed cadiax-<version>
 ```
 
 Itu perilaku standar `pip`, bukan nama aplikasi yang salah.

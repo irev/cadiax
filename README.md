@@ -44,12 +44,20 @@ cadiax status
 cadiax chat
 ```
 
+Jika command `cadiax` di shell masih menunjuk ke instalasi global lama, buka shell baru setelah install. Installer sekarang mendaftarkan shim user-level untuk `cadiax`. Jika tetap perlu, Anda masih bisa memakai executable dari virtual environment atau aktifkan dulu virtual environment proyek:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+cadiax
+```
+
 Installer Cadiax akan:
 
 - membuat virtual environment
 - menginstall paket `cadiax`
 - men-seed dokumen workspace aktif ke workspace root
 - menjalankan `cadiax setup` kecuali diminta skip
+- mendaftarkan shim user-level agar command `cadiax` lebih mudah dipakai
 
 ## Highlights
 
