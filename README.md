@@ -82,6 +82,7 @@ Installer Cadiax akan:
 - installer Windows/Linux dengan bootstrap workspace aktif
 - dashboard monitoring TypeScript opsional
 - multi-channel runtime dan service wrappers
+- target service utama `cadiax` untuk Windows/Linux, dengan Telegram polling terintegrasi bila diaktifkan user
 
 ## Repository
 

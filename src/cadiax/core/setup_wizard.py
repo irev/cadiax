@@ -85,6 +85,7 @@ def run_setup_wizard() -> str:
         "Konfigurasi Telegram sekarang?",
         default=_has_existing_telegram_config(env_values),
     )
+    env_updates["TELEGRAM_ENABLED"] = "true" if telegram_enabled else "false"
     if telegram_enabled:
         _collect_telegram_settings(env_values, env_updates, secret_updates)
 

@@ -882,7 +882,7 @@ def service_status_command() -> None:
 @service_group.command("show")
 @click.argument(
     "target",
-    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api", "dashboard"], case_sensitive=False),
+    type=click.Choice(["cadiax", "worker", "scheduler", "admin-api", "conversation-api", "dashboard"], case_sensitive=False),
 )
 @click.option(
     "--runtime",
@@ -906,7 +906,7 @@ def service_show_command(target: str, runtime: str, skills_dir: Path) -> None:
 @click.argument(
     "target",
     required=False,
-    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api", "dashboard"], case_sensitive=False),
+    type=click.Choice(["cadiax", "worker", "scheduler", "admin-api", "conversation-api", "dashboard"], case_sensitive=False),
 )
 @click.option(
     "--runtime",
@@ -948,7 +948,7 @@ def service_write_command(
 @service_group.command("run")
 @click.argument(
     "target",
-    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api", "dashboard"], case_sensitive=False),
+    type=click.Choice(["cadiax", "worker", "scheduler", "admin-api", "conversation-api", "dashboard"], case_sensitive=False),
 )
 @click.option("--host", default="127.0.0.1", show_default=True, help="Bind address for API targets")
 @click.option("--port", default=None, type=int, help="Bind port for API targets")

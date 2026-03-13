@@ -196,6 +196,7 @@ def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypat
     assert "AI_PROVIDER=openai" in env_text
     assert f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}" in env_text
     assert "OTONOMASSIST_WORKSPACE_ACCESS=rw" in env_text
+    assert "TELEGRAM_ENABLED=true" in env_text
     assert "OPENAI_MODEL=gpt-4.1-mini" in env_text
     assert "OPENAI_API_KEY=" in env_text
     assert "TELEGRAM_BOT_TOKEN=" in env_text
@@ -250,6 +251,32 @@ def test_cli_setup_wizard_defaults_to_native_config_file(tmp_path, monkeypatch):
     assert env_file.exists()
     assert "AI_PROVIDER=openai" in env_file.read_text(encoding="utf-8")
     assert not str(env_file).startswith(str(tmp_path / ".venv"))
+
+
+def test_cli_setup_wizard_marks_telegram_disabled_when_skipped(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    monkeypatch.setattr(setup_wizard, "encrypt_secret", lambda value: f"enc:{value}")
+
+    prompt_answers = iter(
+        [
+            "ollama",
+            str(tmp_path),
+            "ro",
+            "http://localhost:11434",
+            "llama3.2",
+        ]
+    )
+    confirm_answers = iter([False, True])
+    monkeypatch.setattr(setup_wizard.click, "prompt", lambda *args, **kwargs: next(prompt_answers))
+    monkeypatch.setattr(setup_wizard.click, "confirm", lambda *args, **kwargs: next(confirm_answers))
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["setup"])
+
+    assert result.exit_code == 0
+    assert "TELEGRAM_ENABLED=false" in env_file.read_text(encoding="utf-8")
 
 
 def test_cli_conversation_api_command_starts_separate_service(tmp_path, monkeypatch):
@@ -808,9 +835,22 @@ def test_cli_service_status_reports_wrapper_targets(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "Service Runtime" in result.output
     assert "wrapper_output_dir:" in result.output
+    assert "cadiax:" in result.output
     assert "worker:" in result.output
     assert "conversation-api:" in result.output
     assert "dashboard:" in result.output
+
+
+def test_cli_service_show_renders_posix_cadiax_artifacts(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["service", "show", "cadiax", "--runtime", "posix"])
+
+    assert result.exit_code == 0
+    assert "Service Wrapper Artifacts: cadiax" in result.output
+    assert "[cadiax-cadiax.service]" in result.output
+    assert "service run cadiax" in result.output
 
 
 def test_cli_service_show_renders_posix_worker_artifacts(tmp_path, monkeypatch):
@@ -895,6 +935,36 @@ def test_cli_service_run_uses_named_service_target(tmp_path, monkeypatch):
     assert captured["max_loops"] == 1
 
 
+def test_cli_service_run_cadiax_uses_named_service_target(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_named_service_target(
+        target,
+        *,
+        skills_dir,
+        host,
+        port,
+        interval_seconds,
+        steps,
+        enqueue_first,
+        until_idle,
+        max_loops,
+    ):
+        captured["target"] = target
+        return {"output": "cadiax-service-ok"}
+
+    monkeypatch.setattr(cli_module, "run_named_service_target", fake_run_named_service_target)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["service", "run", "cadiax", "--max-loops", "1"])
+
+    assert result.exit_code == 0
+    assert "cadiax-service-ok" in result.output
+    assert captured["target"] == "cadiax"
+
+
 def test_cli_dashboard_status_enable_disable_and_doctor_snapshot(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     import otonomassist.platform.dashboard_runtime as dashboard_runtime  # noqa: E402
@@ -931,6 +1001,37 @@ def test_cli_dashboard_status_enable_disable_and_doctor_snapshot(tmp_path, monke
     assert "[Dashboard]" in doctor_result.output
     assert "- enabled: yes" in doctor_result.output
     assert "Dashboard disabled" in disable_result.output
+
+
+def test_run_cadiax_service_skips_telegram_when_disabled(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+                "TELEGRAM_ENABLED=false",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.platform.service_runtime as service_runtime  # noqa: E402
+
+    monkeypatch.setattr(service_runtime, "get_config_env_file", lambda: env_file)
+
+    result = service_runtime.run_cadiax_service(
+        skills_dir=ROOT / "skills",
+        interval_seconds=0.0,
+        steps=1,
+        max_loops=1,
+    )
+
+    assert result["telegram_status"] == "disabled"
+    assert "telegram=disabled" in result["output"]
 
 
 def test_should_recommend_setup_requires_provider_credential_for_remote_provider(tmp_path, monkeypatch):

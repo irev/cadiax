@@ -8,23 +8,25 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+import threading
 import time
 from typing import Any, Literal
+
+from dotenv import dotenv_values
 
 from cadiax.core.execution_history import append_execution_event, new_trace_id
 from cadiax.core.execution_metrics import record_execution_metric
 from cadiax.core.job_runtime import process_job_queue
+from cadiax.core.path_layout import get_config_env_file, get_project_root, get_state_dir
 from cadiax.core.scheduler_runtime import run_scheduler
 from cadiax.platform.dashboard_runtime import DEFAULT_DASHBOARD_HOST, DEFAULT_DASHBOARD_PORT, run_dashboard_service
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-STATE_ROOT = Path(
-    os.getenv("OTONOMASSIST_STATE_DIR", str(PROJECT_ROOT / ".cadiax"))
-).expanduser().resolve()
+PROJECT_ROOT = get_project_root()
+STATE_ROOT = get_state_dir()
 SERVICE_WRAPPER_DIR = (STATE_ROOT / "service-wrappers").resolve()
 ServiceRuntimeName = Literal["windows", "posix"]
-SERVICE_TARGETS = ("worker", "scheduler", "admin-api", "conversation-api", "dashboard")
+SERVICE_TARGETS = ("cadiax", "worker", "scheduler", "admin-api", "conversation-api", "dashboard")
 
 
 @dataclass(slots=True)
@@ -60,7 +62,8 @@ def get_service_runtime_info() -> dict[str, object]:
         "recommended_mode": "generated-service-wrapper",
         "status": "healthy",
         "detail": (
-            "Service wrapper generator tersedia untuk worker, scheduler, "
+            "Service wrapper generator tersedia untuk main Cadiax runtime "
+            "(dengan Telegram terintegrasi bila diaktifkan), worker, scheduler, "
             "admin API, conversation API, dan monitoring dashboard."
         ),
         "wrapper_output_dir": str(get_service_wrapper_output_dir()),
@@ -166,6 +169,140 @@ def build_service_wrapper_artifacts(
 def get_service_wrapper_output_dir() -> Path:
     """Return the default output directory for generated wrappers."""
     return SERVICE_WRAPPER_DIR
+
+
+def run_cadiax_service(
+    *,
+    skills_dir: Path,
+    interval_seconds: float = 60.0,
+    steps: int = 5,
+    enqueue_first: bool = True,
+    until_idle: bool = True,
+    max_loops: int = 0,
+) -> dict[str, Any]:
+    """Run the main Cadiax service with optional Telegram polling."""
+    from cadiax.core.assistant import Assistant
+    from cadiax.services.interactions import ConversationService
+
+    service_trace_id = new_trace_id()
+    service_started = time.perf_counter()
+    assistant = Assistant(skills_dir=skills_dir)
+    assistant.initialize()
+    service = ConversationService(assistant)
+    telegram_state = _start_telegram_transport_if_enabled(service)
+    loops = 0
+    total_processed = 0
+    lines = [
+        (
+            f"Cadiax service loop starting "
+            f"(interval={max(0.0, interval_seconds):.2f}s, steps={max(1, steps)}, "
+            f"until_idle={'yes' if until_idle else 'no'}, enqueue_first={'yes' if enqueue_first else 'no'}, "
+            f"telegram={telegram_state['status']})"
+        )
+    ]
+    append_execution_event(
+        "service_run_started",
+        trace_id=service_trace_id,
+        status="started",
+        source="cadiax-service",
+        command="service run cadiax",
+        data={
+            "interval_seconds": max(0.0, interval_seconds),
+            "steps": max(1, steps),
+            "max_loops": max(0, max_loops),
+            "telegram_status": telegram_state["status"],
+        },
+    )
+    if telegram_state["message"]:
+        lines.append(f"- telegram: {telegram_state['message']}")
+    try:
+        while max_loops <= 0 or loops < max_loops:
+            loops += 1
+            loop_trace_id = new_trace_id()
+            loop_started = time.perf_counter()
+            append_execution_event(
+                "service_cycle_started",
+                trace_id=loop_trace_id,
+                status="started",
+                source="cadiax-service",
+                command="service run cadiax",
+                data={
+                    "parent_trace_id": service_trace_id,
+                    "target": "cadiax",
+                    "loop_index": loops,
+                },
+            )
+            result = run_scheduler(
+                assistant,
+                cycles=1,
+                interval_seconds=0.0,
+                max_jobs_per_cycle=max(1, steps),
+                enqueue_first=enqueue_first,
+                until_idle=until_idle,
+                trace_id=loop_trace_id,
+                source="cadiax-service",
+            )
+            total_processed += int(result["processed"])
+            lines.append(
+                f"- loop {loops}: processed={result['processed']} status={result['status']}"
+            )
+            loop_duration_ms = int((time.perf_counter() - loop_started) * 1000)
+            append_execution_event(
+                "service_cycle_completed",
+                trace_id=loop_trace_id,
+                status=str(result["status"]),
+                source="cadiax-service",
+                command="service run cadiax",
+                duration_ms=loop_duration_ms,
+                data={
+                    "parent_trace_id": service_trace_id,
+                    "target": "cadiax",
+                    "loop_index": loops,
+                    "processed": int(result["processed"]),
+                    "telegram_status": telegram_state["status"],
+                },
+            )
+            record_execution_metric(
+                "service_cycle_completed",
+                status=str(result["status"]),
+                source="cadiax-service",
+                duration_ms=loop_duration_ms,
+            )
+            if max_loops > 0 and loops >= max_loops:
+                break
+            time.sleep(max(0.0, interval_seconds))
+    except KeyboardInterrupt:
+        lines.append("- signal: stopped by operator")
+    total_duration_ms = int((time.perf_counter() - service_started) * 1000)
+    append_execution_event(
+        "service_run_completed",
+        trace_id=service_trace_id,
+        status="completed",
+        source="cadiax-service",
+        command="service run cadiax",
+        duration_ms=total_duration_ms,
+        data={
+            "target": "cadiax",
+            "total_loops": loops,
+            "total_processed": total_processed,
+            "telegram_status": telegram_state["status"],
+        },
+    )
+    record_execution_metric(
+        "service_run_completed",
+        status="completed",
+        source="cadiax-service",
+        duration_ms=total_duration_ms,
+    )
+    lines.append(f"- total_loops: {loops}")
+    lines.append(f"- total_processed: {total_processed}")
+    return {
+        "loops": loops,
+        "processed": total_processed,
+        "trace_id": service_trace_id,
+        "output": "\n".join(lines),
+        "telegram_status": telegram_state["status"],
+    }
 
 
 def run_worker_service(
@@ -430,6 +567,15 @@ def run_named_service_target(
 ) -> dict[str, Any] | None:
     """Run one named service target in the foreground."""
     spec = _get_service_spec(target)
+    if target == "cadiax":
+        return run_cadiax_service(
+            skills_dir=skills_dir,
+            interval_seconds=interval_seconds if interval_seconds is not None else spec.default_interval_seconds,
+            steps=steps if steps is not None else spec.default_steps,
+            enqueue_first=enqueue_first,
+            until_idle=until_idle,
+            max_loops=max_loops,
+        )
     if target == "worker":
         return run_worker_service(
             skills_dir=skills_dir,
@@ -487,6 +633,12 @@ def _expand_runtime(runtime: Literal["auto", "windows", "posix", "all"]) -> tupl
 
 def _service_specs() -> dict[str, ServiceTargetSpec]:
     return {
+        "cadiax": ServiceTargetSpec(
+            name="cadiax",
+            description="Main Cadiax runtime service with optional Telegram polling",
+            default_interval_seconds=60.0,
+            default_steps=5,
+        ),
         "worker": ServiceTargetSpec(
             name="worker",
             description="Background runtime job processor",
@@ -559,9 +711,9 @@ def _build_service_run_args(spec: ServiceTargetSpec, skills_dir: Path) -> list[s
         "run",
         spec.name,
     ]
-    if spec.name in {"worker", "scheduler", "conversation-api"}:
+    if spec.name in {"cadiax", "worker", "scheduler", "conversation-api"}:
         args.extend(["--skills-dir", str(skills_dir)])
-    if spec.name in {"worker", "scheduler"}:
+    if spec.name in {"cadiax", "worker", "scheduler"}:
         args.extend(
             [
                 "--interval",
@@ -660,3 +812,29 @@ def _format_number(value: float) -> str:
     if int(value) == value:
         return str(int(value))
     return str(value)
+
+
+def _start_telegram_transport_if_enabled(service: Any) -> dict[str, str]:
+    from cadiax.interfaces.telegram import TelegramPollingTransport
+
+    env_file = get_config_env_file()
+    env_values = dotenv_values(env_file) if env_file.exists() else {}
+    raw = str(env_values.get("TELEGRAM_ENABLED", "") or "").strip().lower()
+    enabled = raw in {"1", "true", "yes", "on"} if raw else bool(
+        env_values.get("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    )
+    if not enabled:
+        return {"status": "disabled", "message": "Telegram disabled by configuration"}
+
+    transport = TelegramPollingTransport()
+    if not transport.is_configured():
+        return {"status": "skipped", "message": "Telegram enabled but no token configured"}
+
+    thread = threading.Thread(
+        target=transport.run,
+        args=(service,),
+        daemon=True,
+        name="cadiax-telegram-polling",
+    )
+    thread.start()
+    return {"status": "enabled", "message": "Telegram polling started in integrated service"}

@@ -264,6 +264,7 @@ def get_config_status_report() -> str:
             "",
             "[Telegram]",
             f"- status: {data['telegram']['status']}",
+            f"- enabled: {'yes' if data['telegram']['enabled'] else 'no'}",
             f"- token_configured: {'yes' if data['telegram']['token_configured'] else 'no'}",
             f"- owner_ids: {data['telegram']['owner_ids'] or '-'}",
             f"- auth_file: {data['telegram']['auth_file']}",
@@ -762,7 +763,9 @@ def _get_telegram_status(
     token_configured = bool(
         agent_context.get_secret_value("telegram_bot_token") or env_values.get("TELEGRAM_BOT_TOKEN")
     )
+    enabled = _parse_bool(env_values.get("TELEGRAM_ENABLED", "true" if token_configured else "false"))
     return {
+        "enabled": enabled,
         "token_configured": token_configured,
         "auth_file": auth_state["auth_file"],
         "owner_ids": ", ".join(owner_ids),
@@ -804,7 +807,7 @@ def _collect_issues(
         issues.append(f"OTONOMASSIST_WORKSPACE_ACCESS tidak valid: {workspace_access}")
     if not Path(workspace_root).exists():
         issues.append("Workspace root belum ada di filesystem.")
-    if bool(telegram["token_configured"]) and not str(telegram["owner_ids"]).strip():
+    if bool(telegram["enabled"]) and bool(telegram["token_configured"]) and not str(telegram["owner_ids"]).strip():
         issues.append("Telegram token ada tetapi TELEGRAM_OWNER_IDS masih kosong.")
     for issue in provider_info.get("issues", []):
         issues.append(str(issue))
@@ -830,6 +833,8 @@ def _get_workspace_status(workspace_root: str, workspace_access: str) -> str:
 
 
 def _get_telegram_section_status(telegram: dict[str, object]) -> str:
+    if not bool(telegram["enabled"]):
+        return "healthy"
     if not bool(telegram["token_configured"]):
         return "healthy"
     if not str(telegram["owner_ids"]).strip():
@@ -892,6 +897,10 @@ def _normalize_status(status: object) -> str:
 
 def _parse_csv(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _parse_bool(raw: str) -> bool:
+    return str(raw or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _mask_value(value: str) -> str:

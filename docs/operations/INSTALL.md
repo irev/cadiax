@@ -106,6 +106,17 @@ Pada `project mode` untuk contributor, default path tetap repo-relative:
 - state: `.cadiax/`
 - workspace: `workspace/`
 
+## Service Runtime
+
+Untuk deployment Windows/Linux, target service yang direkomendasikan sekarang adalah:
+
+```bash
+cadiax service run cadiax
+```
+
+Target ini menjalankan runtime utama Cadiax dan akan mengaktifkan Telegram polling dalam service yang sama bila `TELEGRAM_ENABLED=true`.
+Jika `TELEGRAM_ENABLED=false`, service tetap berjalan tanpa Telegram.
+
 ## Setelah Install
 
 Pada install berbasis virtual environment, command `cadiax` global di shell Anda bisa saja masih menunjuk ke executable lama atau shim Python global.
