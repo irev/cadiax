@@ -33,6 +33,8 @@ SETUP_STEPS: list[tuple[str, str]] = [
     ("summary", "Summary"),
 ]
 
+PROVIDER_OPTIONS = ["openai", "claude", "ollama", "lmstudio"]
+
 
 class CadiaxTuiApp(App[None]):
     """Minimal TUI shell for local operator control."""
@@ -76,6 +78,9 @@ class CadiaxTuiApp(App[None]):
         ("p", "prev_setup_step", "Previous setup step"),
         ("d", "toggle_dashboard", "Toggle Dashboard"),
         ("t", "toggle_telegram", "Toggle Telegram"),
+        ("e", "cycle_setup_field", "Edit Setup Field"),
+        ("a", "alternate_setup_field", "Alternate Setup Field"),
+        ("s", "save_setup_step", "Save Setup Step"),
         ("w", "write_service_wrappers", "Write Service Wrappers"),
         ("r", "refresh_data", "Refresh"),
     ]
@@ -86,6 +91,7 @@ class CadiaxTuiApp(App[None]):
         self.status_data: dict[str, Any] = {}
         self.current_screen_name = self.initial_screen
         self.current_setup_step = 0
+        self.setup_draft: dict[str, Any] = {}
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -192,8 +198,66 @@ class CadiaxTuiApp(App[None]):
         self._reload()
         self._render_screen(self.current_screen_name)
 
+    def action_cycle_setup_field(self) -> None:
+        if self.current_screen_name != "setup":
+            return
+        step_key = SETUP_STEPS[self.current_setup_step][0]
+        if step_key == "provider":
+            current = str(self.setup_draft.get("provider") or "openai")
+            index = PROVIDER_OPTIONS.index(current) if current in PROVIDER_OPTIONS else 0
+            self.setup_draft["provider"] = PROVIDER_OPTIONS[(index + 1) % len(PROVIDER_OPTIONS)]
+            self.notify(f"Provider draft: {self.setup_draft['provider']}", severity="information")
+        elif step_key == "dashboard":
+            current_host = str(self.setup_draft.get("dashboard_host") or "127.0.0.1")
+            self.setup_draft["dashboard_host"] = "0.0.0.0" if current_host == "127.0.0.1" else "127.0.0.1"
+            self.notify(
+                f"Dashboard access draft: {'public' if self.setup_draft['dashboard_host'] == '0.0.0.0' else 'local'}",
+                severity="information",
+            )
+        self._render_screen("setup")
+
+    def action_alternate_setup_field(self) -> None:
+        if self.current_screen_name != "setup":
+            return
+        step_key = SETUP_STEPS[self.current_setup_step][0]
+        if step_key == "workspace":
+            current = str(self.setup_draft.get("workspace_access") or "ro")
+            self.setup_draft["workspace_access"] = "rw" if current == "ro" else "ro"
+            self.notify(f"Workspace access draft: {self.setup_draft['workspace_access']}", severity="information")
+            self._render_screen("setup")
+
+    def action_save_setup_step(self) -> None:
+        if self.current_screen_name != "setup":
+            return
+        step_key = SETUP_STEPS[self.current_setup_step][0]
+        if step_key == "provider":
+            persist_env_updates({"AI_PROVIDER": str(self.setup_draft.get("provider") or "openai")})
+            self.notify("Provider saved", severity="information")
+        elif step_key == "workspace":
+            persist_env_updates({"OTONOMASSIST_WORKSPACE_ACCESS": str(self.setup_draft.get("workspace_access") or "ro")})
+            self.notify("Workspace access saved", severity="information")
+        elif step_key == "dashboard":
+            host = str(self.setup_draft.get("dashboard_host") or "127.0.0.1")
+            dashboard = self.status_data.get("dashboard", {})
+            if bool(dashboard.get("enabled")):
+                enable_dashboard(
+                    host=host,
+                    port=int(dashboard.get("port") or 8795),
+                    admin_api_url=str(dashboard.get("admin_api_url") or "http://127.0.0.1:8787"),
+                    install=False,
+                    build=False,
+                )
+            persist_env_updates({"DASHBOARD_HOST": host})
+            self.notify("Dashboard access saved", severity="information")
+        else:
+            self.notify("No writable field on this step yet", severity="warning")
+            return
+        self._reload()
+        self._render_screen("setup")
+
     def _reload(self) -> None:
         self.status_data = get_config_status_data()
+        self._sync_setup_draft()
 
     def _select_screen(self, screen_name: str) -> None:
         nav = self.query_one("#nav", OptionList)
@@ -216,9 +280,19 @@ class CadiaxTuiApp(App[None]):
             content.update(build_services_view(self.status_data))
             return
         if screen_name == "setup":
-            content.update(build_setup_view(self.status_data, step_index=self.current_setup_step))
+            content.update(build_setup_view(self.status_data, step_index=self.current_setup_step, draft=self.setup_draft))
             return
         content.update(build_doctor_view(self.status_data))
+
+    def _sync_setup_draft(self) -> None:
+        ai = self.status_data.get("ai", {})
+        workspace = self.status_data.get("workspace", {})
+        dashboard = self.status_data.get("dashboard", {})
+        self.setup_draft = {
+            "provider": str(ai.get("provider") or "openai"),
+            "workspace_access": str(workspace.get("access") or "ro"),
+            "dashboard_host": str(dashboard.get("host") or "127.0.0.1"),
+        }
 
     @staticmethod
     def _screen_index(screen_name: str) -> int:
@@ -258,6 +332,7 @@ def build_home_view(data: dict[str, Any]) -> str:
         "- Tekan 5/6 untuk layanan dan setup coverage",
         "- Saat di Setup, tekan n/p untuk pindah step",
         "- Tekan d/t untuk toggle dashboard atau Telegram pada layar terkait",
+        "- Saat di Setup, tekan e/a/s untuk edit draft dan simpan step",
         "- Tekan r untuk refresh snapshot",
         "- Tekan q untuk keluar",
     ]
@@ -401,7 +476,7 @@ def build_services_view(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_setup_view(data: dict[str, Any], *, step_index: int = 0) -> str:
+def build_setup_view(data: dict[str, Any], *, step_index: int = 0, draft: dict[str, Any] | None = None) -> str:
     ai = data.get("ai", {})
     workspace = data.get("workspace", {})
     telegram = data.get("telegram", {})
@@ -409,6 +484,7 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0) -> str:
     personality = data.get("personality", {})
     preference_profile = personality.get("preference_profile", {}) if isinstance(personality, dict) else {}
     preferred_channels = preference_profile.get("preferred_channels", []) if isinstance(preference_profile, dict) else []
+    draft = draft or {}
     step_index = max(0, min(step_index, len(SETUP_STEPS) - 1))
     step_key, step_label = SETUP_STEPS[step_index]
     lines = [
@@ -423,14 +499,17 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0) -> str:
         lines.append(f"{marker} {index}. {label}")
     lines.append("")
     if step_key == "provider":
+        draft_provider = str(draft.get('provider') or ai.get('provider', '-') or "-")
         lines.extend(
             [
                 "[Provider]",
                 f"- provider               : {ai.get('provider', '-')}",
+                f"- provider_draft         : {draft_provider}",
                 f"- status                 : {ai.get('status', '-')}",
                 "- setup global           : yes",
                 "- mutable via wizard     : provider, model, base URL, secret preference",
                 "- note                   : provider secret tetap dimask di doctor/TUI",
+                "- quick action           : tekan e untuk cycle provider, s untuk save",
             ]
         )
     elif step_key == "workspace":
@@ -439,9 +518,11 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0) -> str:
                 "[Workspace]",
                 f"- workspace_root         : {workspace.get('root', '-')}",
                 f"- workspace_access       : {workspace.get('access', '-')}",
+                f"- workspace_access_draft : {draft.get('workspace_access') or workspace.get('access', '-')}",
                 f"- root_exists            : {'yes' if workspace.get('root_exists') else 'no'}",
                 "- setup global           : yes",
                 "- mutable via wizard     : root, access mode, runtime docs bootstrap",
+                "- quick action           : tekan a untuk toggle access, s untuk save",
             ]
         )
     elif step_key == "telegram":
@@ -463,11 +544,12 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0) -> str:
                 "[Dashboard]",
                 f"- enabled                : {'yes' if dashboard.get('enabled') else 'no'}",
                 f"- host                   : {dashboard.get('host', '-')}",
+                f"- host_draft             : {draft.get('dashboard_host') or dashboard.get('host', '-')}",
                 f"- port                   : {dashboard.get('port', '-')}",
                 f"- admin_api_url          : {dashboard.get('admin_api_url', '-')}",
                 "- setup global           : yes",
                 "- mutable via wizard     : enable/disable, access mode, port, admin API URL",
-                "- quick action           : tekan d untuk toggle enabled",
+                "- quick action           : tekan d untuk toggle enabled, e untuk cycle access, s untuk save",
             ]
         )
     elif step_key == "interfaces":
