@@ -220,6 +220,25 @@ Tujuan fase ini adalah menjadikan sistem layak sebagai platform agent, bukan han
 - menambah banyak surface area operasional
 - biaya integrasi meningkat jika remote model routing dibuka luas
 
+## Cross-Cutting Track: TUI Backend Control Surface
+
+Setelah baseline `v1.1.6`, Cadiax membutuhkan `local operator surface` yang lebih kaya daripada CLI dan lebih tepat untuk konfigurasi daripada dashboard web. Track ini berjalan lintas fase dan fokus pada:
+
+- first-run setup yang lebih jelas
+- reconfigure yang aman
+- service/path/runtime diagnostics
+- provider + secret status
+- dashboard dan Telegram settings
+
+Dokumen desain detailnya ada di `docs/architecture/TUI_BACKEND_CONTROL_SURFACE.md`.
+
+Target implementasi awal:
+
+1. `cadiax tui` shell
+2. layar `Home`, `Paths`, `Doctor`
+3. wizard setup bertahap
+4. service control dasar
+
 ## Cross-Cutting Workstreams
 
 Workstream ini berjalan lintas fase.

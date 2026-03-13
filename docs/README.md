@@ -5,6 +5,7 @@
 - [Architecture](/d:/PROJECT/otonomAssist/docs/architecture/ARCHITECTURE.md)
 - [Roadmap](/d:/PROJECT/otonomAssist/docs/architecture/ROADMAP.md)
 - [Target Architecture V2](/d:/PROJECT/otonomAssist/docs/architecture/TARGET_ARCHITECTURE_V2.md)
+- [TUI Backend Control Surface](/d:/PROJECT/otonomAssist/docs/architecture/TUI_BACKEND_CONTROL_SURFACE.md)
 
 ## Specifications
 
