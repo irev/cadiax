@@ -205,6 +205,16 @@ Jika `TELEGRAM_ENABLED=false`, service tetap berjalan tanpa Telegram.
 
 Pada install berbasis virtual environment, command `cadiax` global di shell Anda bisa saja masih menunjuk ke executable lama atau shim Python global.
 
+Gunakan command berikut untuk memeriksa layout runtime aktif:
+
+```bash
+cadiax paths
+```
+
+Interpretasinya:
+- `project mode`: Anda sedang menjalankan Cadiax dari checkout repo/source
+- `user install mode`: Anda sedang menjalankan Cadiax dari layout native OS hasil installer
+
 Jalur yang benar setelah install:
 
 ### Windows

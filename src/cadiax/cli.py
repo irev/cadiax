@@ -33,6 +33,7 @@ from cadiax.core.workspace_bootstrap import (
 )
 from cadiax.core.job_runtime import enqueue_ready_planner_task, process_job_queue, render_job_queue
 from cadiax.core.path_layout import load_runtime_env
+from cadiax.core import path_layout
 from cadiax.core.secure_storage import refresh_secure_storage_paths
 from cadiax.core.scheduler_runtime import run_scheduler
 from cadiax.core.setup_wizard import run_setup_wizard, should_recommend_setup
@@ -183,6 +184,25 @@ def status_command(as_json: bool) -> None:
         click.echo(json.dumps(get_config_status_data(), ensure_ascii=False, indent=2))
         return
     click.echo(get_config_status_report())
+
+
+@main.command("paths")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable runtime path snapshot")
+def paths_command(as_json: bool) -> None:
+    """Show the effective Cadiax runtime layout and mode."""
+    snapshot = path_layout.get_runtime_layout_snapshot()
+    if as_json:
+        click.echo(json.dumps(snapshot, ensure_ascii=False, indent=2))
+        return
+    click.echo("Cadiax Runtime Paths\n")
+    click.echo(f"- path_mode: {snapshot['path_mode']}")
+    click.echo(f"- config_file: {snapshot['config_file']}")
+    click.echo(f"- state_dir: {snapshot['state_dir']}")
+    click.echo(f"- workspace_root: {snapshot['workspace_root']}")
+    click.echo(f"- app_root: {snapshot['app_root']}")
+    click.echo(f"- dashboard_root: {snapshot['dashboard_root']}")
+    click.echo(f"- python_executable: {snapshot['python_executable']}")
+    click.echo(f"- venv_root: {snapshot['venv_root'] or '-'}")
 
 
 @main.command("history")
@@ -642,18 +662,18 @@ def privacy_retention_command(days: int) -> None:
 @click.option(
     "--output",
     type=click.Path(dir_okay=False, path_type=Path),
-    default=Path(".cadiax") / "privacy_export.json",
-    show_default=True,
+    default=None,
     help="Destination JSON file",
 )
 @click.option("--scope", "scope_name", default="", help="Optional scope filter")
 @click.option("--role", "roles", multiple=True, help="Optional role filter, repeatable")
-def privacy_export_command(output: Path, scope_name: str, roles: tuple[str, ...]) -> None:
+def privacy_export_command(output: Path | None, scope_name: str, roles: tuple[str, ...]) -> None:
     """Export privacy-relevant local user data."""
     from cadiax.services.privacy.privacy_control_service import PrivacyControlService
 
+    destination = output or (path_layout.get_state_dir() / "privacy_export.json")
     written = PrivacyControlService().export_user_data_to_path(
-        output,
+        destination,
         agent_scope=scope_name or None,
         roles=roles,
     )

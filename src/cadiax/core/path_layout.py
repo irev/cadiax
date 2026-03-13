@@ -124,6 +124,24 @@ def get_dashboard_root() -> Path:
     return (get_app_install_root() / "monitoring-dashboard").resolve()
 
 
+def get_runtime_layout_snapshot() -> dict[str, str]:
+    """Return a machine-readable snapshot of the effective runtime layout."""
+    executable = Path(sys.executable).resolve()
+    return {
+        "path_mode": get_path_mode(),
+        "project_root": str(get_project_root().resolve()),
+        "config_file": str(get_config_env_file()),
+        "config_dir": str(get_config_dir()),
+        "state_dir": str(get_state_dir()),
+        "workspace_root": str(get_workspace_root()),
+        "app_root": str(get_app_install_root()),
+        "dashboard_root": str(get_dashboard_root()),
+        "python_executable": str(executable),
+        "venv_root": str(executable.parents[1].resolve()) if executable.parent.name.lower() in {"scripts", "bin"} else "",
+        "running_from_project_tree": "yes" if _is_project_tree(get_project_root()) else "no",
+    }
+
+
 def load_runtime_env(*, override: bool = True) -> Path:
     """Load the effective config env file into the process environment."""
     env_file = get_config_env_file()

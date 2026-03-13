@@ -47,9 +47,16 @@ Setelah install:
 cadiax
 cadiax setup
 cadiax status
+cadiax paths
 ```
 
-Jika command `cadiax` di shell masih menunjuk ke instalasi global lama, buka shell baru setelah install. Installer sekarang mendaftarkan shim user-level untuk `cadiax`. Jika tetap perlu, Anda masih bisa memakai executable dari virtual environment atau aktifkan dulu virtual environment proyek:
+Gunakan `cadiax paths` untuk memeriksa mode runtime aktif:
+- `project mode`: saat Anda menjalankan Cadiax dari checkout repo/source
+- `user install mode`: saat Anda menjalankan Cadiax dari layout native OS hasil installer
+
+Jika command `cadiax` di shell masih menunjuk ke instalasi global lama, buka shell baru setelah install. Installer sekarang mendaftarkan shim user-level untuk `cadiax`.
+
+Jika Anda sedang bekerja dari source repo, Anda juga masih bisa memakai executable dari virtual environment proyek:
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
@@ -88,7 +95,7 @@ Installer Cadiax akan:
   - `IDENTITY.md`
   - `TOOLS.md`
   - `HEARTBEAT.md`
-- internal durable state di `.cadiax/` pada `project mode`, atau native state dir pada user install
+- internal durable state di `.cadiax/` pada `project mode`, atau native state dir pada `user install mode`
 - installer Windows/Linux dengan bootstrap workspace aktif
 - dashboard monitoring TypeScript opsional
 - multi-channel runtime dan service wrappers
@@ -105,6 +112,7 @@ Setelah install selesai, executable Cadiax tidak lagi bergantung pada folder git
 - Release notes `v1.1.3`: `docs/release/RELEASE_NOTES_v1.1.3.md`
 - Release notes `v1.1.4`: `docs/release/RELEASE_NOTES_v1.1.4.md`
 - Release notes `v1.1.5`: `docs/release/RELEASE_NOTES_v1.1.5.md`
+- Release notes `v1.1.6`: `docs/release/RELEASE_NOTES_v1.1.6.md`
 - Deployment checklist: `docs/release/DEPLOYMENT_CHECKLIST.md`
 - Security policy: `SECURITY.md`
 - Code of conduct: `CODE_OF_CONDUCT.md`
@@ -134,7 +142,7 @@ Dokumen pendukung:
 - `docs/architecture/ARCHITECTURE.md`: snapshot arsitektur implementasi saat ini
 - `docs/README.md`: indeks dokumentasi repo
 
-Target resmi repo sekarang bergerak pada baseline rilis `v1.1.5`: fondasi inti stabil dengan namespace `Cadiax`, installer native per-OS, preflight dependency checks lintas OS, bootstrap workspace aktif, dashboard monitoring opsional di app root native, dan service wrapper yang lebih lengkap.
+Target resmi repo sekarang bergerak pada baseline rilis `v1.1.6`: fondasi inti stabil dengan namespace `Cadiax`, installer native per-OS, lifecycle `install/reinstall/uninstall`, preflight dependency checks lintas OS, bootstrap workspace aktif, dashboard monitoring opsional di app root native, dan service wrapper yang lebih lengkap.
 
 ## Fondasi yang Sudah Jadi
 

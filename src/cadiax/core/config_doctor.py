@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
+import sys
 
 from dotenv import dotenv_values
 
@@ -64,6 +66,7 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
     routing = _build_routing_diagnostics(metrics)
     scheduler = get_scheduler_summary()
     state_storage = agent_context.get_state_storage_info()
+    layout = path_layout.get_runtime_layout_snapshot()
     scope_state = agent_context.get_scope_state_summary()
     scope_filter = _build_scope_filter_snapshot(agent_scope=agent_scope, roles=roles)
     personality = PersonalityService()
@@ -155,6 +158,12 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
             "state_db_file": state_storage["path"],
             "path_mode": path_layout.get_path_mode(),
             "workspace_root_default": str(path_layout.get_workspace_root()),
+            "app_root": layout["app_root"],
+            "dashboard_root": layout["dashboard_root"],
+            "config_dir": layout["config_dir"],
+            "python_executable": layout["python_executable"],
+            "invoked_as": str(Path(sys.argv[0]).resolve()),
+            "command_on_path": shutil.which("cadiax") or "",
             "preference_count": len(personality.list_preferences()),
             "habit_count": len(habits.get("habits", [])),
             "identity_count": identity_snapshot["total_identity_count"],
@@ -392,6 +401,18 @@ def get_config_status_report() -> str:
             f"- template_count: {data['bootstrap']['template_count']}",
             f"- workspace_seeded_count: {data['bootstrap']['workspace_seeded_count']}",
             f"- manifest_file: {data['bootstrap']['manifest_file']}",
+            "",
+            "[Paths]",
+            f"- path_mode: {data['storage']['path_mode']}",
+            f"- config_dir: {data['storage']['config_dir']}",
+            f"- env_file: {data['storage']['env_file']}",
+            f"- state_dir: {data['storage']['state_dir']}",
+            f"- app_root: {data['storage']['app_root']}",
+            f"- dashboard_root: {data['storage']['dashboard_root']}",
+            f"- workspace_root: {data['workspace']['root']}",
+            f"- python_executable: {data['storage']['python_executable']}",
+            f"- invoked_as: {data['storage']['invoked_as']}",
+            f"- command_on_path: {data['storage']['command_on_path'] or '-'}",
         ]
     )
 

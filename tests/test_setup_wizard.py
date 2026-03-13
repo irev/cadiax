@@ -323,6 +323,35 @@ def test_cli_setup_wizard_persists_dashboard_settings(tmp_path, monkeypatch):
     assert dashboard_state["admin_api_url"] == "http://127.0.0.1:8787"
 
 
+def test_cli_paths_reports_effective_runtime_layout(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["paths", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["path_mode"] == "project"
+    assert payload["state_dir"] == str(agent_context.DATA_DIR)
+    assert payload["workspace_root"] == str(path_layout.get_workspace_root())
+    assert payload["app_root"]
+    assert payload["python_executable"]
+
+
+def test_cli_privacy_export_defaults_to_active_state_dir(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.append_memory_entry("catatan export default", source="manual")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["privacy", "export"])
+
+    assert result.exit_code == 0
+    export_path = agent_context.DATA_DIR / "privacy_export.json"
+    assert export_path.exists()
+    payload = json.loads(export_path.read_text(encoding="utf-8"))
+    assert payload["memory_entries"][0]["text"] == "catatan export default"
+
+
 def test_cli_conversation_api_command_starts_separate_service(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 
