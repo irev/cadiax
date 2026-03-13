@@ -4,6 +4,7 @@ set -euo pipefail
 INSTALL_NODE=0
 SKIP_SETUP=0
 PYTHON_BIN="${PYTHON_BIN:-python3}"
+VENV_PATH="${VENV_PATH:-.venv}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -17,6 +18,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --python)
       PYTHON_BIN="$2"
+      shift 2
+      ;;
+    --venv-path)
+      VENV_PATH="$2"
       shift 2
       ;;
     *)
@@ -72,20 +77,26 @@ if [[ "$INSTALL_NODE" -eq 1 ]] && ! need_cmd node; then
   fi
 fi
 
-step "Menyiapkan virtual environment .venv"
-"$PYTHON_BIN" -m venv .venv
+step "Menyiapkan virtual environment $VENV_PATH"
+"$PYTHON_BIN" -m venv "$VENV_PATH"
 
-VENV_PY=".venv/bin/python"
+VENV_PY="$VENV_PATH/bin/python"
 if [[ ! -x "$VENV_PY" ]]; then
   echo "Virtual environment gagal dibuat." >&2
   exit 1
 fi
+
+step "Menyiapkan pip"
+"$VENV_PY" -m ensurepip --upgrade
 
 step "Mengupgrade pip"
 "$VENV_PY" -m pip install --upgrade pip
 
 step "Menginstall Cadiax"
 "$VENV_PY" -m pip install .
+
+step "Menyiapkan dokumen workspace aktif"
+"$VENV_PY" -m cadiax.cli bootstrap foundation
 
 if [[ "$INSTALL_NODE" -eq 1 ]]; then
   step "Menyiapkan dashboard dependency"
@@ -99,5 +110,5 @@ fi
 
 echo
 echo "Cadiax installed"
-echo "CLI: .venv/bin/cadiax"
-echo "Telegram CLI: .venv/bin/cadiax-telegram"
+echo "CLI: $VENV_PATH/bin/cadiax"
+echo "Telegram CLI: $VENV_PATH/bin/cadiax-telegram"

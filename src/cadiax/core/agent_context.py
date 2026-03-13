@@ -213,7 +213,7 @@ def ensure_agent_storage() -> None:
     if workspace_was_missing:
         from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
 
-        ensure_workspace_skeleton(only_if_workspace_empty=True)
+        ensure_workspace_skeleton(only_if_workspace_empty=True, runtime_docs_only=True)
 
 
 def get_state_db_path() -> Path:

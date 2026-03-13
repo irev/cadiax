@@ -332,9 +332,18 @@ def bootstrap_status_command(as_json: bool) -> None:
 
 @bootstrap_group.command("foundation")
 @click.option("--force", is_flag=True, help="Overwrite existing foundation skeleton files in workspace")
-def bootstrap_foundation_command(force: bool) -> None:
+@click.option(
+    "--include-optional",
+    is_flag=True,
+    help="Also seed optional bootstrap/dev templates such as BOOTSTRAP.md and *.dev.md",
+)
+def bootstrap_foundation_command(force: bool, include_optional: bool) -> None:
     """Seed foundation templates into the workspace root."""
-    result = ensure_workspace_skeleton(force=force, only_if_workspace_empty=not force)
+    result = ensure_workspace_skeleton(
+        force=force,
+        only_if_workspace_empty=not force,
+        runtime_docs_only=not include_optional,
+    )
     click.echo(
         f"Foundation bootstrap written={result['written_count']} existing={result['existing_count']} "
         f"skipped={result['skipped'] or '-'}"

@@ -28,6 +28,14 @@ FOUNDATION_TEMPLATE_FILES = (
     "USER.dev.md",
     "USER.md",
 )
+ACTIVE_RUNTIME_TEMPLATE_FILES = (
+    "AGENTS.md",
+    "HEARTBEAT.md",
+    "IDENTITY.md",
+    "SOUL.md",
+    "TOOLS.md",
+    "USER.md",
+)
 BOOTSTRAP_MANIFEST_FILE = "bootstrap_manifest.json"
 
 
@@ -44,20 +52,29 @@ def ensure_workspace_skeleton(
     *,
     force: bool = False,
     only_if_workspace_empty: bool = False,
+    runtime_docs_only: bool = True,
+    workspace_root: Path | None = None,
 ) -> dict[str, Any]:
     """Seed bundled foundation templates into the workspace root."""
-    workspace_root = get_workspace_root()
+    workspace_root = (workspace_root or get_workspace_root()).resolve()
     workspace_root.mkdir(parents=True, exist_ok=True)
     agent_context.DATA_DIR.mkdir(parents=True, exist_ok=True)
     if only_if_workspace_empty and not _workspace_is_empty_enough(workspace_root):
         result = _build_result([], [], skipped="workspace_not_empty")
-        _record_bootstrap_event(result, workspace_root=workspace_root, force=force, only_if_workspace_empty=only_if_workspace_empty)
+        _record_bootstrap_event(
+            result,
+            workspace_root=workspace_root,
+            force=force,
+            only_if_workspace_empty=only_if_workspace_empty,
+            runtime_docs_only=runtime_docs_only,
+        )
         return result
 
     written: list[str] = []
     existing: list[str] = []
     template_dir = _foundation_template_dir()
-    for name in FOUNDATION_TEMPLATE_FILES:
+    template_names = ACTIVE_RUNTIME_TEMPLATE_FILES if runtime_docs_only else FOUNDATION_TEMPLATE_FILES
+    for name in template_names:
         source = template_dir / name
         target = workspace_root / name
         if target.exists() and not force:
@@ -68,7 +85,8 @@ def ensure_workspace_skeleton(
 
     manifest = {
         "source": "official-foundation-templates",
-        "template_count": len(FOUNDATION_TEMPLATE_FILES),
+        "template_count": len(template_names),
+        "runtime_docs_only": bool(runtime_docs_only),
         "written": written,
         "existing": existing,
         "seeded_at": datetime.now(timezone.utc).isoformat(),
@@ -76,7 +94,13 @@ def ensure_workspace_skeleton(
     }
     _write_manifest(manifest)
     result = _build_result(written, existing, skipped="")
-    _record_bootstrap_event(result, workspace_root=workspace_root, force=force, only_if_workspace_empty=only_if_workspace_empty)
+    _record_bootstrap_event(
+        result,
+        workspace_root=workspace_root,
+        force=force,
+        only_if_workspace_empty=only_if_workspace_empty,
+        runtime_docs_only=runtime_docs_only,
+    )
     return result
 
 
@@ -96,6 +120,7 @@ def get_workspace_bootstrap_status() -> dict[str, Any]:
             manifest = {}
     return {
         "template_count": len(FOUNDATION_TEMPLATE_FILES),
+        "active_runtime_template_count": len(ACTIVE_RUNTIME_TEMPLATE_FILES),
         "bundled_template_dir": str(_foundation_template_dir()),
         "workspace_seeded_count": len(seeded_files),
         "workspace_seeded_files": seeded_files,
@@ -112,6 +137,7 @@ def render_workspace_bootstrap_status() -> str:
         "",
         f"- bundled_template_dir: {status['bundled_template_dir']}",
         f"- template_count: {status['template_count']}",
+        f"- active_runtime_template_count: {status['active_runtime_template_count']}",
         f"- workspace_seeded_count: {status['workspace_seeded_count']}",
         f"- manifest_file: {status['manifest_file']}",
     ]
@@ -148,6 +174,7 @@ def _record_bootstrap_event(
     workspace_root: Path,
     force: bool,
     only_if_workspace_empty: bool,
+    runtime_docs_only: bool,
 ) -> None:
     append_execution_event(
         "workspace_bootstrap_completed",
@@ -159,6 +186,7 @@ def _record_bootstrap_event(
             "workspace_root": str(workspace_root),
             "force": bool(force),
             "only_if_workspace_empty": bool(only_if_workspace_empty),
+            "runtime_docs_only": bool(runtime_docs_only),
             "written_count": int(result.get("written_count", 0) or 0),
             "existing_count": int(result.get("existing_count", 0) or 0),
             "skipped": str(result.get("skipped") or ""),

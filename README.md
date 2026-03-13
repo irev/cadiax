@@ -233,6 +233,12 @@ Jalur install resmi:
 ./install.ps1
 ```
 
+Atau:
+
+```bat
+install.bat
+```
+
 ### Linux
 
 ```bash
@@ -245,8 +251,17 @@ Installer ini:
 - memastikan dependency dasar tersedia
 - membuat `.venv`
 - menginstall paket `cadiax`
+- men-seed dokumen workspace aktif ke `workspace root`:
+  - `AGENTS.md`
+  - `SOUL.md`
+  - `USER.md`
+  - `IDENTITY.md`
+  - `TOOLS.md`
+  - `HEARTBEAT.md`
 - opsional menyiapkan dashboard dependency
 - menjalankan `cadiax setup`
+
+Cadiax memang memakai dokumen hasil seed itu setelah setup selesai. User boleh mengeditnya manual, dan runtime akan membaca hasil edit tersebut pada startup berikutnya.
 
 Catatan:
 `pip` memang menampilkan format standar seperti `Successfully installed cadiax-1.1.1`.
@@ -299,7 +314,7 @@ CLI utama sekarang mendukung subcommand resmi:
 - `cadiax external reject <name>`
 - `cadiax skills audit`
 
-`cadiax setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential.
+`cadiax setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential. Setup juga memastikan dokumen workspace aktif tetap tersedia pada `workspace root` yang dipilih user.
 
 `cadiax status` dan `cadiax doctor` menampilkan audit konfigurasi read-only: provider aktif, credential tersedia atau tidak, workspace guard, dan status Telegram. Report sekarang juga memberi level `healthy`, `warning`, atau `critical` agar hasil audit lebih cepat dibaca. Di dalam assistant, audit yang sama juga tersedia lewat command `doctor` atau `config status`.
 

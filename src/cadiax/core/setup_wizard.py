@@ -11,6 +11,7 @@ from dotenv import dotenv_values
 
 import cadiax.core.agent_context as agent_context
 from cadiax.core.secure_storage import encrypt_secret, get_secret_storage_info
+from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
 
 
 ENV_FILE = agent_context.PROJECT_ROOT / ".env"
@@ -97,13 +98,20 @@ def run_setup_wizard() -> str:
     _upsert_env_file(ENV_FILE, env_updates)
     _store_secrets(secret_updates)
     _apply_runtime_env(env_updates)
+    workspace_bootstrap = ensure_workspace_skeleton(
+        only_if_workspace_empty=False,
+        runtime_docs_only=True,
+        workspace_root=Path(workspace_root).expanduser().resolve(),
+    )
 
     return (
         "Setup selesai.\n"
         f"- file env: {ENV_FILE}\n"
         f"- provider: {provider}\n"
         f"- workspace_access: {workspace_access}\n"
-        f"- secret tersimpan: {len(secret_updates)}"
+        f"- secret tersimpan: {len(secret_updates)}\n"
+        f"- workspace_docs_written: {workspace_bootstrap['written_count']}\n"
+        f"- workspace_docs_existing: {workspace_bootstrap['existing_count']}"
     )
 
 
