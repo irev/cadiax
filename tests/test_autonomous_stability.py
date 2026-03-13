@@ -87,6 +87,8 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
         "OTONOMASSIST_EXTERNAL_SKILL_POLICY",
+        "CADIAX_SKILL_TIMEOUT_SECONDS",
+        "OTONOMASSIST_SKILL_TIMEOUT_SECONDS",
     ):
         monkeypatch.delenv(name, raising=False)
     env_file = tmp_path / ".env"
