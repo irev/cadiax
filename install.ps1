@@ -57,11 +57,25 @@ function Show-NextSteps {
 
     $VenvCadiax = Join-Path $PWD "$VenvPath\\Scripts\\cadiax.exe"
     $ResolvedCadiax = Get-Command "cadiax" -ErrorAction SilentlyContinue
+    $LayoutInfo = & $VenvPython -c "from cadiax.core.path_layout import get_config_env_file, get_state_dir, get_workspace_root; print(get_config_env_file()); print(get_state_dir()); print(get_workspace_root())"
+    $ConfigPath = ""
+    $StatePath = ""
+    $WorkspacePath = ""
+    if ($LayoutInfo.Count -ge 3) {
+        $ConfigPath = $LayoutInfo[0]
+        $StatePath = $LayoutInfo[1]
+        $WorkspacePath = $LayoutInfo[2]
+    }
 
     Write-Host ""
     Write-Host "Cadiax installed"
     Write-Host "CLI: $VenvPath\\Scripts\\cadiax.exe"
     Write-Host "Telegram CLI: $VenvPath\\Scripts\\cadiax-telegram.exe"
+    if ($ConfigPath) {
+        Write-Host "Config: $ConfigPath"
+        Write-Host "State: $StatePath"
+        Write-Host "Workspace: $WorkspacePath"
+    }
     Write-Host ""
     Write-Host "Gunakan salah satu cara berikut:"
     Write-Host "1. Langsung jalankan: $VenvPath\\Scripts\\cadiax.exe"

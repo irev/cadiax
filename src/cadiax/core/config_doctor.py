@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 import cadiax.core.agent_context as agent_context
+from cadiax.core import path_layout
 from cadiax.core.execution_control import get_skill_timeout_seconds
 from cadiax.core.event_bus import get_event_bus_snapshot
 from cadiax.core.external_assets import build_external_asset_audit_summary
@@ -31,16 +32,17 @@ from cadiax.services.runtime.context_budgeter import ContextBudgeter
 from cadiax.services.runtime.redaction_policy import RedactionPolicy
 
 
-ENV_FILE = agent_context.PROJECT_ROOT / ".env"
+ENV_FILE: Path | None = None
 
 
 def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, ...] = ()) -> dict[str, object]:
     """Build machine-readable configuration status data."""
     agent_context.ensure_agent_storage()
-    env_values = _load_env_values(ENV_FILE)
+    env_file = _get_env_file()
+    env_values = _load_env_values(env_file)
     provider_info = _build_provider_info(env_values)
     provider = provider_info["provider"]
-    workspace_root = env_values.get("OTONOMASSIST_WORKSPACE_ROOT") or str(agent_context.PROJECT_ROOT / "workspace")
+    workspace_root = env_values.get("OTONOMASSIST_WORKSPACE_ROOT") or str(path_layout.get_workspace_root())
     workspace_access = env_values.get("OTONOMASSIST_WORKSPACE_ACCESS") or "ro"
     telegram_auth = TelegramAuthService.from_config(
         env_values,
@@ -144,13 +146,15 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
         },
         "storage": {
             "status": storage_status,
-            "env_file": str(ENV_FILE if ENV_FILE.exists() else "(missing)"),
+            "env_file": str(env_file if env_file.exists() else "(missing)"),
             "state_dir": str(agent_context.DATA_DIR),
             "secrets_file": str(agent_context.SECRETS_FILE),
             "execution_history_file": str(agent_context.EXECUTION_HISTORY_FILE),
             "metrics_file": str(agent_context.METRICS_FILE),
             "state_backend": state_storage["backend"],
             "state_db_file": state_storage["path"],
+            "path_mode": path_layout.get_path_mode(),
+            "workspace_root_default": str(path_layout.get_workspace_root()),
             "preference_count": len(personality.list_preferences()),
             "habit_count": len(habits.get("habits", [])),
             "identity_count": identity_snapshot["total_identity_count"],
@@ -683,6 +687,10 @@ def _load_env_values(path: Path) -> dict[str, str]:
     return {key: value or "" for key, value in values.items()}
 
 
+def _get_env_file() -> Path:
+    return (ENV_FILE or path_layout.get_config_env_file()).expanduser().resolve()
+
+
 def _build_provider_info(env_values: dict[str, str]) -> dict[str, object]:
     provider = (env_values.get("AI_PROVIDER") or "openai").strip().lower()
     info: dict[str, object] = {
@@ -788,7 +796,7 @@ def _collect_issues(
 ) -> list[str]:
     issues: list[str] = []
     provider = str(provider_info["provider"])
-    if not ENV_FILE.exists():
+    if not _get_env_file().exists():
         issues.append(".env belum ada.")
     if provider in {"openai", "claude"} and not _provider_has_credential(provider, env_values):
         issues.append(f"Credential untuk provider '{provider}' belum dikonfigurasi.")
@@ -832,7 +840,7 @@ def _get_telegram_section_status(telegram: dict[str, object]) -> str:
 
 
 def _get_storage_status() -> str:
-    if not ENV_FILE.exists():
+    if not _get_env_file().exists():
         return "warning"
     if not agent_context.DATA_DIR.exists():
         return "critical"

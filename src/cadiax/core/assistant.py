@@ -8,14 +8,15 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from dotenv import load_dotenv
-
 from cadiax.ai.factory import AIProviderFactory
-from cadiax.core.agent_context import build_runtime_context_block, ensure_agent_storage
+from cadiax.core.agent_context import build_runtime_context_block, ensure_agent_storage, refresh_runtime_paths
 from cadiax.core.execution_control import classify_result_status, get_skill_timeout_seconds
 from cadiax.core.execution_history import append_execution_event, new_trace_id, render_execution_history
 from cadiax.core.execution_metrics import record_execution_metric, render_execution_metrics
+from cadiax.core.path_layout import load_runtime_env
 from cadiax.core.runtime_interaction import bind_interaction_context, get_current_interaction_context
+from cadiax.core.secure_storage import refresh_secure_storage_paths
+from cadiax.core.workspace_guard import refresh_workspace_settings
 from cadiax.core.external_assets import (
     ensure_external_asset_layout,
     get_external_skills_dir,
@@ -41,7 +42,10 @@ class Assistant:
     )
 
     def __init__(self, skills_dir: Path | None = None) -> None:
-        load_dotenv(override=True)
+        load_runtime_env()
+        refresh_workspace_settings()
+        refresh_runtime_paths()
+        refresh_secure_storage_paths()
         ensure_agent_storage()
         self.registry = SkillRegistry()
         self.loader = SkillLoader(skills_dir)

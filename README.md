@@ -39,9 +39,9 @@ chmod +x ./install.sh
 Setelah install:
 
 ```bash
+cadiax
 cadiax setup
 cadiax status
-cadiax chat
 ```
 
 Jika command `cadiax` di shell masih menunjuk ke instalasi global lama, buka shell baru setelah install. Installer sekarang mendaftarkan shim user-level untuk `cadiax`. Jika tetap perlu, Anda masih bisa memakai executable dari virtual environment atau aktifkan dulu virtual environment proyek:
@@ -55,6 +55,15 @@ Installer Cadiax akan:
 
 - membuat virtual environment
 - menginstall paket `cadiax`
+- menyiapkan layout native per-OS untuk user install:
+  - Windows:
+    - config: `%APPDATA%\Cadiax\config.env`
+    - state: `%LOCALAPPDATA%\Cadiax\state\`
+    - workspace: `%USERPROFILE%\Cadiax\workspace\`
+  - Linux:
+    - config: `~/.config/cadiax/config.env`
+    - state: `~/.local/state/cadiax/`
+    - workspace: `~/cadiax/workspace/`
 - men-seed dokumen workspace aktif ke workspace root
 - menjalankan `cadiax setup` kecuali diminta skip
 - mendaftarkan shim user-level agar command `cadiax` lebih mudah dipakai
@@ -69,7 +78,7 @@ Installer Cadiax akan:
   - `IDENTITY.md`
   - `TOOLS.md`
   - `HEARTBEAT.md`
-- internal durable state di `.cadiax/`
+- internal durable state di `.cadiax/` pada `project mode`, atau native state dir pada user install
 - installer Windows/Linux dengan bootstrap workspace aktif
 - dashboard monitoring TypeScript opsional
 - multi-channel runtime dan service wrappers
@@ -210,7 +219,14 @@ CADIAX_WORKSPACE_ROOT=
 CADIAX_WORKSPACE_ACCESS=ro
 ```
 
-Default workspace sekarang diarahkan ke folder `workspace/` di root project. Ini menjadi lokasi default untuk file kerja user, skill tambahan, dan aset eksternal yang dikelola di dalam boundary workspace.
+Default workspace sekarang mengikuti mode install:
+
+- `project mode`: `workspace/` di root project
+- `user install mode`:
+  - Windows: `%USERPROFILE%\Cadiax\workspace\`
+  - Linux: `~/cadiax/workspace/`
+
+Ini menjadi lokasi default untuk file kerja user, skill tambahan, dan aset eksternal yang dikelola di dalam boundary workspace.
 
 Saat ini skill inspeksi file seperti `workspace` dan `self-review file` memakai guard ini.
 

@@ -10,11 +10,13 @@ import click
 from dotenv import dotenv_values
 
 import cadiax.core.agent_context as agent_context
-from cadiax.core.secure_storage import encrypt_secret, get_secret_storage_info
+from cadiax.core import path_layout
+from cadiax.core.secure_storage import encrypt_secret, get_secret_storage_info, refresh_secure_storage_paths
+from cadiax.core.workspace_guard import refresh_workspace_settings
 from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
 
 
-ENV_FILE = agent_context.PROJECT_ROOT / ".env"
+ENV_FILE: Path | None = None
 REMOTE_PROVIDER_SECRETS = {
     "openai": ("OPENAI_API_KEY", "openai_api_key"),
     "claude": ("ANTHROPIC_API_KEY", "anthropic_api_key"),
@@ -23,7 +25,7 @@ REMOTE_PROVIDER_SECRETS = {
 
 def should_recommend_setup() -> bool:
     """Check whether the user should be nudged to run setup."""
-    env_values = _load_env_values(ENV_FILE)
+    env_values = _load_env_values(_get_env_file())
     provider = (env_values.get("AI_PROVIDER") or "openai").strip().lower()
     if "AI_PROVIDER" not in env_values:
         return True
@@ -40,7 +42,8 @@ def should_recommend_setup() -> bool:
 def run_setup_wizard() -> str:
     """Run interactive setup and persist the resulting configuration."""
     agent_context.ensure_agent_storage()
-    env_values = _load_env_values(ENV_FILE)
+    env_file = _get_env_file()
+    env_values = _load_env_values(env_file)
     env_updates: dict[str, str] = {}
     secret_updates: dict[str, str] = {}
 
@@ -58,7 +61,7 @@ def run_setup_wizard() -> str:
 
     workspace_root = click.prompt(
         "Workspace root",
-        default=env_values.get("OTONOMASSIST_WORKSPACE_ROOT") or str(agent_context.PROJECT_ROOT / "workspace"),
+        default=env_values.get("OTONOMASSIST_WORKSPACE_ROOT") or str(path_layout.get_workspace_root()),
         show_default=True,
     ).strip()
     env_updates["OTONOMASSIST_WORKSPACE_ROOT"] = workspace_root
@@ -95,9 +98,13 @@ def run_setup_wizard() -> str:
     if not click.confirm("Simpan konfigurasi ini?", default=True):
         return "Setup dibatalkan."
 
-    _upsert_env_file(ENV_FILE, env_updates)
+    _upsert_env_file(env_file, env_updates)
     _store_secrets(secret_updates)
     _apply_runtime_env(env_updates)
+    path_layout.load_runtime_env()
+    refresh_workspace_settings()
+    agent_context.refresh_runtime_paths()
+    refresh_secure_storage_paths()
     workspace_bootstrap = ensure_workspace_skeleton(
         only_if_workspace_empty=False,
         runtime_docs_only=True,
@@ -106,7 +113,10 @@ def run_setup_wizard() -> str:
 
     return (
         "Setup selesai.\n"
-        f"- file env: {ENV_FILE}\n"
+        f"- file env: {env_file}\n"
+        f"- path_mode: {path_layout.get_path_mode()}\n"
+        f"- state_dir: {agent_context.DATA_DIR}\n"
+        f"- workspace_root: {Path(workspace_root).expanduser().resolve()}\n"
         f"- provider: {provider}\n"
         f"- workspace_access: {workspace_access}\n"
         f"- secret tersimpan: {len(secret_updates)}\n"
@@ -303,6 +313,10 @@ def _build_summary(env_updates: dict[str, str], secret_updates: dict[str, str]) 
     return summary
 
 
+def _get_env_file() -> Path:
+    return (ENV_FILE or path_layout.get_config_env_file()).expanduser().resolve()
+
+
 def _load_env_values(path: Path) -> dict[str, str]:
     if not path.exists():
         return {}
@@ -311,6 +325,7 @@ def _load_env_values(path: Path) -> dict[str, str]:
 
 
 def _upsert_env_file(path: Path, updates: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     remaining = dict(updates)
     updated_lines: list[str] = []

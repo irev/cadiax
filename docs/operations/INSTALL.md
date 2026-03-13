@@ -78,6 +78,15 @@ atau:
 - opsional memastikan `Node.js` dan `npm` tersedia untuk dashboard
 - membuat virtual environment `.venv`
 - menjalankan `pip install .`
+- menyiapkan layout native per-OS untuk user install:
+  - Windows:
+    - config: `%APPDATA%\Cadiax\config.env`
+    - state: `%LOCALAPPDATA%\Cadiax\state\`
+    - workspace: `%USERPROFILE%\Cadiax\workspace\`
+  - Linux:
+    - config: `~/.config/cadiax/config.env`
+    - state: `~/.local/state/cadiax/`
+    - workspace: `~/cadiax/workspace/`
 - men-seed dokumen workspace aktif ke workspace root:
   - `AGENTS.md`
   - `SOUL.md`
@@ -90,6 +99,12 @@ atau:
 
 Dokumen bootstrap aktif selalu disalin ke `workspace root`, bukan ke `.cadiax/`.
 Setelah setup selesai, dokumen inilah yang benar-benar dibaca Cadiax untuk startup context, identity, soul, scope, dan heartbeat behavior.
+
+Pada `project mode` untuk contributor, default path tetap repo-relative:
+
+- config: `.env`
+- state: `.cadiax/`
+- workspace: `workspace/`
 
 ## Setelah Install
 

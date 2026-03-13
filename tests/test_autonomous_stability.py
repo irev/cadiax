@@ -59,6 +59,13 @@ def _load_module(path: Path, name: str):
 def _configure_temp_agent_state(tmp_path, monkeypatch):
     data_dir = tmp_path / ".otonomassist"
     for name in (
+        "CADIAX_WORKSPACE_ROOT",
+        "OTONOMASSIST_WORKSPACE_ROOT",
+        "CADIAX_WORKSPACE_ACCESS",
+        "OTONOMASSIST_WORKSPACE_ACCESS",
+        "CADIAX_PATH_MODE",
+        "OTONOMASSIST_PATH_MODE",
+        "CADIAX_EXTERNAL_SKILL_POLICY",
         "TELEGRAM_OWNER_IDS",
         "TELEGRAM_ALLOW_FROM",
         "TELEGRAM_GROUPS",
@@ -66,8 +73,28 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
         "TELEGRAM_DM_POLICY",
         "TELEGRAM_GROUP_POLICY",
         "TELEGRAM_REQUIRE_MENTION",
+        "AI_PROVIDER",
+        "OPENAI_BASE_URL",
+        "OPENAI_MODEL",
+        "OPENAI_FALLBACK_MODEL",
+        "OPENAI_WEB_MODEL",
+        "CLAUDE_BASE_URL",
+        "CLAUDE_MODEL",
+        "OLLAMA_BASE_URL",
+        "OLLAMA_MODEL",
+        "LMSTUDIO_BASE_URL",
+        "LMSTUDIO_MODEL",
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OTONOMASSIST_EXTERNAL_SKILL_POLICY",
     ):
         monkeypatch.delenv(name, raising=False)
+    env_file = tmp_path / ".env"
+    monkeypatch.setenv("CADIAX_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("OTONOMASSIST_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("CADIAX_STATE_DIR", str(data_dir))
+    monkeypatch.setenv("OTONOMASSIST_STATE_DIR", str(data_dir))
+    monkeypatch.setenv("OTONOMASSIST_WORKSPACE_ACCESS", "rw")
     monkeypatch.setattr(agent_context, "DATA_DIR", data_dir)
     monkeypatch.setattr(agent_context, "MEMORY_FILE", data_dir / "memory.jsonl")
     monkeypatch.setattr(agent_context, "PLANNER_FILE", data_dir / "planner.json")

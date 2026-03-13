@@ -49,14 +49,28 @@ show_next_steps() {
   local venv_path="$1"
   local shim_dir="${2:-}"
   local resolved=""
+  local config_path=""
+  local state_path=""
+  local workspace_path=""
+  local layout_info
   if command -v cadiax >/dev/null 2>&1; then
     resolved="$(command -v cadiax)"
+  fi
+  if layout_info="$("$venv_path/bin/python" -c 'from cadiax.core.path_layout import get_config_env_file, get_state_dir, get_workspace_root; print(get_config_env_file()); print(get_state_dir()); print(get_workspace_root())' 2>/dev/null)"; then
+    config_path="$(printf '%s\n' "$layout_info" | sed -n '1p')"
+    state_path="$(printf '%s\n' "$layout_info" | sed -n '2p')"
+    workspace_path="$(printf '%s\n' "$layout_info" | sed -n '3p')"
   fi
 
   echo
   echo "Cadiax installed"
   echo "CLI: $venv_path/bin/cadiax"
   echo "Telegram CLI: $venv_path/bin/cadiax-telegram"
+  if [[ -n "$config_path" ]]; then
+    echo "Config: $config_path"
+    echo "State: $state_path"
+    echo "Workspace: $workspace_path"
+  fi
   echo
   echo "Use one of these:"
   echo "1. Run directly: $venv_path/bin/cadiax"

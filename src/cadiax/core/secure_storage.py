@@ -11,11 +11,22 @@ import os
 from pathlib import Path
 import secrets
 
+from cadiax.core import path_layout
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-STATE_DIR = Path(os.getenv("OTONOMASSIST_STATE_DIR", str(PROJECT_ROOT / ".cadiax"))).expanduser().resolve()
+PROJECT_ROOT = path_layout.get_project_root()
+STATE_DIR = path_layout.get_state_dir()
 PORTABLE_KEY_FILE = STATE_DIR / "portable_secrets.key"
 _CRYPTPROTECT_UI_FORBIDDEN = 0x01
+
+
+def refresh_secure_storage_paths() -> None:
+    """Refresh secret storage paths from the effective runtime layout."""
+    global STATE_DIR, PORTABLE_KEY_FILE
+    STATE_DIR = path_layout.get_state_dir()
+    PORTABLE_KEY_FILE = STATE_DIR / "portable_secrets.key"
+
+
+refresh_secure_storage_paths()
 
 
 class DATA_BLOB(ctypes.Structure):

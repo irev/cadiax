@@ -5,17 +5,25 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from cadiax.core import path_layout
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_WORKSPACE_ROOT = PROJECT_ROOT / "workspace"
-WORKSPACE_ROOT = Path(
-    os.getenv("OTONOMASSIST_WORKSPACE_ROOT", str(DEFAULT_WORKSPACE_ROOT))
-).expanduser().resolve()
-INTERNAL_STATE_ROOT = Path(
-    os.getenv("OTONOMASSIST_STATE_DIR", str(PROJECT_ROOT / ".cadiax"))
-).expanduser().resolve()
+
+PROJECT_ROOT = path_layout.get_project_root()
+DEFAULT_WORKSPACE_ROOT = path_layout.get_workspace_root()
+WORKSPACE_ROOT = DEFAULT_WORKSPACE_ROOT
+INTERNAL_STATE_ROOT = path_layout.get_state_dir()
 WORKSPACE_ACCESS = os.getenv("OTONOMASSIST_WORKSPACE_ACCESS", "ro").strip().lower() or "ro"
 SKIP_DIRS = {".git", ".venv", "__pycache__", ".mypy_cache", ".pytest_cache", "node_modules"}
+
+
+def refresh_workspace_settings() -> None:
+    """Refresh workspace and state roots from the effective runtime layout."""
+    global DEFAULT_WORKSPACE_ROOT, WORKSPACE_ROOT, INTERNAL_STATE_ROOT, WORKSPACE_ACCESS
+    DEFAULT_WORKSPACE_ROOT = path_layout.get_workspace_root()
+    if os.getenv("CADIAX_WORKSPACE_ROOT") or os.getenv("OTONOMASSIST_WORKSPACE_ROOT"):
+        WORKSPACE_ROOT = DEFAULT_WORKSPACE_ROOT
+    INTERNAL_STATE_ROOT = path_layout.get_state_dir()
+    WORKSPACE_ACCESS = os.getenv("OTONOMASSIST_WORKSPACE_ACCESS", "ro").strip().lower() or "ro"
 
 
 def get_workspace_root() -> Path:
@@ -90,3 +98,6 @@ def should_skip_path(path: Path, relative_to: Path) -> bool:
     except OSError:
         return True
     return resolved != WORKSPACE_ROOT and WORKSPACE_ROOT not in resolved.parents
+
+
+refresh_workspace_settings()

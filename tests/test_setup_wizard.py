@@ -21,6 +21,7 @@ import otonomassist.cli as cli_module  # noqa: E402
 from otonomassist.core import agent_context, workspace_guard  # noqa: E402
 from otonomassist.core.admin_api import build_admin_snapshot  # noqa: E402
 from otonomassist.core.execution_history import load_execution_events  # noqa: E402
+from otonomassist.core import path_layout  # noqa: E402
 from otonomassist.core.runtime_interaction import bind_interaction_context  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
 from otonomassist.core.skill_loader import SkillLoader  # noqa: E402
@@ -45,6 +46,13 @@ def _load_module(path: Path, name: str):
 def _configure_temp_agent_state(tmp_path, monkeypatch):
     data_dir = tmp_path / ".otonomassist"
     for name in (
+        "CADIAX_WORKSPACE_ROOT",
+        "OTONOMASSIST_WORKSPACE_ROOT",
+        "CADIAX_WORKSPACE_ACCESS",
+        "OTONOMASSIST_WORKSPACE_ACCESS",
+        "CADIAX_PATH_MODE",
+        "OTONOMASSIST_PATH_MODE",
+        "CADIAX_EXTERNAL_SKILL_POLICY",
         "TELEGRAM_OWNER_IDS",
         "TELEGRAM_ALLOW_FROM",
         "TELEGRAM_GROUPS",
@@ -53,10 +61,27 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
         "TELEGRAM_GROUP_POLICY",
         "TELEGRAM_REQUIRE_MENTION",
         "AI_PROVIDER",
+        "OPENAI_BASE_URL",
+        "OPENAI_MODEL",
+        "OPENAI_FALLBACK_MODEL",
+        "OPENAI_WEB_MODEL",
+        "CLAUDE_BASE_URL",
+        "CLAUDE_MODEL",
+        "OLLAMA_BASE_URL",
+        "OLLAMA_MODEL",
+        "LMSTUDIO_BASE_URL",
+        "LMSTUDIO_MODEL",
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
+        "OTONOMASSIST_EXTERNAL_SKILL_POLICY",
     ):
         monkeypatch.delenv(name, raising=False)
+    env_file = tmp_path / ".env"
+    monkeypatch.setenv("CADIAX_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("OTONOMASSIST_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("CADIAX_STATE_DIR", str(data_dir))
+    monkeypatch.setenv("OTONOMASSIST_STATE_DIR", str(data_dir))
+    monkeypatch.setenv("OTONOMASSIST_WORKSPACE_ACCESS", "rw")
     monkeypatch.setattr(agent_context, "DATA_DIR", data_dir)
     monkeypatch.setattr(agent_context, "MEMORY_FILE", data_dir / "memory.jsonl")
     monkeypatch.setattr(agent_context, "PLANNER_FILE", data_dir / "planner.json")
@@ -83,6 +108,32 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", data_dir)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
     agent_context.ensure_agent_storage()
+
+
+def test_path_layout_user_mode_uses_native_os_dirs(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("CADIAX_PATH_MODE", "user")
+    monkeypatch.delenv("CADIAX_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("OTONOMASSIST_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("CADIAX_STATE_DIR", raising=False)
+    monkeypatch.delenv("OTONOMASSIST_STATE_DIR", raising=False)
+    monkeypatch.delenv("CADIAX_WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("OTONOMASSIST_WORKSPACE_ROOT", raising=False)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    if os.name == "nt":
+        monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+        assert path_layout.get_config_env_file() == (tmp_path / "AppData" / "Roaming" / "Cadiax" / "config.env").resolve()
+        assert path_layout.get_state_dir() == (tmp_path / "AppData" / "Local" / "Cadiax" / "state").resolve()
+        assert path_layout.get_workspace_root() == (home / "Cadiax" / "workspace").resolve()
+        return
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / ".state"))
+    assert path_layout.get_config_env_file() == (tmp_path / ".config" / "cadiax" / "config.env").resolve()
+    assert path_layout.get_state_dir() == (tmp_path / ".state" / "cadiax").resolve()
+    assert path_layout.get_workspace_root() == (home / "cadiax" / "workspace").resolve()
 
 
 def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypatch):
@@ -162,6 +213,43 @@ def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypat
     assert (tmp_path / "HEARTBEAT.md").exists()
     assert not (tmp_path / "BOOTSTRAP.md").exists()
     assert not (tmp_path / "AGENTS.dev.md").exists()
+
+
+def test_cli_setup_wizard_defaults_to_native_config_file(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / "AppConfig" / "config.env"
+    workspace_root = tmp_path / "workspace-native"
+    monkeypatch.setenv("CADIAX_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("OTONOMASSIST_CONFIG_FILE", str(env_file))
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", None)
+    monkeypatch.setattr(setup_wizard.path_layout, "get_config_env_file", lambda: env_file)
+    monkeypatch.setattr(setup_wizard.path_layout, "get_workspace_root", lambda: workspace_root)
+    monkeypatch.setattr(setup_wizard, "encrypt_secret", lambda value: f"enc:{value}")
+
+    prompt_answers = iter(
+        [
+            "openai",
+            str(workspace_root),
+            "ro",
+            "https://api.openai.com/v1",
+            "gpt-4.1-mini",
+            "gpt-4o",
+            "gpt-4.1",
+            "",
+        ]
+    )
+    confirm_answers = iter([False, False, True])
+    monkeypatch.setattr(setup_wizard.click, "prompt", lambda *args, **kwargs: next(prompt_answers))
+    monkeypatch.setattr(setup_wizard.click, "confirm", lambda *args, **kwargs: next(confirm_answers))
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["setup"])
+
+    assert result.exit_code == 0
+    assert f"- file env: {env_file}" in result.output
+    assert env_file.exists()
+    assert "AI_PROVIDER=openai" in env_file.read_text(encoding="utf-8")
+    assert not str(env_file).startswith(str(tmp_path / ".venv"))
 
 
 def test_cli_conversation_api_command_starts_separate_service(tmp_path, monkeypatch):

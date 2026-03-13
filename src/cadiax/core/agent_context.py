@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta, timezone
+import os
 from pathlib import Path
 from typing import Any
-import os
 
 from cadiax.storage import SQLiteStateStore
+from cadiax.core import path_layout
 from cadiax.core.secure_storage import decrypt_secret
 from cadiax.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed, ensure_workspace_root_exists, ensure_write_allowed, get_workspace_root
 from cadiax.memory import SemanticMemoryService
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = Path(os.getenv("OTONOMASSIST_STATE_DIR", str(PROJECT_ROOT / ".cadiax"))).expanduser().resolve()
+PROJECT_ROOT = path_layout.get_project_root()
+DATA_DIR = path_layout.get_state_dir()
 MEMORY_FILE = DATA_DIR / "memory.jsonl"
 PLANNER_FILE = DATA_DIR / "planner.json"
 PROFILE_FILE = DATA_DIR / "profile.md"
@@ -118,6 +119,42 @@ DEFAULT_HEARTBEAT_STATE = {
     "last_actions": [],
 }
 DEFAULT_IDENTITY_STATE = {"identities": [], "updated_at": ""}
+
+
+def refresh_runtime_paths() -> None:
+    """Refresh durable state file paths from the effective runtime layout."""
+    global DATA_DIR
+    global MEMORY_FILE, PLANNER_FILE, PROFILE_FILE, PREFERENCES_FILE, HABITS_FILE
+    global MEMORY_SUMMARIES_FILE, EPISODES_FILE, PROACTIVE_INSIGHTS_FILE, HEARTBEAT_STATE_FILE
+    global IDENTITIES_FILE, SESSIONS_FILE, NOTIFICATIONS_FILE, EMAIL_MESSAGES_FILE
+    global WHATSAPP_MESSAGES_FILE, PRIVACY_CONTROLS_FILE, LESSONS_FILE, SECRETS_FILE
+    global EXECUTION_HISTORY_FILE, METRICS_FILE, JOB_QUEUE_FILE, SCHEDULER_STATE_FILE
+
+    DATA_DIR = path_layout.get_state_dir()
+    MEMORY_FILE = DATA_DIR / "memory.jsonl"
+    PLANNER_FILE = DATA_DIR / "planner.json"
+    PROFILE_FILE = DATA_DIR / "profile.md"
+    PREFERENCES_FILE = DATA_DIR / "preferences.json"
+    HABITS_FILE = DATA_DIR / "habits.json"
+    MEMORY_SUMMARIES_FILE = DATA_DIR / "memory_summaries.json"
+    EPISODES_FILE = DATA_DIR / "episodes.json"
+    PROACTIVE_INSIGHTS_FILE = DATA_DIR / "proactive_insights.json"
+    HEARTBEAT_STATE_FILE = DATA_DIR / "heartbeat.json"
+    IDENTITIES_FILE = DATA_DIR / "identities.json"
+    SESSIONS_FILE = DATA_DIR / "sessions.json"
+    NOTIFICATIONS_FILE = DATA_DIR / "notifications.json"
+    EMAIL_MESSAGES_FILE = DATA_DIR / "email_messages.json"
+    WHATSAPP_MESSAGES_FILE = DATA_DIR / "whatsapp_messages.json"
+    PRIVACY_CONTROLS_FILE = DATA_DIR / "privacy_controls.json"
+    LESSONS_FILE = DATA_DIR / "lessons.md"
+    SECRETS_FILE = DATA_DIR / "secrets.json"
+    EXECUTION_HISTORY_FILE = DATA_DIR / "execution_history.jsonl"
+    METRICS_FILE = DATA_DIR / "execution_metrics.json"
+    JOB_QUEUE_FILE = DATA_DIR / "job_queue.json"
+    SCHEDULER_STATE_FILE = DATA_DIR / "scheduler_state.json"
+
+
+refresh_runtime_paths()
 DEFAULT_SESSION_STATE = {"sessions": [], "updated_at": ""}
 DEFAULT_NOTIFICATION_STATE = {"notifications": [], "updated_at": ""}
 DEFAULT_EMAIL_MESSAGE_STATE = {"messages": [], "updated_at": ""}

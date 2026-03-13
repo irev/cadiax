@@ -18,6 +18,7 @@ from cadiax.core import (
     render_execution_history,
 )
 from cadiax.core.admin_api import run_admin_api
+from cadiax.core.agent_context import refresh_runtime_paths
 from cadiax.core.execution_metrics import get_execution_metrics_snapshot, render_execution_metrics
 from cadiax.core.external_assets import (
     render_external_asset_audit,
@@ -31,8 +32,11 @@ from cadiax.core.workspace_bootstrap import (
     render_workspace_bootstrap_status,
 )
 from cadiax.core.job_runtime import enqueue_ready_planner_task, process_job_queue, render_job_queue
+from cadiax.core.path_layout import load_runtime_env
+from cadiax.core.secure_storage import refresh_secure_storage_paths
 from cadiax.core.scheduler_runtime import run_scheduler
 from cadiax.core.setup_wizard import run_setup_wizard, should_recommend_setup
+from cadiax.core.workspace_guard import refresh_workspace_settings
 from cadiax.platform import (
     get_service_wrapper_output_dir,
     render_service_runtime_status,
@@ -132,6 +136,10 @@ def main(
     doctor: bool,
 ) -> None:
     """Cadiax - Autonomous Assistant."""
+    load_runtime_env()
+    refresh_workspace_settings()
+    refresh_runtime_paths()
+    refresh_secure_storage_paths()
     if setup:
         click.echo(run_setup_wizard())
         return
