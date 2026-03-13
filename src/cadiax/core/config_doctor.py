@@ -991,7 +991,6 @@ def _resolve_cadiax_command() -> dict[str, str]:
         result = subprocess.run(
             [
                 "powershell",
-                "-NoProfile",
                 "-Command",
                 "Get-Command cadiax -ErrorAction SilentlyContinue | Select-Object -First 1 @{n='CommandType';e={$_.CommandType.ToString()}},Source,Path,Definition | ConvertTo-Json -Compress",
             ],
