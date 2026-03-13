@@ -14,6 +14,45 @@
 ## Description
 Skill ini mengelola penyimpanan kredensial lokal.
 
+## Purpose
+- Menyimpan dan mengelola credential lokal secara aman tanpa memasukkannya ke memory umum atau prompt AI.
+- Menjadi satu-satunya capability standar untuk operasi secret dan credential lifecycle.
+
+## Boundaries
+- Gunakan untuk secret, token, API key, dan credential metadata.
+- Jangan gunakan `memory`, `profile`, atau `workspace` untuk menyimpan nilai secret mentah.
+- Tampilkan metadata bila dibutuhkan, tetapi jangan membocorkan nilai secret ke output biasa.
+- Operasi ini bersifat high-risk dan harus tetap tunduk pada policy serta secure storage availability.
+
+## Primary Inputs
+- `secrets set <name> <value>`
+- `secrets list`
+- `secrets show <name>`
+- `secrets delete <name>`
+- `secrets import-env`
+
+## Expected Outputs
+- Konfirmasi bahwa secret berhasil disimpan, diperbarui, atau dihapus.
+- Daftar nama secret atau metadata aman tanpa membocorkan nilai sensitif.
+- Penolakan yang jelas bila storage aman tidak tersedia atau operasi tidak valid.
+
+## State Touchpoints
+- Secure local secret storage.
+- Secret metadata audit trail.
+- Tidak boleh menulis nilai secret ke memory umum, planner, atau prompt context.
+
+## Failure Modes
+- Secure storage tidak tersedia atau gagal dibuka.
+- Nama secret tidak valid atau duplikat dalam konteks operasi tertentu.
+- User mencoba melihat nilai secret secara mentah di jalur yang tidak diizinkan.
+- Import environment gagal karena source tidak tersedia atau mapping tidak valid.
+
+## Success Criteria
+- Nilai secret tidak pernah bocor ke memory, prompt, atau output audit biasa.
+- User tetap bisa melihat metadata yang cukup untuk operasi administratif.
+- Create/update/delete secret konsisten dan tertrace.
+- Failure dinyatakan jelas tanpa menampilkan data sensitif.
+
 ## Triggers
 - secrets
 - credential

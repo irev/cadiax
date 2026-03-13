@@ -103,6 +103,20 @@ class Assistant:
 
         return "\n".join(lines)
 
+    def _build_routing_capabilities_context(self) -> str:
+        """Build a compact capability list for low-cost AI routing."""
+        skills = self.registry.list_skills()
+        if not skills:
+            return "No routing targets available."
+
+        lines = ["Routing targets:"]
+        for skill in skills:
+            definition = skill.definition
+            aliases = ", ".join(definition.aliases[:2]) if definition.aliases else ""
+            alias_text = f" aliases={aliases}" if aliases else ""
+            lines.append(f"- {definition.name}: {definition.description[:96]}{alias_text}")
+        return "\n".join(lines)
+
     def _render_skill_layer_audit(self) -> str:
         """Render the autonomous skill-layer summary."""
         summary = self.registry.get_skill_layer_summary()
@@ -130,7 +144,7 @@ class Assistant:
         """Build system prompt for AI orchestration."""
         context_block = self.context_budgeter.build_orchestration_context(
             command=command,
-            skills_context=self._build_skills_context(),
+            skills_context=self._build_routing_capabilities_context(),
             personality_service=self.personality_service,
             session_mode=context.session_mode if context else "main",
             agent_scope=context.agent_scope if context else "default",
@@ -140,25 +154,26 @@ class Assistant:
 
 {context_block}
 
-Petunjuk:
-1. Analisis input user untuk menentukan skill yang tepat
-2. Jika user hanya ingin chatting/pertanyaan umum tanpa skill spesifik, gunakan skill 'ai'
-3. Respon dengan format: SKILL: <nama_skill> | ARGS: <argumen untuk skill>
-4. Jika user ingin menyimpan fakta atau keputusan, prioritaskan skill 'memory'
-5. Gunakan skill 'planner' hanya untuk goal, backlog, task, atau langkah kerja agent internal; jangan gunakan 'planner' untuk rencana umum seperti itinerary, jadwal liburan, atau outline non-agent. Untuk itu gunakan skill 'ai'
-6. Jika user ingin mengatur identitas, preferensi, atau personalisasi agent, prioritaskan skill 'profile'
-7. Jika user ingin refleksi mandiri atau langkah berikutnya berdasarkan state agent, prioritaskan skill 'agent-loop'
-8. Jika user ingin mengeksekusi next task atau menjalankan action dari planner, prioritaskan skill 'executor'
-9. Jika user ingin menjalankan loop otomatis beberapa langkah atau sampai idle, prioritaskan skill 'runner'
-10. Jika user ingin menyimpan atau mengelola kredensial, prioritaskan skill 'secrets'
-11. Jika user ingin membaca, mencari, melihat struktur, atau merangkum file proyek, prioritaskan skill 'workspace' dan ubah ke subcommand yang executable seperti `workspace tree .`, `workspace read README.md`, `workspace find OPENAI_MODEL`, atau `workspace summary src`
-12. Jika user meminta fakta real-world yang sensitif terhadap waktu, tanggal, jadwal, atau informasi terbaru, prioritaskan skill 'research'
-13. Jika user ingin audit atau evaluasi hasil kerja, prioritaskan skill 'self-review'
-14. Jika user input "apa itu python", respons: SKILL: ai | ARGS: apa itu python
-15. Jika user berkata "lihat struktur file yang ada di workspace", respons: SKILL: workspace | ARGS: tree .
-16. Jika user berkata "baca README.md", respons: SKILL: workspace | ARGS: read README.md
-17. Jika user berkata "buat rencana libur idul fitri 2026", respons: SKILL: research | ARGS: buat rencana libur idul fitri 2026 di indonesia
-18. Pastikan ARGS berisi informasi yang dibutuhkan skill untuk menjalankan tugasnya, bukan sekadar mengulang kalimat user mentah bila skill membutuhkan subcommand tertentu
+Aturan inti:
+- Respon HANYA: SKILL: <nama_skill> | ARGS: <argumen>
+- Pilih skill paling spesifik yang cocok dengan intent user.
+- Gunakan `ai` hanya untuk chat umum, penjelasan umum, atau intent yang tidak cocok ke skill lain.
+- Gunakan `memory` untuk menyimpan fakta, keputusan, atau catatan.
+- Gunakan `planner` untuk goal, backlog, task, dan next action agent internal.
+- Gunakan `workspace` untuk file lokal: tree, read, find, files, summary.
+- Gunakan `research` untuk fakta eksternal yang sensitif waktu atau perlu verifikasi.
+- Gunakan `observe` untuk snapshot read-only; `monitor` untuk warning/health yang perlu perhatian.
+- Gunakan `decide` untuk memilih next action; `executor` untuk menjalankan action.
+- Gunakan `profile`, `identity`, `policy`, `notify`, `schedule`, `self-review`, atau `secrets` bila intent user jelas menuju capability itu.
+- Pastikan ARGS executable dan ringkas; jangan hanya mengulang kalimat user jika skill butuh subcommand.
+
+Contoh singkat:
+- user: "apa itu python" -> SKILL: ai | ARGS: apa itu python
+- user: "lihat struktur file yang ada di workspace" -> SKILL: workspace | ARGS: tree .
+- user: "lihat status runtime" -> SKILL: observe | ARGS: status
+- user: "lihat alert aktif" -> SKILL: monitor | ARGS: alerts
+- user: "pilih next action terbaik" -> SKILL: decide | ARGS: next
+- user: "buat rencana libur idul fitri 2026" -> SKILL: research | ARGS: buat rencana libur idul fitri 2026 di indonesia
 
 Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 
@@ -336,9 +351,31 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 - skills audit: Show autonomous skill-layer categories, risk, and requirements
 - doctor: Show read-only configuration status
 - config status: Alias for doctor
+- observe <summary|status|metrics|events|history|jobs|scheduler|identity|notifications>: Show read-only runtime observations
+- notify <send|batch|history> ...: Dispatch or inspect durable notifications
+- identity <show|sessions|resolve> ...: Inspect or resolve identity/session continuity
+- schedule <show|run|enqueue> ...: Inspect scheduler state or prime runtime queue
+- policy <show|prefixes|check> ...: Inspect active policy and simulate authorization
+- monitor <summary|alerts|health|queue|latency> ...: Highlight operational warnings and health signals
+- decide <next|between> ...: Choose the most relevant next action without executing it
 - debug-config: Show active AI provider configuration
 - list-models: List models visible to the active API key
 - <any other command>: Will be routed to AI to determine appropriate skill
+
+Standard capability aliases:
+- chat -> ai
+- plan -> planner
+- act -> executor
+- reflect -> agent-loop
+- inspect -> workspace
+- persona -> profile
+- review -> self-review
+
+Recommended capability chains:
+- observe -> decide -> act
+- review -> plan
+- research -> memory
+- inspect -> plan
 
 Skills are loaded from the skills/ directory."""
 

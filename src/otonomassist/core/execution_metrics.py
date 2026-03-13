@@ -196,6 +196,11 @@ def get_execution_metrics_snapshot() -> dict[str, Any]:
         "summary": {
             "events_total": int(counters.get("events_total", 0) or 0),
             "commands_total": int(counters.get("command_completed_total", 0) or 0),
+            "routes_total": int(counters.get("command_routed_total", 0) or 0),
+            "heuristic_routes_total": int(counters.get("command_routed_status_heuristic", 0) or 0),
+            "direct_skill_routes_total": int(counters.get("command_routed_status_direct_skill", 0) or 0),
+            "builtin_routes_total": int(counters.get("command_routed_status_builtin", 0) or 0),
+            "ai_routes_total": int(counters.get("command_routed_status_ai_router", 0) or 0),
             "skills_total": int(counters.get("skill_completed_total", 0) or 0),
             "timeouts_total": int(counters.get("skill_completed_status_timeout", 0) or 0),
             "errors_total": int(counters.get("command_completed_status_error", 0) or 0)
@@ -217,12 +222,24 @@ def render_execution_metrics() -> str:
         f"- updated_at: {snapshot['updated_at'] or '-'}",
         f"- events_total: {snapshot['summary']['events_total']}",
         f"- commands_total: {snapshot['summary']['commands_total']}",
+        f"- routes_total: {snapshot['summary']['routes_total']}",
         f"- skills_total: {snapshot['summary']['skills_total']}",
         f"- timeouts_total: {snapshot['summary']['timeouts_total']}",
         f"- errors_total: {snapshot['summary']['errors_total']}",
         f"- ai_requests_total: {snapshot['summary']['ai_requests_total']}",
         f"- ai_total_tokens: {snapshot['summary']['ai_total_tokens']}",
     ]
+    if snapshot["summary"]["routes_total"] > 0:
+        lines.extend(
+            [
+                "",
+                "[Routing]",
+                f"- builtin_routes_total: {snapshot['summary']['builtin_routes_total']}",
+                f"- direct_skill_routes_total: {snapshot['summary']['direct_skill_routes_total']}",
+                f"- heuristic_routes_total: {snapshot['summary']['heuristic_routes_total']}",
+                f"- ai_routes_total: {snapshot['summary']['ai_routes_total']}",
+            ]
+        )
     token_usage = snapshot.get("token_usage", {})
     if token_usage:
         lines.extend(["", "[Token Usage]"])

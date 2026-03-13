@@ -21,6 +21,42 @@ Alur jawabnya:
 3. rangkum hasil dalam bentuk data terstruktur
 4. tampilkan status verifikasi, confidence, data penting, gap, dan sumber
 
+## Purpose
+- Memverifikasi informasi real-world yang bisa berubah terhadap waktu.
+- Menghasilkan jawaban berbasis sumber dengan status verifikasi yang eksplisit.
+
+## Boundaries
+- Gunakan hanya saat freshness, fakta publik, atau source attribution penting.
+- Jangan gunakan untuk inspeksi workspace lokal atau memory internal.
+- Bila provider/web search tidak tersedia, skill tetap harus jujur menyatakan keterbatasan verifikasi.
+
+## Primary Inputs
+- `research <query>`
+- Query sebaiknya menyebut entitas, lokasi, dan horizon waktu yang dicari.
+
+## Expected Outputs
+- Ringkasan jawaban yang menyebut status verifikasi dan confidence.
+- Data points penting yang relevan dengan pertanyaan user.
+- Daftar source atau gap jika verifikasi tidak penuh.
+- Format terstruktur yang konsisten untuk reasoning atau follow-up.
+
+## State Touchpoints
+- Network/web search capability.
+- AI provider response metadata bila tersedia.
+- Audit trail untuk query yang diverifikasi.
+
+## Failure Modes
+- Web search tidak tersedia atau provider gagal.
+- Query terlalu luas, ambigu, atau tidak punya anchor waktu.
+- Sumber yang ditemukan saling bertentangan.
+- Informasi tidak cukup baru untuk menjawab dengan yakin.
+
+## Success Criteria
+- Jawaban menyatakan apa yang terverifikasi, dari mana, dan apa gap yang tersisa.
+- Informasi sensitif terhadap waktu selalu di-anchorkan ke tanggal yang jelas.
+- Output tidak mengarang sumber saat verifikasi tidak tersedia.
+- Hasil cukup terstruktur untuk dipakai sebagai input capability lain.
+
 ## Triggers
 - research
 - search-web

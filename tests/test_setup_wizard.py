@@ -870,6 +870,8 @@ def test_assistant_supports_doctor_and_config_status_commands(tmp_path, monkeypa
     assert "OtonomAssist Config Status" in doctor_result
     assert "[Overall]" in doctor_result
     assert "- status: healthy" in doctor_result
+    assert "[Routing]" in doctor_result
+    assert "[Routing]" in alias_result
     assert "[Workspace]" in doctor_result
     assert "OtonomAssist Config Status" in alias_result
     assert "[Overall]" in alias_result
@@ -1056,6 +1058,8 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert "policy" in payload
     assert "budget" in payload
     assert "context_budget" in payload
+    assert "routing" in payload
+    assert "heuristic_rate" in payload["routing"]
     assert "privacy" in payload
     assert "personality" in payload
     assert "memory" in payload

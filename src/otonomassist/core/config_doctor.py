@@ -58,6 +58,7 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
     event_bus = get_event_bus_snapshot()
     runtime = get_job_queue_summary()
     metrics = get_execution_metrics_snapshot()
+    routing = _build_routing_diagnostics(metrics)
     scheduler = get_scheduler_summary()
     state_storage = agent_context.get_state_storage_info()
     scope_state = agent_context.get_scope_state_summary()
@@ -134,6 +135,7 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
             **runtime,
         },
         "metrics": metrics,
+        "routing": routing,
         "scheduler": {
             "status": "healthy" if not scheduler["last_status"] or scheduler["last_status"] in {"idle", "active"} else "warning",
             **scheduler,
@@ -571,6 +573,7 @@ def get_config_status_report() -> str:
             "[Metrics]",
             f"- events_total: {data['metrics']['summary']['events_total']}",
             f"- commands_total: {data['metrics']['summary']['commands_total']}",
+            f"- routes_total: {data['metrics']['summary']['routes_total']}",
             f"- skills_total: {data['metrics']['summary']['skills_total']}",
             f"- timeouts_total: {data['metrics']['summary']['timeouts_total']}",
             f"- errors_total: {data['metrics']['summary']['errors_total']}",
@@ -582,6 +585,18 @@ def get_config_status_report() -> str:
             f"- queue {name}: current_depth={summary.get('current_depth', 0)}, "
             f"high_watermark={summary.get('high_watermark', 0)}"
         )
+    lines.extend(
+        [
+            "",
+            "[Routing]",
+            f"- builtin_routes_total: {data['routing']['builtin_routes_total']}",
+            f"- direct_skill_routes_total: {data['routing']['direct_skill_routes_total']}",
+            f"- heuristic_routes_total: {data['routing']['heuristic_routes_total']}",
+            f"- ai_routes_total: {data['routing']['ai_routes_total']}",
+            f"- heuristic_rate: {data['routing']['heuristic_rate']}",
+            f"- ai_route_rate: {data['routing']['ai_route_rate']}",
+        ]
+    )
 
     lines.extend(
         [
@@ -870,6 +885,30 @@ def _single_line_preview(value: str, max_chars: int = 100) -> str:
     if len(compact) <= max_chars:
         return compact
     return compact[:max_chars].rstrip() + "..."
+
+
+def _build_routing_diagnostics(metrics: dict[str, object]) -> dict[str, object]:
+    summary = metrics.get("summary", {}) if isinstance(metrics.get("summary", {}), dict) else {}
+    routes_total = int(summary.get("routes_total", 0) or 0)
+    builtin_routes_total = int(summary.get("builtin_routes_total", 0) or 0)
+    direct_skill_routes_total = int(summary.get("direct_skill_routes_total", 0) or 0)
+    heuristic_routes_total = int(summary.get("heuristic_routes_total", 0) or 0)
+    ai_routes_total = int(summary.get("ai_routes_total", 0) or 0)
+    return {
+        "routes_total": routes_total,
+        "builtin_routes_total": builtin_routes_total,
+        "direct_skill_routes_total": direct_skill_routes_total,
+        "heuristic_routes_total": heuristic_routes_total,
+        "ai_routes_total": ai_routes_total,
+        "heuristic_rate": _ratio_text(heuristic_routes_total, routes_total),
+        "ai_route_rate": _ratio_text(ai_routes_total, routes_total),
+    }
+
+
+def _ratio_text(part: int, total: int) -> str:
+    if total <= 0:
+        return "0%"
+    return f"{round((part / total) * 100)}%"
 
 
 def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, ...]) -> dict[str, object]:

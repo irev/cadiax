@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import sys
@@ -17,7 +18,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from otonomassist.core import agent_context  # noqa: E402
-from otonomassist.core.execution_history import load_execution_events  # noqa: E402
+from otonomassist.core.execution_history import append_execution_event, load_execution_events  # noqa: E402
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot  # noqa: E402
 from otonomassist.core.runtime_interaction import bind_interaction_context  # noqa: E402
 from otonomassist.core import workspace_guard  # noqa: E402
@@ -113,6 +114,11 @@ class _BrokenProvider:
         raise RuntimeError("provider boom")
 
 
+class _FailIfCalledProvider:
+    async def chat_completion(self, prompt, system_prompt=None, **kwargs):
+        raise AssertionError("AI provider should not be called for heuristic routing")
+
+
 class _StructuredRouteProvider:
     def __init__(self, response: str) -> None:
         self.response = response
@@ -146,6 +152,37 @@ class _UsageRouteProvider:
 
     async def chat_completion(self, prompt, system_prompt=None, **kwargs):
         return "SKILL: profile | ARGS: show"
+
+
+class _ResearchProvider:
+    async def web_search_completion(self, prompt, system_prompt=None, **kwargs):
+        return json.dumps(
+            {
+                "query_type": "general_research",
+                "verification_status": "web_verified",
+                "summary": "Riset menemukan fakta utama yang relevan.",
+                "answer": "Fakta riset utama tersimpan untuk tindak lanjut.",
+                "confidence": "high",
+                "data_points": [
+                    {
+                        "label": "fakta",
+                        "value": "temuan penting",
+                        "date": "2026-03-13",
+                        "context": "hasil web",
+                    }
+                ],
+                "notes": ["Sumber diverifikasi."],
+                "gaps": [],
+                "sources": [
+                    {
+                        "title": "Sumber Contoh",
+                        "url": "https://example.com/fact",
+                        "publisher": "Example",
+                        "date": "2026-03-13",
+                    }
+                ],
+            }
+        )
 
 
 class _NamedProvider:
@@ -295,6 +332,653 @@ def test_profile_skill_supports_structured_profile_commands(tmp_path, monkeypatc
     assert "preferred_channels: telegram, email" in show
     assert "Preference ditambahkan" in remove_pref
     assert "Structured preferences direset." in reset
+
+
+def test_observe_skill_returns_status_and_scope_filtered_events(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    observe_module = _load_module(ROOT / "skills" / "observe" / "script" / "handler.py", "observe_handler_test")
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    agent_context.append_memory_entry(
+        "catatan default observasi",
+        source="manual",
+        agent_scope="default",
+        session_mode="main",
+    )
+    with bind_interaction_context(source="cli", agent_scope="finance-agent", roles=("finance",)):
+        agent_context.append_memory_entry(
+            "catatan finance observasi",
+            source="manual",
+            agent_scope="finance-agent",
+            session_mode="main",
+        )
+        append_execution_event(
+            "command_completed",
+            trace_id="trace-observe-finance",
+            status="ok",
+            source="cli",
+            command="observe finance",
+            data={"result_preview": "finance scope observed"},
+        )
+
+    status_result = observe_module.handle("status scope=finance-agent roles=finance")
+    event_result = observe_module.handle("events scope=finance-agent roles=finance limit=10")
+
+    assert status_result["type"] == "observe_status"
+    assert status_result["data"]["scope_filter"]["agent_scope"] == "finance-agent"
+    assert event_result["type"] == "observe_events"
+    assert event_result["data"]["scope_filter"]["agent_scope"] == "finance-agent"
+    assert event_result["data"]["returned_events"] >= 1
+
+
+def test_assistant_executes_observe_skill_for_runtime_status(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("observe status")
+
+    assert "Observe status:" in result
+    assert "overall=" in result
+
+
+def test_notify_skill_dispatches_single_and_batch_notifications(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    notify_module = _load_module(ROOT / "skills" / "notify" / "script" / "handler.py", "notify_handler_test")
+
+    single = notify_module.handle("send build selesai channel=internal title=BuildAlert")
+    batch = notify_module.handle(
+        "batch deploy selesai delivery=email:ops@example.com delivery=whatsapp:+628123456789"
+    )
+
+    state = agent_context.load_notification_state()
+    assert single["type"] == "notify_send"
+    assert single["data"]["notification"]["title"] == "BuildAlert"
+    assert batch["type"] == "notify_batch"
+    assert batch["data"]["batch"]["delivery_count"] == 2
+    assert len(state["notifications"]) == 3
+
+
+def test_assistant_executes_notify_skill_for_outbound_message(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("notify send build selesai")
+    notifications = agent_context.load_notification_state()
+
+    assert "Notify send:" in result
+    assert notifications["notifications"][0]["message"] == "build selesai"
+
+
+def test_identity_skill_shows_and_resolves_continuity(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    identity_module = _load_module(ROOT / "skills" / "identity" / "script" / "handler.py", "identity_handler_test")
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+
+    resolved = identity_module.handle(
+        "resolve source=telegram user_id=200 session_id=chat-200 identity_hint=refy@example.local scope=finance-agent roles=finance"
+    )
+    shown = identity_module.handle("show scope=finance-agent roles=finance")
+
+    assert resolved["type"] == "identity_resolve"
+    assert resolved["data"]["identity_id"]
+    assert shown["type"] == "identity_show"
+    assert shown["data"]["snapshot"]["identity_count"] == 1
+    assert shown["data"]["snapshot"]["session_count"] == 1
+
+
+def test_assistant_executes_identity_skill_show(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("identity show")
+
+    assert "Identity snapshot:" in result
+
+
+def test_schedule_skill_shows_and_runs_scheduler(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    schedule_module = _load_module(ROOT / "skills" / "schedule" / "script" / "handler.py", "schedule_handler_test")
+    agent_context.add_planner_task("memory add dari schedule skill", status="todo")
+
+    shown = schedule_module.handle("show")
+    ran = schedule_module.handle("run cycles=1 steps=3")
+
+    assert shown["type"] == "schedule_show"
+    assert ran["type"] == "schedule_run"
+    assert ran["data"]["run"]["cycles"] == 1
+    assert ran["data"]["run"]["status"] in {"idle", "active", "quiet_hours"}
+
+
+def test_assistant_executes_schedule_skill_show(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("schedule show")
+
+    assert "Schedule show:" in result
+
+
+def test_policy_skill_shows_diagnostics_and_checks_decision(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    policy_module = _load_module(ROOT / "skills" / "policy" / "script" / "handler.py", "policy_handler_test")
+
+    shown = policy_module.handle("show")
+    checked = policy_module.handle("check prefix=executor args=next source=telegram roles=approved")
+
+    assert shown["type"] == "policy_show"
+    assert checked["type"] == "policy_check"
+    assert checked["data"]["decision"]["allowed"] is False
+    assert checked["data"]["decision"]["reason"] == "telegram_owner_only_prefix"
+
+
+def test_assistant_executes_policy_skill_show(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("policy show")
+
+    assert "Policy show:" in result
+
+
+def test_expanded_capability_commands_cover_observe_notify_schedule_identity_policy_monitor(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    observe_module = _load_module(ROOT / "skills" / "observe" / "script" / "handler.py", "observe_handler_expansion_test")
+    notify_module = _load_module(ROOT / "skills" / "notify" / "script" / "handler.py", "notify_handler_expansion_test")
+    schedule_module = _load_module(ROOT / "skills" / "schedule" / "script" / "handler.py", "schedule_handler_expansion_test")
+    identity_module = _load_module(ROOT / "skills" / "identity" / "script" / "handler.py", "identity_handler_expansion_test")
+    policy_module = _load_module(ROOT / "skills" / "policy" / "script" / "handler.py", "policy_handler_expansion_test")
+    monitor_module = _load_module(ROOT / "skills" / "monitor" / "script" / "handler.py", "monitor_handler_expansion_test")
+
+    identity_module.handle(
+        "resolve source=telegram user_id=777 session_id=chat-777 identity_hint=ops@example.local scope=ops-agent roles=ops"
+    )
+    notify_module.handle("send build selesai channel=internal title=OpsAlert")
+    agent_context.add_planner_task("memory add dari schedule enqueue", status="todo")
+
+    observe_identity = observe_module.handle("identity")
+    observe_notifications = observe_module.handle("notifications")
+    notify_history = notify_module.handle("history")
+    schedule_enqueue = schedule_module.handle("enqueue")
+    identity_sessions = identity_module.handle("sessions")
+    policy_prefixes = policy_module.handle("prefixes")
+    monitor_queue = monitor_module.handle("queue")
+    monitor_latency = monitor_module.handle("latency")
+
+    assert observe_identity["type"] == "observe_identity"
+    assert observe_identity["data"]["snapshot"]["total_identity_count"] == 1
+    assert observe_notifications["type"] == "observe_notifications"
+    assert observe_notifications["data"]["snapshot"]["notification_count"] >= 1
+    assert notify_history["type"] == "notify_history"
+    assert notify_history["data"]["snapshot"]["notification_count"] >= 1
+    assert schedule_enqueue["type"] == "schedule_enqueue"
+    assert schedule_enqueue["data"]["job"]["task_text"] == "memory add dari schedule enqueue"
+    assert identity_sessions["type"] == "identity_sessions"
+    assert identity_sessions["data"]["session_count"] >= 1
+    assert policy_prefixes["type"] == "policy_prefixes"
+    assert "executor" in policy_prefixes["data"]["owner_only_prefixes"]
+    assert monitor_queue["type"] == "monitor_queue"
+    assert "queued=" in monitor_queue["data"]["summary"]
+    assert monitor_latency["type"] == "monitor_latency"
+    assert "providers=" in monitor_latency["data"]["summary"]
+
+
+def test_assistant_executes_expanded_capability_commands(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    identity_module = _load_module(ROOT / "skills" / "identity" / "script" / "handler.py", "identity_handler_expansion_assistant_test")
+    notify_module = _load_module(ROOT / "skills" / "notify" / "script" / "handler.py", "notify_handler_expansion_assistant_test")
+
+    identity_module.handle(
+        "resolve source=telegram user_id=991 session_id=chat-991 identity_hint=finance@example.local scope=finance-agent roles=finance"
+    )
+    notify_module.handle("send laporan siap channel=internal title=FinanceAlert")
+    agent_context.add_planner_task("memory add untuk assistant expanded commands", status="todo")
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    observe_result = assistant.execute("observe notifications")
+    schedule_result = assistant.execute("schedule enqueue")
+    identity_result = assistant.execute("identity sessions scope=finance-agent roles=finance")
+    policy_result = assistant.execute("policy prefixes")
+    monitor_result = assistant.execute("monitor queue")
+    notify_result = assistant.execute("notify history")
+
+    assert "Observe notifications:" in observe_result
+    assert "Schedule enqueue:" in schedule_result
+    assert "Identity sessions:" in identity_result
+    assert "Policy prefixes:" in policy_result
+    assert "Monitor queue:" in monitor_result
+    assert "Notify history:" in notify_result
+
+
+def test_monitor_skill_reports_operational_alerts(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monitor_module = _load_module(ROOT / "skills" / "monitor" / "script" / "handler.py", "monitor_handler_test")
+    agent_context.save_metrics_state(
+        {
+            "counters": {
+                "events_total": 10,
+                "command_completed_total": 2,
+                "skill_completed_total": 3,
+                "skill_completed_status_timeout": 1,
+                "command_completed_status_error": 1,
+                "ai_provider_latency_total": 0,
+            },
+            "timings": {},
+            "token_usage": {},
+            "provider_latency": {
+                "openai:gpt-4.1-mini": {
+                    "provider": "openai",
+                    "model": "gpt-4.1-mini",
+                    "count": 1,
+                    "total_ms": 5200,
+                    "max_ms": 5200,
+                    "avg_ms": 5200.0,
+                    "last_ms": 5200,
+                    "last_status": "ok",
+                }
+            },
+            "queue_depth": {
+                "runtime_jobs": {
+                    "queued": 6,
+                    "leased": 1,
+                    "done": 0,
+                    "failed": 1,
+                    "requeued": 0,
+                    "current_depth": 7,
+                    "high_watermark": 7,
+                    "samples": 1,
+                }
+            },
+            "updated_at": "",
+        }
+    )
+    agent_context.save_job_queue_state(
+        {
+            "jobs": [
+                {"id": 1, "task_id": 1, "task_text": "task", "status": "leased", "priority": 0},
+                {"id": 2, "task_id": 2, "task_text": "task", "status": "failed", "priority": 0},
+            ],
+            "worker": {"last_status": "active", "last_processed": 1, "last_run_at": "", "last_trace_id": ""},
+        }
+    )
+
+    result = monitor_module.handle("alerts")
+
+    assert result["type"] == "monitor_alerts"
+    assert result["data"]["health_status"] == "critical"
+    assert result["data"]["dominant_alert"]["kind"] == "errors"
+    assert result["data"]["dominant_alert"]["recommended_command"] == "monitor alerts"
+    assert any(item["kind"] == "leased_jobs" for item in result["data"]["alerts"])
+    assert any(item["kind"] == "timeouts" for item in result["data"]["alerts"])
+    assert any(item["kind"] == "queue_depth" for item in result["data"]["alerts"])
+    assert any(item["kind"] == "provider_latency" for item in result["data"]["alerts"])
+
+
+def test_monitor_skill_health_and_queue_views_include_prioritized_runtime_signals(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monitor_module = _load_module(ROOT / "skills" / "monitor" / "script" / "handler.py", "monitor_handler_priority_test")
+
+    PrivacyControlService().set_quiet_hours(start="00:00", end="23:59", enabled=True)
+    agent_context.save_metrics_state(
+        {
+            "counters": {
+                "events_total": 4,
+                "command_completed_total": 1,
+                "skill_completed_total": 1,
+                "ai_provider_latency_total": 0,
+            },
+            "timings": {},
+            "token_usage": {},
+            "provider_latency": {},
+            "queue_depth": {
+                "runtime_jobs": {
+                    "queued": 5,
+                    "leased": 0,
+                    "done": 0,
+                    "failed": 0,
+                    "requeued": 0,
+                    "current_depth": 5,
+                    "high_watermark": 6,
+                    "samples": 2,
+                }
+            },
+            "updated_at": "",
+        }
+    )
+    agent_context.save_job_queue_state(
+        {
+            "jobs": [],
+            "worker": {"last_status": "idle", "last_processed": 0, "last_run_at": "", "last_trace_id": ""},
+        }
+    )
+
+    health_result = monitor_module.handle("health")
+    queue_result = monitor_module.handle("queue")
+
+    assert health_result["type"] == "monitor_health"
+    assert health_result["data"]["health_status"] == "warning"
+    assert health_result["data"]["dominant_alert"]["kind"] == "queue_depth"
+    assert queue_result["type"] == "monitor_queue"
+    assert "high_watermark=6" in queue_result["data"]["summary"]
+
+
+def test_assistant_executes_monitor_skill_alerts(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("monitor alerts")
+
+    assert "Monitor alerts:" in result
+
+
+def test_decide_skill_selects_next_action_and_best_option(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    decide_module = _load_module(ROOT / "skills" / "decide" / "script" / "handler.py", "decide_handler_test")
+    agent_context.add_planner_task("memory add catatan hasil decide", status="todo")
+
+    next_result = decide_module.handle("next")
+    between_result = decide_module.handle("between executor next | monitor alerts")
+
+    assert next_result["type"] == "decide_next"
+    assert next_result["data"]["decision"]["command"] == "executor next"
+    assert between_result["type"] == "decide_between"
+    assert between_result["data"]["selected"]["option"] == "executor next"
+
+
+def test_decide_skill_prioritizes_alerts_quiet_hours_and_capability_aliases(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    decide_module = _load_module(ROOT / "skills" / "decide" / "script" / "handler.py", "decide_handler_priority_test")
+
+    agent_context.save_job_queue_state(
+        {
+            "jobs": [
+                {"id": 1, "task_id": 1, "task_text": "task gagal", "status": "failed", "priority": 0},
+            ],
+            "worker": {"last_status": "idle", "last_processed": 0, "last_run_at": "", "last_trace_id": ""},
+        }
+    )
+    alert_result = decide_module.handle("next")
+    alert_between = decide_module.handle("between act run | monitor alerts")
+
+    assert alert_result["data"]["decision"]["command"] == "monitor alerts"
+    assert alert_result["data"]["dominant_signal"] == "failed_jobs"
+    assert alert_between["data"]["selected"]["option"] == "monitor alerts"
+
+    agent_context.save_job_queue_state(
+        {
+            "jobs": [],
+            "worker": {"last_status": "idle", "last_processed": 0, "last_run_at": "", "last_trace_id": ""},
+        }
+    )
+    privacy_controls = PrivacyControlService()
+    privacy_controls.set_quiet_hours(start="00:00", end="23:59", enabled=True)
+    quiet_result = decide_module.handle("next")
+    quiet_between = decide_module.handle("between schedule show | reflect")
+
+    assert quiet_result["data"]["decision"]["command"] == "schedule show"
+    assert quiet_result["data"]["dominant_signal"] == "quiet_hours_active"
+    assert quiet_between["data"]["selected"]["option"] == "schedule show"
+
+
+def test_assistant_executes_decide_skill_next(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.add_planner_task("memory add dari decide assistant", status="todo")
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("decide next")
+
+    assert "Decide next:" in result
+
+
+def test_standard_capability_alias_commands_route_to_existing_skills(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", lambda: _FakeProvider())
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    chat_result = assistant.execute("chat halo")
+    plan_result = assistant.execute("plan list")
+    act_result = assistant.execute("act run memory add alias capability")
+    reflect_result = assistant.execute("reflect")
+    inspect_result = assistant.execute("inspect tree .")
+    persona_result = assistant.execute("persona show")
+    review_result = assistant.execute("review text hasil alias review")
+
+    assert "state terpantau" in chat_result
+    assert "planner" in plan_result.lower() or "task" in plan_result.lower()
+    assert "tersimpan" in act_result.lower()
+    assert "Observasi" in reflect_result
+    assert "Relative Path" in inspect_result
+    assert "# Agent Profile" in persona_result
+    assert "Self-review pada text" in review_result
+
+
+def test_cross_skill_chain_observe_decide_act_executes_ready_task(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    decide_module = _load_module(ROOT / "skills" / "decide" / "script" / "handler.py", "decide_chain_handler_test")
+    monkeypatch.setattr(
+        decide_module,
+        "get_config_status_data",
+        lambda agent_scope=None, roles=(): {
+            "overall": {"status": "healthy"},
+            "runtime": {"queued_jobs": 0, "leased_jobs": 0, "failed_jobs": 0},
+            "scheduler": {"last_status": "idle"},
+            "metrics": {"summary": {"timeouts_total": 0, "errors_total": 0}},
+            "policy": {"policy_denied_count": 0},
+            "privacy_controls": {"quiet_hours_active": False},
+            "issues": [],
+            "scope_filter": {"agent_scope": agent_scope or "", "roles": list(roles)},
+        },
+    )
+    agent_context.save_metrics_state(
+        {
+            "counters": {
+                "events_total": 0,
+                "command_completed_total": 0,
+                "skill_completed_total": 0,
+                "skill_completed_status_timeout": 0,
+                "command_completed_status_error": 0,
+                "skill_completed_status_error": 0,
+                "ai_provider_latency_total": 1,
+            },
+            "timings": {},
+            "token_usage": {},
+            "provider_latency": {
+                "stub:model": {
+                    "provider": "stub",
+                    "model": "model",
+                    "count": 1,
+                    "total_ms": 1,
+                    "max_ms": 1,
+                    "avg_ms": 1.0,
+                    "last_ms": 1,
+                    "last_status": "ok",
+                }
+            },
+            "queue_depth": {},
+            "updated_at": "",
+        }
+    )
+    agent_context.save_job_queue_state({"jobs": [], "worker": {"last_status": "idle", "last_processed": 0, "last_run_at": "", "last_trace_id": ""}})
+    task = agent_context.add_planner_task("memory add hasil chain observe decide act", status="todo")
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    observed = assistant.execute("observe status")
+    decision = decide_module.handle("next")
+    executed = assistant.execute(decision["data"]["decision"]["command"])
+    planner_state = agent_context.load_planner_state()
+    task_state = next(item for item in planner_state["tasks"] if item["id"] == task["id"])
+
+    assert "Observe status:" in observed
+    assert decision["data"]["decision"]["command"] == "executor next"
+    assert "Task #" in executed
+    assert task_state["status"] == "done"
+
+
+def test_cross_skill_chain_review_to_plan_creates_follow_up_task(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    review_result = assistant.execute("review text TODO dan api_key")
+    planner_result = assistant.execute("plan next")
+
+    assert "Self-review pada text" in review_result
+    assert "Task berikutnya adalah #" in planner_result
+    assert "agent-loop next" in planner_result or "follow-up self-review" in planner_result
+
+
+def test_cross_skill_chain_research_to_memory_persists_distilled_note(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: _ResearchProvider()))
+    research_module = _load_module(ROOT / "skills" / "research" / "script" / "handler.py", "research_chain_handler_test")
+
+    research_result = asyncio.run(research_module.handle("fakta penting terbaru"))
+    answer = research_result["data"]["answer"]
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+    memory_result = assistant.execute(f"memory add {answer}")
+    memories = agent_context.load_recent_memories(limit=10)
+
+    assert research_result["type"] == "research_result"
+    assert research_result["data"]["verification_status"] == "web_verified"
+    assert "tersimpan" in memory_result.lower()
+    assert any(answer in entry.get("text", "") for entry in memories)
+
+
+def test_cross_skill_chain_inspect_to_plan_creates_backlog_entry(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "README.md").write_text("# Demo\n\nworkspace chain\n", encoding="utf-8")
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    inspect_result = assistant.execute("inspect read README.md")
+    plan_result = assistant.execute("plan add review README findings")
+    next_result = assistant.execute("plan next")
+
+    assert "README.md" in inspect_result
+    assert "ditambahkan" in plan_result
+    assert "review README findings" in next_result
+
+
+def test_cross_skill_chain_monitor_decide_act_escalates_then_executes(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    decide_module = _load_module(ROOT / "skills" / "decide" / "script" / "handler.py", "decide_monitor_chain_handler_test")
+    agent_context.save_metrics_state(
+        {
+            "counters": {
+                "events_total": 3,
+                "command_completed_total": 1,
+                "skill_completed_total": 1,
+                "skill_completed_status_timeout": 0,
+                "command_completed_status_error": 1,
+                "skill_completed_status_error": 0,
+                "ai_provider_latency_total": 0,
+            },
+            "timings": {},
+            "token_usage": {},
+            "provider_latency": {},
+            "queue_depth": {
+                "runtime_jobs": {
+                    "queued": 0,
+                    "leased": 0,
+                    "done": 0,
+                    "failed": 1,
+                    "requeued": 0,
+                    "current_depth": 0,
+                    "high_watermark": 1,
+                    "samples": 1,
+                }
+            },
+            "updated_at": "",
+        }
+    )
+    agent_context.save_job_queue_state(
+        {
+            "jobs": [
+                {"id": 1, "task_id": 1, "task_text": "task gagal", "status": "failed", "priority": 0},
+            ],
+            "worker": {"last_status": "idle", "last_processed": 0, "last_run_at": "", "last_trace_id": ""},
+        }
+    )
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    monitored = assistant.execute("monitor alerts")
+    decision = decide_module.handle("between act run | monitor alerts")
+    executed = assistant.execute(decision["data"]["selected"]["option"])
+
+    assert "Monitor alerts:" in monitored
+    assert decision["data"]["selected"]["option"] == "monitor alerts"
+    assert "utama=errors (critical)" in executed or "utama=failed_jobs (critical)" in executed
+
+
+def test_cross_skill_chain_persona_reflect_plan_links_preferences_to_follow_up(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", lambda: _FakeProvider())
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    persona_result = assistant.execute("persona set-brevity concise")
+    reflect_result = assistant.execute("reflect")
+    plan_result = assistant.execute("plan add tindak lanjut hasil refleksi persona")
+    next_result = assistant.execute("plan next")
+
+    assert "updated" in persona_result.lower() or "brevity" in persona_result.lower()
+    assert "Observasi" in reflect_result
+    assert "ditambahkan" in plan_result
+    assert "tindak lanjut hasil refleksi persona" in next_result
+
+
+def test_help_lists_standard_aliases_and_recommended_capability_chains(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    help_result = assistant.execute("help")
+
+    assert "Standard capability aliases:" in help_result
+    assert "- chat -> ai" in help_result
+    assert "- plan -> planner" in help_result
+    assert "- act -> executor" in help_result
+    assert "- reflect -> agent-loop" in help_result
+    assert "- inspect -> workspace" in help_result
+    assert "- persona -> profile" in help_result
+    assert "- review -> self-review" in help_result
+    assert "Recommended capability chains:" in help_result
+    assert "- observe -> decide -> act" in help_result
+    assert "- review -> plan" in help_result
+    assert "- research -> memory" in help_result
+    assert "- inspect -> plan" in help_result
 
 
 def test_context_budgeter_truncates_large_prompt_sections(tmp_path, monkeypatch):
@@ -2070,6 +2754,54 @@ def test_assistant_ai_prompt_uses_personality_service_and_runtime_context(tmp_pa
     assert "catatan penting tentang dependency runtime" in system_prompt
 
 
+def test_orchestration_prompt_is_compact_and_capability_level(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    prompt = assistant._get_orchestration_system_prompt("lihat status runtime")
+
+    assert "Aturan inti:" in prompt
+    assert "Contoh singkat:" in prompt
+    assert "32." not in prompt
+    assert "kirim notifikasi build selesai" not in prompt
+    assert "Routing targets:" in prompt
+    assert len(prompt) < 6500
+
+
+def test_heuristic_router_handles_common_runtime_intents_without_ai(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: _FailIfCalledProvider()))
+    (tmp_path / "README.md").write_text("# Demo\n", encoding="utf-8")
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    status_result = assistant.execute("lihat status runtime")
+    alert_result = assistant.execute("lihat alert aktif")
+    decide_result = assistant.execute("pilih next action terbaik")
+    read_result = assistant.execute("baca README.md")
+    tree_result = assistant.execute("lihat struktur file yang ada di workspace")
+    notify_result = assistant.execute("kirim notifikasi build selesai")
+    metrics = get_execution_metrics_snapshot()
+    events = load_execution_events(limit=40)
+
+    assert "Observe status:" in status_result
+    assert "Monitor alerts:" in alert_result
+    assert "Decide next:" in decide_result
+    assert "README.md" in read_result
+    assert "Relative Path" in tree_result
+    assert "Notify send:" in notify_result
+    assert metrics["summary"]["heuristic_routes_total"] >= 6
+    assert metrics["summary"]["ai_requests_total"] == 0
+    assert any(event["event_type"] == "command_routed" and event["status"] == "heuristic" for event in events)
+    status_code, status_payload = build_admin_snapshot("/status")
+    assert status_code == 200
+    assert status_payload["routing"]["heuristic_routes_total"] >= 6
+    assert status_payload["routing"]["ai_routes_total"] == 0
+    assert status_payload["routing"]["heuristic_rate"].endswith("%")
+
+
 def test_ai_route_records_token_usage_in_trace_and_metrics(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setattr(AIProviderFactory, "auto_detect", staticmethod(lambda: _UsageRouteProvider()))
@@ -2082,6 +2814,7 @@ def test_ai_route_records_token_usage_in_trace_and_metrics(tmp_path, monkeypatch
     assert "# Agent Profile" in result
     metrics = get_execution_metrics_snapshot()
     assert metrics["summary"]["ai_requests_total"] == 1
+    assert metrics["summary"]["ai_routes_total"] == 1
     assert metrics["summary"]["ai_total_tokens"] == 18
     assert metrics["summary"]["provider_latency_samples"] == 1
     token_usage = metrics["token_usage"]["_usageroute:test-model-1"]
