@@ -57,10 +57,14 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "path_mode" in build_home_view(payload)
     assert "telegram_in_main_service" in build_services_view(payload)
     provider_step = build_setup_view(payload, step_index=0, draft={"provider": "claude"})
+    telegram_step = build_setup_view(payload, step_index=2, draft={"telegram_dm_policy": "owner", "telegram_require_mention": "false"})
+    dashboard_step = build_setup_view(payload, step_index=3, draft={"dashboard_host": "0.0.0.0", "dashboard_port": 8800})
     interfaces_step = build_setup_view(payload, step_index=4)
     summary_step = build_setup_view(payload, step_index=5)
     assert "[Step] 1/6 - Provider" in provider_step
     assert "provider_draft         : claude" in provider_step
+    assert "dm_policy_draft        : owner" in telegram_step
+    assert "port_draft             : 8800" in dashboard_step
     assert "Per-Dispatch Interfaces" in interfaces_step
     assert "email                  : no global credential form" in interfaces_step
     assert "Current Boundary" in summary_step
@@ -168,3 +172,60 @@ def test_tui_setup_actions_edit_and_save_provider_and_workspace(tmp_path, monkey
     assert "OTONOMASSIST_WORKSPACE_ACCESS=rw" in env_text
     assert any("Provider saved" in item for item in notifications)
     assert any("Workspace access saved" in item for item in notifications)
+
+
+def test_tui_setup_actions_edit_and_save_telegram_and_dashboard(tmp_path, monkeypatch) -> None:
+    env_file = tmp_path / "config.env"
+    state_dir = tmp_path / ".cadiax"
+    monkeypatch.setenv("CADIAX_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("OTONOMASSIST_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("CADIAX_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("OTONOMASSIST_STATE_DIR", str(state_dir))
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    monkeypatch.setattr(agent_context, "DATA_DIR", state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    env_file.write_text(
+        "\n".join(
+            [
+                "TELEGRAM_DM_POLICY=pairing",
+                "TELEGRAM_REQUIRE_MENTION=true",
+                "DASHBOARD_ENABLED=true",
+                "DASHBOARD_HOST=127.0.0.1",
+                "DASHBOARD_PORT=8795",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    app = CadiaxTuiApp(initial_screen="setup")
+    app.status_data = {
+        "ai": {"provider": "openai"},
+        "workspace": {"access": "ro"},
+        "telegram": {"enabled": True, "dm_policy": "pairing", "require_mention": True},
+        "dashboard": {"enabled": True, "host": "127.0.0.1", "port": 8795, "admin_api_url": "http://127.0.0.1:8787"},
+    }
+    app._sync_setup_draft()
+    app.current_screen_name = "setup"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    app.current_setup_step = 2
+    app.action_cycle_setup_field()
+    app.action_alternate_setup_field()
+    app.action_save_setup_step()
+
+    app.current_setup_step = 3
+    app.action_cycle_setup_field()
+    app.action_alternate_setup_field()
+    app.action_save_setup_step()
+
+    env_text = env_file.read_text(encoding="utf-8")
+    assert "TELEGRAM_DM_POLICY=owner" in env_text
+    assert "TELEGRAM_REQUIRE_MENTION=false" in env_text
+    assert "DASHBOARD_HOST=0.0.0.0" in env_text
+    assert "DASHBOARD_PORT=8796" in env_text
+    assert any("Telegram settings saved" in item for item in notifications)
+    assert any("Dashboard access saved" in item for item in notifications)

@@ -34,6 +34,7 @@ SETUP_STEPS: list[tuple[str, str]] = [
 ]
 
 PROVIDER_OPTIONS = ["openai", "claude", "ollama", "lmstudio"]
+TELEGRAM_DM_POLICY_OPTIONS = ["pairing", "owner", "open", "disabled"]
 
 
 class CadiaxTuiApp(App[None]):
@@ -214,6 +215,16 @@ class CadiaxTuiApp(App[None]):
                 f"Dashboard access draft: {'public' if self.setup_draft['dashboard_host'] == '0.0.0.0' else 'local'}",
                 severity="information",
             )
+        elif step_key == "telegram":
+            current = str(self.setup_draft.get("telegram_dm_policy") or "pairing")
+            index = TELEGRAM_DM_POLICY_OPTIONS.index(current) if current in TELEGRAM_DM_POLICY_OPTIONS else 0
+            self.setup_draft["telegram_dm_policy"] = TELEGRAM_DM_POLICY_OPTIONS[
+                (index + 1) % len(TELEGRAM_DM_POLICY_OPTIONS)
+            ]
+            self.notify(
+                f"Telegram DM policy draft: {self.setup_draft['telegram_dm_policy']}",
+                severity="information",
+            )
         self._render_screen("setup")
 
     def action_alternate_setup_field(self) -> None:
@@ -224,6 +235,21 @@ class CadiaxTuiApp(App[None]):
             current = str(self.setup_draft.get("workspace_access") or "ro")
             self.setup_draft["workspace_access"] = "rw" if current == "ro" else "ro"
             self.notify(f"Workspace access draft: {self.setup_draft['workspace_access']}", severity="information")
+            self._render_screen("setup")
+            return
+        if step_key == "dashboard":
+            current_port = int(self.setup_draft.get("dashboard_port") or 8795)
+            self.setup_draft["dashboard_port"] = current_port + 1
+            self.notify(f"Dashboard port draft: {self.setup_draft['dashboard_port']}", severity="information")
+            self._render_screen("setup")
+            return
+        if step_key == "telegram":
+            current = str(self.setup_draft.get("telegram_require_mention") or "true")
+            self.setup_draft["telegram_require_mention"] = "false" if current == "true" else "true"
+            self.notify(
+                f"Telegram require mention draft: {self.setup_draft['telegram_require_mention']}",
+                severity="information",
+            )
             self._render_screen("setup")
 
     def action_save_setup_step(self) -> None:
@@ -238,17 +264,26 @@ class CadiaxTuiApp(App[None]):
             self.notify("Workspace access saved", severity="information")
         elif step_key == "dashboard":
             host = str(self.setup_draft.get("dashboard_host") or "127.0.0.1")
+            port = int(self.setup_draft.get("dashboard_port") or 8795)
             dashboard = self.status_data.get("dashboard", {})
             if bool(dashboard.get("enabled")):
                 enable_dashboard(
                     host=host,
-                    port=int(dashboard.get("port") or 8795),
+                    port=port,
                     admin_api_url=str(dashboard.get("admin_api_url") or "http://127.0.0.1:8787"),
                     install=False,
                     build=False,
                 )
-            persist_env_updates({"DASHBOARD_HOST": host})
+            persist_env_updates({"DASHBOARD_HOST": host, "DASHBOARD_PORT": str(port)})
             self.notify("Dashboard access saved", severity="information")
+        elif step_key == "telegram":
+            persist_env_updates(
+                {
+                    "TELEGRAM_DM_POLICY": str(self.setup_draft.get("telegram_dm_policy") or "pairing"),
+                    "TELEGRAM_REQUIRE_MENTION": str(self.setup_draft.get("telegram_require_mention") or "true"),
+                }
+            )
+            self.notify("Telegram settings saved", severity="information")
         else:
             self.notify("No writable field on this step yet", severity="warning")
             return
@@ -292,6 +327,11 @@ class CadiaxTuiApp(App[None]):
             "provider": str(ai.get("provider") or "openai"),
             "workspace_access": str(workspace.get("access") or "ro"),
             "dashboard_host": str(dashboard.get("host") or "127.0.0.1"),
+            "dashboard_port": int(dashboard.get("port") or 8795),
+            "telegram_dm_policy": str(self.status_data.get("telegram", {}).get("dm_policy") or "pairing"),
+            "telegram_require_mention": "true"
+            if bool(self.status_data.get("telegram", {}).get("require_mention", True))
+            else "false",
         }
 
     @staticmethod
@@ -531,11 +571,13 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0, draft: dict[s
                 "[Telegram]",
                 f"- enabled                : {'yes' if telegram.get('enabled') else 'no'}",
                 f"- dm_policy              : {telegram.get('dm_policy', '-')}",
+                f"- dm_policy_draft        : {draft.get('telegram_dm_policy') or telegram.get('dm_policy', '-')}",
                 f"- group_policy           : {telegram.get('group_policy', '-')}",
+                f"- require_mention_draft  : {draft.get('telegram_require_mention') or '-'}",
                 "- setup global           : yes",
                 "- mutable via wizard     : token, owner IDs, DM/group policy, mention requirement",
                 "- service integration    : ikut service `cadiax`, bukan target utama terpisah",
-                "- quick action           : tekan t untuk toggle enabled",
+                "- quick action           : tekan t untuk toggle enabled, e/a untuk policy/mention, s untuk save",
             ]
         )
     elif step_key == "dashboard":
@@ -546,10 +588,11 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0, draft: dict[s
                 f"- host                   : {dashboard.get('host', '-')}",
                 f"- host_draft             : {draft.get('dashboard_host') or dashboard.get('host', '-')}",
                 f"- port                   : {dashboard.get('port', '-')}",
+                f"- port_draft             : {draft.get('dashboard_port') or dashboard.get('port', '-')}",
                 f"- admin_api_url          : {dashboard.get('admin_api_url', '-')}",
                 "- setup global           : yes",
                 "- mutable via wizard     : enable/disable, access mode, port, admin API URL",
-                "- quick action           : tekan d untuk toggle enabled, e untuk cycle access, s untuk save",
+                "- quick action           : tekan d untuk toggle enabled, e/a untuk access/port, s untuk save",
             ]
         )
     elif step_key == "interfaces":
