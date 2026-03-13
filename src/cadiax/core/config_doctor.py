@@ -708,7 +708,7 @@ def _build_provider_info(env_values: dict[str, str]) -> dict[str, object]:
         fallback_model = env_values.get("OPENAI_FALLBACK_MODEL", "")
         info["config"] = {"base_url": base_url, "model": model}
         if api_key:
-            info["config"]["api_key"] = api_key
+            info["config"]["api_key"] = _mask_value(api_key)
         if fallback_model:
             info["config"]["fallback_model"] = fallback_model
         if not api_key:
@@ -723,7 +723,7 @@ def _build_provider_info(env_values: dict[str, str]) -> dict[str, object]:
         model = env_values.get("CLAUDE_MODEL") or "claude-3-haiku-20240307"
         info["config"] = {"base_url": base_url, "model": model}
         if api_key:
-            info["config"]["api_key"] = api_key
+            info["config"]["api_key"] = _mask_value(api_key)
         if not api_key:
             info["issues"].append("ANTHROPIC_API_KEY tidak ditemukan di .env atau secrets")
         return info

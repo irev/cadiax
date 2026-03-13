@@ -6,7 +6,7 @@ Cadiax menyediakan lifecycle installer yang tegas untuk Windows dan Linux agar u
 
 - `install`
   - untuk first install
-  - gagal jika runtime Cadiax sudah ada
+  - jika runtime sudah ada, installer akan meminta konfirmasi untuk lanjut sebagai `reinstall`
 - `reinstall`
   - untuk memperbarui atau membangun ulang runtime aplikasi
   - default tetap mempertahankan config, state, dan workspace user

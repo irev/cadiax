@@ -1256,6 +1256,37 @@ def test_cli_doctor_reads_openai_api_key_from_env_file(tmp_path, monkeypatch):
     assert "OPENAI_API_KEY tidak ditemukan" not in result.output
 
 
+def test_cli_doctor_json_masks_openai_api_key(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=openai",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+                "OPENAI_API_KEY=sk-from-dotenv-12345678901234567890",
+                "OPENAI_MODEL=gpt-4.1-mini",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    monkeypatch.setattr(agent_context, "get_secret_value", lambda name: None)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["ai"]["config"]["api_key"] == "********...7890"
+    assert "sk-from-dotenv-12345678901234567890" not in result.output
+
+
 def test_cli_doctor_reports_platform_runtime_capabilities(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setenv("OTONOMASSIST_SKILL_TIMEOUT_SECONDS", "12.5")
