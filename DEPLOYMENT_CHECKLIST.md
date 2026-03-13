@@ -25,6 +25,7 @@
   - `scheduler`
   - `admin-api`
   - `conversation-api`
+  - `dashboard` if enabled
 
 ## Privacy And Scope
 
@@ -50,6 +51,11 @@
   - `otonomassist whatsapp send "test" --to <number>`
 - Telegram if enabled:
   - run transport and verify inbound/outbound behavior
+- Monitoring dashboard if enabled:
+  - `otonomassist dashboard status`
+  - `otonomassist dashboard enable --no-install --no-build` if already built
+  - `otonomassist dashboard run`
+  - verify `http://127.0.0.1:8795/api/dashboard`
 
 ## Audit Verification
 

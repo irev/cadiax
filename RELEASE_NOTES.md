@@ -14,12 +14,17 @@ This release closes the architecture checklist from `autonomous_ai_system_spec_e
 - Multichannel continuity and dispatch for Telegram, email, WhatsApp, webhook, and internal delivery
 - Skill execution contracts with explicit schema, timeout behavior, and retry policy
 - External skill isolation in subprocess runtime
+- Optional TypeScript monitoring dashboard with local-only default access, Node service runtime, and generated service wrappers
 - Validation matrix with `13/13` quick-check items marked complete
 
 ## Validation
 
 - Automated verification: `pytest -q`
-- Latest passing result on this branch: `158 passed`
+- Latest passing result on this branch: `188 passed`
+- Dashboard verification:
+  - `npm install`
+  - `npm run build`
+  - local smoke test for `admin API -> dashboard proxy`
 - Validation matrix: `VALIDATION_MATRIX.md`
 
 ## Residual Risk
