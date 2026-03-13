@@ -520,4 +520,4 @@ Yang belum selesai:
 - isolated external skill runner
 - conversational API dan adapter channel tambahan
 
-Target state detail untuk fase berikutnya ada di `TARGET_ARCHITECTURE_V2.md`.
+Target state detail untuk fase berikutnya ada di `docs/architecture/TARGET_ARCHITECTURE_V2.md`.

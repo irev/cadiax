@@ -11,9 +11,9 @@ Jika ada perbedaan antara dokumen ini dengan dokumen lain, maka dokumen ini yang
 
 Dokumen ini disejajarkan dengan:
 
-- `ROADMAP.md`
-- `ARCHITECTURE.md`
-- `TARGET_ARCHITECTURE_V2.md`
+- `docs/architecture/ROADMAP.md`
+- `docs/architecture/ARCHITECTURE.md`
+- `docs/architecture/TARGET_ARCHITECTURE_V2.md`
 
 Posisi implementasi repo saat ini:
 

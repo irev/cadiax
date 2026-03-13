@@ -4,9 +4,9 @@
 
 - Confirm active branch and target commit.
 - Run `pytest -q`.
-- Review `VALIDATION_MATRIX.md`.
-- Review `RELEASE_NOTES.md`.
-- Review `RELEASE_CONFIDENCE_CLOSURE.md`.
+- Review `docs/release/VALIDATION_MATRIX.md`.
+- Review `docs/release/RELEASE_NOTES.md`.
+- Review `docs/release/RELEASE_CONFIDENCE_CLOSURE.md`.
 
 ## Environment
 

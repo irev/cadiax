@@ -45,9 +45,9 @@ Merge branch `feature/opclaw-phase-d-combination` as the new `v1.1.0` architectu
 
 ## Merge Checklist
 
-- review [RELEASE_NOTES.md](/d:/PROJECT/otonomAssist/RELEASE_NOTES.md)
-- review [DEPLOYMENT_CHECKLIST.md](/d:/PROJECT/otonomAssist/DEPLOYMENT_CHECKLIST.md)
-- review [DASHBOARD_PR_DESCRIPTION.md](/d:/PROJECT/otonomAssist/DASHBOARD_PR_DESCRIPTION.md)
+- review [RELEASE_NOTES.md](/d:/PROJECT/otonomAssist/docs/release/RELEASE_NOTES.md)
+- review [DEPLOYMENT_CHECKLIST.md](/d:/PROJECT/otonomAssist/docs/release/DEPLOYMENT_CHECKLIST.md)
+- review [DASHBOARD_PR_DESCRIPTION.md](/d:/PROJECT/otonomAssist/docs/release/DASHBOARD_PR_DESCRIPTION.md)
 - confirm `pytest -q` latest run: `188 passed`
 - confirm dashboard build artifacts can be produced with `npm install` and `npm run build`
 - confirm dashboard smoke path works on target host:

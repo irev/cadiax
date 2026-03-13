@@ -1,6 +1,6 @@
 # Validation Matrix
 
-Source checklist: [autonomous_ai_system_spec_extended.md](./autonomous_ai_system_spec_extended.md), section `14. Checklist Validasi Cepat`.
+Source checklist: [autonomous_ai_system_spec_extended.md](/d:/PROJECT/otonomAssist/docs/specs/autonomous_ai_system_spec_extended.md), section `14. Checklist Validasi Cepat`.
 
 ## Status Matrix
 

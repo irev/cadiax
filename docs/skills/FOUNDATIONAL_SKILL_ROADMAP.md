@@ -28,9 +28,9 @@ Outputs:
 
 Deliverables:
 
-- `CHANGE_REQUEST_FOUNDATIONAL_SKILLS.md`
-- `FOUNDATIONAL_CAPABILITIES.md`
-- `SKILL_READINESS_MATRIX.md`
+- `docs/skills/CHANGE_REQUEST_FOUNDATIONAL_SKILLS.md`
+- `docs/skills/FOUNDATIONAL_CAPABILITIES.md`
+- `docs/skills/SKILL_READINESS_MATRIX.md`
 
 ## Stage 2: Skill Definition Hardening
 

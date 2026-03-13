@@ -14,13 +14,14 @@ Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
 
 ## Acuan Produk
 
-Dokumen acuan utama terbaru adalah `autonomous_ai_system_spec_extended.md`.
+Dokumen acuan utama terbaru ada di `docs/specs/autonomous_ai_system_spec_extended.md`.
 
 Dokumen pendukung:
 
-- `ROADMAP.md`: urutan delivery menuju target rilis `v1.1.0`
-- `TARGET_ARCHITECTURE_V2.md`: target boundary dan module architecture
-- `ARCHITECTURE.md`: snapshot arsitektur implementasi saat ini
+- `docs/architecture/ROADMAP.md`: urutan delivery menuju target rilis `v1.1.0`
+- `docs/architecture/TARGET_ARCHITECTURE_V2.md`: target boundary dan module architecture
+- `docs/architecture/ARCHITECTURE.md`: snapshot arsitektur implementasi saat ini
+- `docs/README.md`: indeks dokumentasi repo
 
 Target resmi repo sekarang bergerak pada baseline rilis `v1.1.0`: seluruh fondasi inti stabil ditambah dashboard monitoring opsional dan service wrapper yang lebih lengkap.
 
@@ -491,11 +492,11 @@ Perubahan ini membuat fondasi saat ini lebih layak dipakai sebagai sistem semi-o
 
 ## Arsitektur
 
-Lihat [ARCHITECTURE.md](/d:/PROJECT/otonomAssist/ARCHITECTURE.md) untuk alur detail runtime, storage, dan loop semi-otonom.
+Lihat [ARCHITECTURE.md](/d:/PROJECT/otonomAssist/docs/architecture/ARCHITECTURE.md) untuk alur detail runtime, storage, dan loop semi-otonom.
 
 Untuk panduan install, first-run, reconfigure, audit config, operasi semi-otonom, dan troubleshooting cepat, lihat [OPERATIONS.md](/d:/PROJECT/otonomAssist/OPERATIONS.md).
 
-Untuk jejak perubahan fitur yang sudah mendarat, lihat [CHANGELOG.md](/d:/PROJECT/otonomAssist/CHANGELOG.md). Untuk arah implementasi berikutnya, lihat [ROADMAP.md](/d:/PROJECT/otonomAssist/ROADMAP.md) yang sekarang dibagi ke:
+Untuk jejak perubahan fitur yang sudah mendarat, lihat [CHANGELOG.md](/d:/PROJECT/otonomAssist/CHANGELOG.md). Untuk arah implementasi berikutnya, lihat [ROADMAP.md](/d:/PROJECT/otonomAssist/docs/architecture/ROADMAP.md) yang sekarang dibagi ke:
 
 - `Phase 1: Semi-Production Hardening`
 - `Phase 2: Autonomous Runtime`

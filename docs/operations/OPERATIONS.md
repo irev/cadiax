@@ -521,7 +521,7 @@ Output skill tidak sesuai format yang diminta
 ## Referensi
 
 - [README.md](/d:/PROJECT/otonomAssist/README.md)
-- [ARCHITECTURE.md](/d:/PROJECT/otonomAssist/ARCHITECTURE.md)
-- [SKILL_FORMAT.md](/d:/PROJECT/otonomAssist/SKILL_FORMAT.md)
+- [ARCHITECTURE.md](/d:/PROJECT/otonomAssist/docs/architecture/ARCHITECTURE.md)
+- [SKILL_FORMAT.md](/d:/PROJECT/otonomAssist/docs/skills/SKILL_FORMAT.md)
 - [CHANGELOG.md](/d:/PROJECT/otonomAssist/CHANGELOG.md)
-- [ROADMAP.md](/d:/PROJECT/otonomAssist/ROADMAP.md)
+- [ROADMAP.md](/d:/PROJECT/otonomAssist/docs/architecture/ROADMAP.md)

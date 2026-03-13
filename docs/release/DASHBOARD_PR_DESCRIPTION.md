@@ -19,7 +19,7 @@ This adds a modern local monitoring dashboard that is separated from the core au
 - added durable dashboard state and access configuration
 - added dashboard visibility into `doctor`
 - added `dashboard` as a generated service target for Linux and Windows wrappers
-- added operator docs in `MONITORING_DASHBOARD.md`
+- added operator docs in `docs/operations/MONITORING_DASHBOARD.md`
 
 ## Architecture
 

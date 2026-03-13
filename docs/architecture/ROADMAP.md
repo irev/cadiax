@@ -2,13 +2,13 @@
 
 Roadmap ini memetakan evolusi OtonomAssist dari fondasi semi-otonom yang sudah ada menuju autonomous agent platform yang lebih matang.
 
-Dokumen acuan utama sekarang adalah `autonomous_ai_system_spec_extended.md`.
+Dokumen acuan utama sekarang adalah `docs/specs/autonomous_ai_system_spec_extended.md`.
 
 Jika ada perbedaan arah antara roadmap ini dan spec tersebut, maka spec yang menjadi referensi utama. Roadmap ini berfungsi sebagai urutan delivery untuk mencapai target rilis `v1.0.0`.
 
 ## Target Release v1.0.0
 
-Target resmi `v1.0.0` adalah menuntaskan seluruh capability inti yang didefinisikan pada `autonomous_ai_system_spec_extended.md`, termasuk:
+Target resmi `v1.1.0` adalah menuntaskan seluruh capability inti yang didefinisikan pada `docs/specs/autonomous_ai_system_spec_extended.md`, termasuk:
 
 - arsitektur modular dan scalable
 - skill management terstandar
@@ -296,9 +296,9 @@ Scheduler, admin API, metrics dasar, dan external approval sudah ada. Yang belum
 
 ## Pemetaan Fase Lanjutan Menuju V2
 
-Dokumen target detail untuk fase berikutnya ada di `TARGET_ARCHITECTURE_V2.md`.
+Dokumen target detail untuk fase berikutnya ada di `docs/architecture/TARGET_ARCHITECTURE_V2.md`.
 
-Phase A-D di bawah ini adalah breakdown implementasi langsung dari `autonomous_ai_system_spec_extended.md` untuk menuntaskan scope `v1.0.0`.
+Phase A-D di bawah ini adalah breakdown implementasi langsung dari `docs/specs/autonomous_ai_system_spec_extended.md` untuk menuntaskan scope `v1.1.0`.
 
 ### Phase A: Service Boundary dan Durable Runtime
 

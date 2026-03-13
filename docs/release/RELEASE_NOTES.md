@@ -2,7 +2,7 @@
 
 ## Scope
 
-This release closes the architecture checklist from `autonomous_ai_system_spec_extended.md` and the advanced maturity combination branch.
+This release closes the architecture checklist from `docs/specs/autonomous_ai_system_spec_extended.md` and the advanced maturity combination branch.
 
 ## Delivered
 
@@ -25,7 +25,7 @@ This release closes the architecture checklist from `autonomous_ai_system_spec_e
   - `npm install`
   - `npm run build`
   - local smoke test for `admin API -> dashboard proxy`
-- Validation matrix: `VALIDATION_MATRIX.md`
+- Validation matrix: `docs/release/VALIDATION_MATRIX.md`
 
 ## Residual Risk
 

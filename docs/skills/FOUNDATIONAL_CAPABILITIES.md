@@ -265,7 +265,7 @@ Use a backward-compatible migration model:
 
 ## Recommended Next Step
 
-Create `SKILL_READINESS_MATRIX.md` to score each current skill and target capability using:
+Create `docs/skills/SKILL_READINESS_MATRIX.md` to score each current skill and target capability using:
 
 - definition maturity
 - functional coverage

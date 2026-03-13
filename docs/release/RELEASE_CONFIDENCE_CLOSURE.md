@@ -6,7 +6,7 @@ Push release confidence from `95%` toward `98-99%` by closing the remaining oper
 
 Companion execution form:
 
-- `RELEASE_CONFIDENCE_WORKSHEET.md`
+- `docs/release/RELEASE_CONFIDENCE_WORKSHEET.md`
 
 ## Exit Condition
 
