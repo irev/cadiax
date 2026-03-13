@@ -1,10 +1,10 @@
-"""OtonomAssist - Autonomous Assistant.
+"""Autonomiq - Autonomous Assistant.
 
 Modular assistant system with skill-based architecture.
 """
 
 __version__ = "1.1.0"
-__author__ = "OtonomAssist Team"
+__author__ = "Autonomiq Team"
 
 from otonomassist.core.assistant import Assistant
 from otonomassist.models.skill import Skill, SkillDefinition

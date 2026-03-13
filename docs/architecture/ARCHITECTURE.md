@@ -1,4 +1,4 @@
-# Arsitektur OtonomAssist
+# Arsitektur Autonomiq
 
 ## Tujuan
 
@@ -362,18 +362,18 @@ Layer konfigurasi sekarang dibagi dua:
 
 Entry point CLI resmi:
 
-- `otonomassist setup`
-- `otonomassist status`
-- `otonomassist doctor`
-- `otonomassist config status`
-- `otonomassist config setup`
-- `otonomassist chat`
-- `otonomassist run "<message>"`
-- `otonomassist worker`
-- `otonomassist scheduler`
-- `otonomassist metrics`
-- `otonomassist api`
-- `otonomassist telegram`
+- `autonomiq setup`
+- `autonomiq status`
+- `autonomiq doctor`
+- `autonomiq config status`
+- `autonomiq config setup`
+- `autonomiq chat`
+- `autonomiq run "<message>"`
+- `autonomiq worker`
+- `autonomiq scheduler`
+- `autonomiq metrics`
+- `autonomiq api`
+- `autonomiq telegram`
 
 ## Platform Layer
 

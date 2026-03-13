@@ -1,4 +1,4 @@
-"""Transport adapters for OtonomAssist."""
+"""Transport adapters for Autonomiq."""
 
 from otonomassist.transports.telegram import TelegramPollingTransport
 

@@ -1,6 +1,6 @@
 # Operations Guide
 
-Panduan ini fokus ke operasi harian OtonomAssist:
+Panduan ini fokus ke operasi harian Autonomiq:
 
 - install
 - first-run
@@ -19,7 +19,7 @@ pip install -e .
 Verifikasi command utama tersedia:
 
 ```bash
-otonomassist status
+autonomiq status
 ```
 
 ## First-Run
@@ -27,7 +27,7 @@ otonomassist status
 Jalankan wizard interaktif:
 
 ```bash
-otonomassist setup
+autonomiq setup
 ```
 
 Wizard akan membantu:
@@ -57,15 +57,15 @@ Gunakan folder ini sebagai lokasi kerja utama dan tempat penyimpanan aset/skill 
 Untuk melihat status konfigurasi:
 
 ```bash
-otonomassist status
+autonomiq status
 ```
 
 Alias yang setara:
 
 ```bash
-otonomassist doctor
-otonomassist config status
-otonomassist doctor --json
+autonomiq doctor
+autonomiq config status
+autonomiq doctor --json
 ```
 
 Di dalam assistant/chat mode:
@@ -84,8 +84,8 @@ Makna status:
 Untuk automation atau audit oleh tool lain, gunakan output JSON:
 
 ```bash
-otonomassist doctor --json
-otonomassist status --json
+autonomiq doctor --json
+autonomiq status --json
 ```
 
 Section `[Platform]` di report membantu menilai kesiapan lintas-OS:
@@ -125,13 +125,13 @@ Contoh temuan umum:
 Untuk mengubah konfigurasi setelah install:
 
 ```bash
-otonomassist setup
+autonomiq setup
 ```
 
 atau:
 
 ```bash
-otonomassist config setup
+autonomiq config setup
 ```
 
 Wizard akan menulis nilai non-secret ke `.env` dan menawarkan update credential di `secrets`.
@@ -141,34 +141,34 @@ Wizard akan menulis nilai non-secret ke `.env` dan menawarkan update credential 
 Mode chat interaktif:
 
 ```bash
-otonomassist chat
+autonomiq chat
 ```
 
 Alias kompatibilitas:
 
 ```bash
-otonomassist -i
+autonomiq -i
 ```
 
 Menjalankan satu pesan langsung:
 
 ```bash
-otonomassist run "list"
-otonomassist run "research siapa presiden saat ini"
-otonomassist run "workspace cari README dalam bentuk tabel"
+autonomiq run "list"
+autonomiq run "research siapa presiden saat ini"
+autonomiq run "workspace cari README dalam bentuk tabel"
 ```
 
 Alias kompatibilitas lama:
 
 ```bash
-otonomassist list
-otonomassist research siapa presiden saat ini
+autonomiq list
+autonomiq research siapa presiden saat ini
 ```
 
 Audit taxonomy skill layer:
 
 ```bash
-otonomassist skills audit
+autonomiq skills audit
 ```
 
 Command ini membantu melihat kategori skill otonom, risk level, idempotency, requirement, dan side effect yang sudah dideklarasikan oleh skill aktif.
@@ -176,12 +176,12 @@ Command ini membantu melihat kategori skill otonom, risk level, idempotency, req
 Runtime job queue:
 
 ```bash
-otonomassist jobs list
-otonomassist jobs enqueue
-otonomassist worker --steps 1 --enqueue-first
-otonomassist worker --steps 10 --until-idle --enqueue-first
-otonomassist worker --steps 5 --until-idle --enqueue-first --max-cycles 3 --interval 2
-otonomassist scheduler --cycles 3 --interval 5 --steps 5
+autonomiq jobs list
+autonomiq jobs enqueue
+autonomiq worker --steps 1 --enqueue-first
+autonomiq worker --steps 10 --until-idle --enqueue-first
+autonomiq worker --steps 5 --until-idle --enqueue-first --max-cycles 3 --interval 2
+autonomiq scheduler --cycles 3 --interval 5 --steps 5
 ```
 
 Ini berguna bila Anda ingin memisahkan tahap `task ready` dari planner dan `job execution` di runtime worker.
@@ -190,7 +190,7 @@ Section `[Runtime]` pada `status/doctor` sekarang juga menunjukkan ringkasan que
 Lihat jejak eksekusi terbaru:
 
 ```bash
-otonomassist history
+autonomiq history
 ```
 
 Command ini membaca event dari `.otonomassist/execution_history.jsonl` dan menampilkan ringkasan eksekusi terbaru beserta `trace_id`.
@@ -198,8 +198,8 @@ Command ini membaca event dari `.otonomassist/execution_history.jsonl` dan menam
 Lihat metrik agregat runtime:
 
 ```bash
-otonomassist metrics
-otonomassist metrics --json
+autonomiq metrics
+autonomiq metrics --json
 ```
 
 Command ini membaca agregat dari `.otonomassist/execution_metrics.json` untuk melihat volume command/skill, timeout, error, dan timing rata-rata.
@@ -216,7 +216,7 @@ Jika sebuah skill melewati batas ini, assistant akan mengembalikan error timeout
 Admin API read-only lokal:
 
 ```bash
-otonomassist api --host 127.0.0.1 --port 8787
+autonomiq api --host 127.0.0.1 --port 8787
 ```
 
 Endpoint yang tersedia:
@@ -230,13 +230,13 @@ Endpoint yang tersedia:
 
 Jika `OTONOMASSIST_ADMIN_TOKEN` diisi, sertakan salah satu:
 
-- header `X-OtonomAssist-Token: <token>`
+- header `X-Autonomiq-Token: <token>`
 - header `Authorization: Bearer <token>`
 
 Conversation API lokal:
 
 ```bash
-otonomassist conversation-api --host 127.0.0.1 --port 8788
+autonomiq conversation-api --host 127.0.0.1 --port 8788
 ```
 
 Endpoint yang tersedia:
@@ -247,7 +247,7 @@ Endpoint yang tersedia:
 
 Jika `OTONOMASSIST_CONVERSATION_TOKEN` diisi, sertakan salah satu:
 
-- header `X-OtonomAssist-Conversation-Token: <token>`
+- header `X-Autonomiq-Conversation-Token: <token>`
 - header `Authorization: Bearer <token>`
 
 ## Service Wrapper
@@ -255,21 +255,21 @@ Jika `OTONOMASSIST_CONVERSATION_TOKEN` diisi, sertakan salah satu:
 Untuk melihat readiness runtime service:
 
 ```bash
-otonomassist service status
+autonomiq service status
 ```
 
 Untuk melihat artifact wrapper yang digenerate:
 
 ```bash
-otonomassist service show worker --runtime posix
-otonomassist service show admin-api --runtime windows
+autonomiq service show worker --runtime posix
+autonomiq service show admin-api --runtime windows
 ```
 
 Untuk menulis wrapper ke disk:
 
 ```bash
-otonomassist service write
-otonomassist service write worker --runtime posix
+autonomiq service write
+autonomiq service write worker --runtime posix
 ```
 
 Default output ada di:
@@ -281,10 +281,10 @@ Default output ada di:
 Untuk menjalankan target sebagai foreground process yang siap disupervise:
 
 ```bash
-otonomassist service run worker --interval 5 --steps 5 --max-loops 0
-otonomassist service run scheduler --interval 60 --steps 5 --max-loops 0
-otonomassist service run admin-api --host 127.0.0.1 --port 8787
-otonomassist service run conversation-api --host 127.0.0.1 --port 8788
+autonomiq service run worker --interval 5 --steps 5 --max-loops 0
+autonomiq service run scheduler --interval 60 --steps 5 --max-loops 0
+autonomiq service run admin-api --host 127.0.0.1 --port 8787
+autonomiq service run conversation-api --host 127.0.0.1 --port 8788
 ```
 
 `--max-loops 0` berarti berjalan terus sampai dihentikan supervisor atau operator.
@@ -303,11 +303,11 @@ workspace/
 Audit asset eksternal:
 
 ```bash
-otonomassist external install <path-lokal-atau-url-git>
-otonomassist external sync
-otonomassist external audit
-otonomassist external approve <name>
-otonomassist external reject <name>
+autonomiq external install <path-lokal-atau-url-git>
+autonomiq external sync
+autonomiq external audit
+autonomiq external approve <name>
+autonomiq external reject <name>
 ```
 
 Di dalam assistant:
@@ -438,13 +438,13 @@ Prinsip:
 Menjalankan transport Telegram:
 
 ```bash
-otonomassist telegram
+autonomiq telegram
 ```
 
 Alias lama masih tersedia:
 
 ```bash
-otonomassist-telegram
+autonomiq-telegram
 ```
 
 Syarat minimal:
@@ -494,16 +494,16 @@ Konfigurasi non-secret:
 
 - pastikan `AI_PROVIDER` benar
 - simpan API key ke `secrets`
-- cek ulang dengan `otonomassist status`
+- cek ulang dengan `autonomiq status`
 
 `status` menunjukkan workspace root tidak ada
 
-- jalankan `otonomassist setup`
+- jalankan `autonomiq setup`
 - perbaiki `OTONOMASSIST_WORKSPACE_ROOT`
 
 Telegram tidak merespons
 
-- cek `otonomassist status`
+- cek `autonomiq status`
 - pastikan token terpasang
 - pastikan `TELEGRAM_OWNER_IDS` terisi
 - bila DM policy `pairing`, user baru harus `/pair`
@@ -511,7 +511,7 @@ Telegram tidak merespons
 Agent terlalu agresif menulis file
 
 - ubah workspace access ke `ro`
-- audit kembali dengan `otonomassist status`
+- audit kembali dengan `autonomiq status`
 
 Output skill tidak sesuai format yang diminta
 

@@ -18,9 +18,9 @@
 
 ## Runtime
 
-- Run `otonomassist doctor --json`.
-- Run `otonomassist service status`.
-- Generate wrappers if needed with `otonomassist service write`.
+- Run `autonomiq doctor --json`.
+- Run `autonomiq service status`.
+- Generate wrappers if needed with `autonomiq service write`.
 - Validate target services:
   - `worker`
   - `scheduler`
@@ -30,12 +30,12 @@
 
 ## Privacy And Scope
 
-- Review `otonomassist privacy show --json`.
+- Review `autonomiq privacy show --json`.
 - Review scoped privacy if used:
-  - `otonomassist privacy show --json --scope <scope> --role <role>`
+  - `autonomiq privacy show --json --scope <scope> --role <role>`
 - Review prune preview before cleanup:
-  - `otonomassist privacy prune --dry-run`
-  - `otonomassist privacy prune --dry-run --scope <scope> --role <role>`
+  - `autonomiq privacy prune --dry-run`
+  - `autonomiq privacy prune --dry-run --scope <scope> --role <role>`
 
 ## Channel Smoke Tests
 
@@ -45,17 +45,17 @@
 - Conversation API:
   - `POST /v1/messages`
 - Notifications:
-  - `otonomassist notify send "test message"`
+  - `autonomiq notify send "test message"`
 - Email if enabled:
-  - `otonomassist email send "test" --to <address>`
+  - `autonomiq email send "test" --to <address>`
 - WhatsApp if enabled:
-  - `otonomassist whatsapp send "test" --to <number>`
+  - `autonomiq whatsapp send "test" --to <number>`
 - Telegram if enabled:
   - run transport and verify inbound/outbound behavior
 - Monitoring dashboard if enabled:
-  - `otonomassist dashboard status`
-  - `otonomassist dashboard enable --no-install --no-build` if already built
-  - `otonomassist dashboard run`
+  - `autonomiq dashboard status`
+  - `autonomiq dashboard enable --no-install --no-build` if already built
+  - `autonomiq dashboard run`
   - verify `http://127.0.0.1:8795/api/dashboard`
 
 ## Audit Verification

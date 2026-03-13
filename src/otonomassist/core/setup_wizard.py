@@ -43,7 +43,7 @@ def run_setup_wizard() -> str:
     env_updates: dict[str, str] = {}
     secret_updates: dict[str, str] = {}
 
-    click.echo("OtonomAssist setup")
+    click.echo("Autonomiq setup")
     click.echo("Wizard ini menyiapkan konfigurasi first-run atau reconfigure yang aman.")
     click.echo(f"Secret backend aktif: {get_secret_storage_info()['backend']}")
     click.echo("")

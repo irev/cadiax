@@ -597,7 +597,7 @@ def _build_posix_artifacts(spec: ServiceTargetSpec, args: list[str]) -> list[Ser
     unit = "\n".join(
         [
             "[Unit]",
-            f"Description=OtonomAssist {spec.name} service",
+            f"Description=Autonomiq {spec.name} service",
             "After=network.target",
             "",
             "[Service]",
@@ -613,7 +613,7 @@ def _build_posix_artifacts(spec: ServiceTargetSpec, args: list[str]) -> list[Ser
             "",
         ]
     )
-    prefix = f"otonomassist-{spec.name}"
+    prefix = f"autonomiq-{spec.name}"
     return [
         ServiceArtifact(filename=f"{prefix}.sh", content=launcher, kind="launcher"),
         ServiceArtifact(filename=f"{prefix}.service", content=unit, kind="systemd-unit"),
@@ -633,18 +633,18 @@ def _build_windows_artifacts(spec: ServiceTargetSpec, args: list[str]) -> list[S
     ps_args = _powershell_quote(command)
     install = "\n".join(
         [
-            f"$TaskName = 'OtonomAssist-{spec.name}'",
+            f"$TaskName = 'Autonomiq-{spec.name}'",
             f"$LauncherCommand = 'cd /d \"{_powershell_quote(str(PROJECT_ROOT), quoted=False)}\" && {ps_args[1:-1]}'",
             "$Action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument \"/c $LauncherCommand\"",
             "$Trigger = New-ScheduledTaskTrigger -AtStartup",
             "$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -RestartCount 999 "
             "-RestartInterval (New-TimeSpan -Minutes 1)",
             "Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger "
-            "-Settings $Settings -Description 'OtonomAssist generated service wrapper' -Force",
+            "-Settings $Settings -Description 'Autonomiq generated service wrapper' -Force",
             "",
         ]
     )
-    prefix = f"otonomassist-{spec.name}"
+    prefix = f"autonomiq-{spec.name}"
     return [
         ServiceArtifact(filename=f"{prefix}.cmd", content=cmd, kind="launcher"),
         ServiceArtifact(filename=f"{prefix}-install.ps1", content=install, kind="scheduled-task"),

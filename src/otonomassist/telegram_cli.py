@@ -1,4 +1,4 @@
-"""Telegram transport runner for OtonomAssist."""
+"""Telegram transport runner for Autonomiq."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from otonomassist.services.interactions import ConversationService
 
 
 def run_telegram_transport(skills_dir: Path) -> None:
-    """Run Telegram long polling for OtonomAssist."""
+    """Run Telegram long polling for Autonomiq."""
     assistant = Assistant(skills_dir=skills_dir)
     assistant.initialize()
     service = ConversationService(assistant)
@@ -36,7 +36,7 @@ def run_telegram_transport(skills_dir: Path) -> None:
     help="Directory containing skill markdown files",
 )
 def main(skills_dir: Path) -> None:
-    """Run Telegram long polling for OtonomAssist."""
+    """Run Telegram long polling for Autonomiq."""
     run_telegram_transport(skills_dir)
 
 

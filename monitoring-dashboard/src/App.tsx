@@ -73,7 +73,7 @@ function App() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <p className="eyebrow">OtonomAssist</p>
+          <p className="eyebrow">Autonomiq</p>
           <h1>Monitoring</h1>
           <p className="lede">Optional local operations dashboard with a separate web runtime.</p>
         </div>

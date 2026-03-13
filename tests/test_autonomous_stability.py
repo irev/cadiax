@@ -2065,7 +2065,7 @@ def test_admin_api_requires_token_when_configured(tmp_path, monkeypatch):
     unauthorized_code, unauthorized_payload = build_admin_snapshot("/status")
     authorized_code, authorized_payload = build_admin_snapshot(
         "/status",
-        headers={"X-OtonomAssist-Token": "token-rahasia"},
+        headers={"X-Autonomiq-Token": "token-rahasia"},
     )
 
     assert unauthorized_code == 401
@@ -2104,7 +2104,7 @@ def test_conversation_api_handles_message_and_returns_trace_metadata(tmp_path, m
     assert payload["identity_id"]
     assert payload["trace_id"]
     assert payload["metadata"]["roles"] == ["api", "trusted"]
-    assert payload["response"].startswith("OtonomAssist - Available commands:")
+    assert payload["response"].startswith("Autonomiq - Available commands:")
 
 
 def test_conversation_service_keeps_identity_continuity_across_channels_with_identity_hint(tmp_path, monkeypatch):
@@ -2225,7 +2225,7 @@ def test_webhook_message_routes_through_conversation_boundary(tmp_path, monkeypa
 
     assert status_code == 200
     assert payload["status"] == "accepted"
-    assert payload["interaction"]["response"].startswith("OtonomAssist - Available commands:")
+    assert payload["interaction"]["response"].startswith("Autonomiq - Available commands:")
     assert payload["interaction"]["identity_id"]
 
 

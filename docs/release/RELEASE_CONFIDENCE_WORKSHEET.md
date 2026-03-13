@@ -47,8 +47,8 @@ Date:
 | Command | Result | Notes |
 |---|---|---|
 | `pytest -q` | [ ] Pass / [ ] Fail | |
-| `otonomassist doctor --json` | [ ] Pass / [ ] Fail | |
-| `otonomassist service status` | [ ] Pass / [ ] Fail | |
+| `autonomiq doctor --json` | [ ] Pass / [ ] Fail | |
+| `autonomiq service status` | [ ] Pass / [ ] Fail | |
 | `npm install` if dashboard enabled | [ ] Pass / [ ] Fail | |
 | `npm run build` if dashboard enabled | [ ] Pass / [ ] Fail | |
 
@@ -97,9 +97,9 @@ Only complete if dashboard is enabled.
 
 | Check | Result | Notes |
 |---|---|---|
-| `otonomassist dashboard status` | [ ] Pass / [ ] Fail | |
-| `otonomassist dashboard enable` | [ ] Pass / [ ] Fail | |
-| `otonomassist dashboard run` | [ ] Pass / [ ] Fail | |
+| `autonomiq dashboard status` | [ ] Pass / [ ] Fail | |
+| `autonomiq dashboard enable` | [ ] Pass / [ ] Fail | |
+| `autonomiq dashboard run` | [ ] Pass / [ ] Fail | |
 | `/api/dashboard` reachable | [ ] Pass / [ ] Fail | |
 | browser UI reachable locally | [ ] Pass / [ ] Fail | |
 | sidebar navigation renders | [ ] Pass / [ ] Fail | |

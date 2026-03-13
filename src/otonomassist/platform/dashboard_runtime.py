@@ -170,7 +170,7 @@ def run_dashboard_service(
     """Run the dashboard server as a foreground process."""
     status = get_dashboard_status()
     if not status["enabled"]:
-        raise RuntimeError("Dashboard disabled. Run `otonomassist dashboard enable` first.")
+        raise RuntimeError("Dashboard disabled. Run `autonomiq dashboard enable` first.")
     if install_if_missing and not status["dependencies_installed"]:
         install_dashboard_dependencies()
         status = get_dashboard_status()

@@ -1,6 +1,6 @@
 # Roadmap
 
-Roadmap ini memetakan evolusi OtonomAssist dari fondasi semi-otonom yang sudah ada menuju autonomous agent platform yang lebih matang.
+Roadmap ini memetakan evolusi Autonomiq dari fondasi semi-otonom yang sudah ada menuju autonomous agent platform yang lebih matang.
 
 Dokumen acuan utama sekarang adalah `docs/specs/autonomous_ai_system_spec_extended.md`.
 

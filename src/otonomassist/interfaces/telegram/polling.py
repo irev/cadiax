@@ -140,7 +140,7 @@ class TelegramPollingTransport:
             if self._is_dm_allowed(chat_id, user_id, silent=True) or self._is_group_allowed(
                 message, chat_id, user_id, text, silent=True
             ):
-                self._send_message(chat_id, "OtonomAssist Telegram siap. Kirim pesan untuk mulai.")
+                self._send_message(chat_id, "Autonomiq Telegram siap. Kirim pesan untuk mulai.")
             else:
                 self._send_message(chat_id, self.auth.get_start_denied_text())
             return True

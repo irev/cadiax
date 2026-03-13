@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The monitoring dashboard is an optional web application that runs as a separate Node.js process and reads telemetry from the local OtonomAssist admin API.
+The monitoring dashboard is an optional web application that runs as a separate Node.js process and reads telemetry from the local Autonomiq admin API.
 
 ## Characteristics
 
@@ -17,25 +17,25 @@ The monitoring dashboard is an optional web application that runs as a separate 
 Enable and prepare the dashboard:
 
 ```powershell
-otonomassist dashboard enable
+autonomiq dashboard enable
 ```
 
 Show dashboard status:
 
 ```powershell
-otonomassist dashboard status
+autonomiq dashboard status
 ```
 
 Run the dashboard foreground service:
 
 ```powershell
-otonomassist dashboard run
+autonomiq dashboard run
 ```
 
 Disable dashboard access:
 
 ```powershell
-otonomassist dashboard disable
+autonomiq dashboard disable
 ```
 
 ## Service Wrappers
@@ -43,14 +43,14 @@ otonomassist dashboard disable
 Render generated wrapper artifacts:
 
 ```powershell
-otonomassist service show dashboard --runtime posix
-otonomassist service show dashboard --runtime windows
+autonomiq service show dashboard --runtime posix
+autonomiq service show dashboard --runtime windows
 ```
 
 Write wrapper artifacts to disk:
 
 ```powershell
-otonomassist service write dashboard
+autonomiq service write dashboard
 ```
 
 ## Default Ports
