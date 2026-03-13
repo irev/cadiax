@@ -1,5 +1,12 @@
 # Cadiax
 
+Cadiax is an autonomous AI agent framework designed to think, plan, and act.
+
+The name "Cadiax" is derived from the Minangkabau word "Cadiak",
+meaning intelligent or wise.
+
+Pronunciation: cha-di-aks (`/tʃa.di.aks/`)
+
 Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
 
 - state persisten antar sesi
