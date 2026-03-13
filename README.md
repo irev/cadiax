@@ -18,11 +18,11 @@ Dokumen acuan utama terbaru adalah `autonomous_ai_system_spec_extended.md`.
 
 Dokumen pendukung:
 
-- `ROADMAP.md`: urutan delivery menuju target rilis `v1.0.0`
+- `ROADMAP.md`: urutan delivery menuju target rilis `v1.1.0`
 - `TARGET_ARCHITECTURE_V2.md`: target boundary dan module architecture
 - `ARCHITECTURE.md`: snapshot arsitektur implementasi saat ini
 
-Target resmi repo adalah menuntaskan seluruh spesifikasi inti pada `v1.0.0`.
+Target resmi repo sekarang bergerak pada baseline rilis `v1.1.0`: seluruh fondasi inti stabil ditambah dashboard monitoring opsional dan service wrapper yang lebih lengkap.
 
 ## Fondasi yang Sudah Jadi
 
