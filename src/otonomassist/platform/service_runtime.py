@@ -15,6 +15,7 @@ from otonomassist.core.execution_history import append_execution_event, new_trac
 from otonomassist.core.execution_metrics import record_execution_metric
 from otonomassist.core.job_runtime import process_job_queue
 from otonomassist.core.scheduler_runtime import run_scheduler
+from otonomassist.platform.dashboard_runtime import DEFAULT_DASHBOARD_HOST, DEFAULT_DASHBOARD_PORT, run_dashboard_service
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -23,7 +24,7 @@ STATE_ROOT = Path(
 ).expanduser().resolve()
 SERVICE_WRAPPER_DIR = (STATE_ROOT / "service-wrappers").resolve()
 ServiceRuntimeName = Literal["windows", "posix"]
-SERVICE_TARGETS = ("worker", "scheduler", "admin-api", "conversation-api")
+SERVICE_TARGETS = ("worker", "scheduler", "admin-api", "conversation-api", "dashboard")
 
 
 @dataclass(slots=True)
@@ -60,7 +61,7 @@ def get_service_runtime_info() -> dict[str, object]:
         "status": "healthy",
         "detail": (
             "Service wrapper generator tersedia untuk worker, scheduler, "
-            "admin API, dan conversation API."
+            "admin API, conversation API, dan monitoring dashboard."
         ),
         "wrapper_output_dir": str(get_service_wrapper_output_dir()),
         "supported_targets": list_service_targets(),
@@ -452,6 +453,14 @@ def run_named_service_target(
 
         run_admin_api(host=host, port=port or spec.default_port or 8787)
         return None
+    if target == "dashboard":
+        run_dashboard_service(
+            host=host or spec.default_host or DEFAULT_DASHBOARD_HOST,
+            port=port or spec.default_port or DEFAULT_DASHBOARD_PORT,
+            install_if_missing=True,
+            build_if_needed=True,
+        )
+        return None
 
     from otonomassist.core.assistant import Assistant
     from otonomassist.services.interactions import ConversationService
@@ -506,6 +515,14 @@ def _service_specs() -> dict[str, ServiceTargetSpec]:
             default_host="127.0.0.1",
             default_port=8788,
         ),
+        "dashboard": ServiceTargetSpec(
+            name="dashboard",
+            description="Monitoring dashboard web service",
+            default_interval_seconds=0.0,
+            default_steps=0,
+            default_host=DEFAULT_DASHBOARD_HOST,
+            default_port=DEFAULT_DASHBOARD_PORT,
+        ),
     }
 
 
@@ -519,6 +536,21 @@ def _get_service_spec(target: str) -> ServiceTargetSpec:
 
 
 def _build_service_run_args(spec: ServiceTargetSpec, skills_dir: Path) -> list[str]:
+    if spec.name == "dashboard":
+        args = [
+            sys.executable,
+            "-m",
+            "otonomassist.cli",
+            "dashboard",
+            "run",
+            "--install-if-missing",
+            "--build-if-needed",
+        ]
+        if spec.default_host is not None:
+            args.extend(["--host", spec.default_host])
+        if spec.default_port is not None:
+            args.extend(["--port", str(spec.default_port)])
+        return args
     args = [
         sys.executable,
         "-m",

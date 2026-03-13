@@ -13,6 +13,7 @@ from otonomassist.core.event_bus import get_event_bus_snapshot
 from otonomassist.core.external_assets import build_external_asset_audit_summary
 from otonomassist.core.job_runtime import get_job_queue_summary
 from otonomassist.core.workspace_bootstrap import get_workspace_bootstrap_status
+from otonomassist.platform.dashboard_runtime import get_dashboard_status
 from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
 from otonomassist.core.scheduler_runtime import get_scheduler_summary
 from otonomassist.interfaces.email import EmailInterfaceService
@@ -79,6 +80,7 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
     privacy_controls = PrivacyControlService().get_diagnostics(agent_scope=agent_scope or None, roles=roles)
     agent_scopes = AgentScopeService().get_snapshot()
     bootstrap = get_workspace_bootstrap_status()
+    dashboard = get_dashboard_status()
     issues = _collect_issues(env_values, provider_info, telegram, workspace_root, workspace_access)
     ai_status = _get_ai_status(provider, env_values, provider_info)
     workspace_status = _get_workspace_status(workspace_root, workspace_access)
@@ -188,6 +190,7 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
         "privacy_controls": privacy_controls,
         "agent_scopes": agent_scopes,
         "bootstrap": bootstrap,
+        "dashboard": dashboard,
         "external_assets": {
             "asset_count": external_assets["asset_count"],
             "event_count": external_assets["event_count"],
@@ -598,6 +601,19 @@ def get_config_status_report() -> str:
         ]
     )
 
+    lines.extend(
+        [
+            "",
+            "[Dashboard]",
+            f"- enabled: {'yes' if data['dashboard']['enabled'] else 'no'}",
+            f"- access_mode: {data['dashboard']['access_mode']}",
+            f"- host: {data['dashboard']['host']}",
+            f"- port: {data['dashboard']['port']}",
+            f"- dependencies_installed: {'yes' if data['dashboard']['dependencies_installed'] else 'no'}",
+            f"- build_ready: {'yes' if data['dashboard']['build_ready'] else 'no'}",
+            f"- admin_api_url: {data['dashboard']['admin_api_url']}",
+        ]
+    )
     lines.extend(
         [
             "",

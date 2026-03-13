@@ -712,6 +712,7 @@ def test_cli_service_status_reports_wrapper_targets(tmp_path, monkeypatch):
     assert "wrapper_output_dir:" in result.output
     assert "worker:" in result.output
     assert "conversation-api:" in result.output
+    assert "dashboard:" in result.output
 
 
 def test_cli_service_show_renders_posix_worker_artifacts(tmp_path, monkeypatch):
@@ -724,6 +725,18 @@ def test_cli_service_show_renders_posix_worker_artifacts(tmp_path, monkeypatch):
     assert "Service Wrapper Artifacts: worker" in result.output
     assert "[otonomassist-worker.service]" in result.output
     assert "service run worker" in result.output
+
+
+def test_cli_service_show_renders_dashboard_artifacts(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["service", "show", "dashboard", "--runtime", "posix"])
+
+    assert result.exit_code == 0
+    assert "Service Wrapper Artifacts: dashboard" in result.output
+    assert "[otonomassist-dashboard.service]" in result.output
+    assert "dashboard run" in result.output
 
 
 def test_cli_service_write_generates_wrapper_files(tmp_path, monkeypatch):
@@ -782,6 +795,44 @@ def test_cli_service_run_uses_named_service_target(tmp_path, monkeypatch):
     assert "service-run-ok" in result.output
     assert captured["target"] == "worker"
     assert captured["max_loops"] == 1
+
+
+def test_cli_dashboard_status_enable_disable_and_doctor_snapshot(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    import otonomassist.platform.dashboard_runtime as dashboard_runtime  # noqa: E402
+
+    install_calls: list[str] = []
+    build_calls: list[str] = []
+
+    monkeypatch.setattr(
+        dashboard_runtime,
+        "install_dashboard_dependencies",
+        lambda: install_calls.append("install") or dashboard_runtime.DashboardCommandResult(["npm", "install"], 0, "", ""),
+    )
+    monkeypatch.setattr(
+        dashboard_runtime,
+        "build_dashboard",
+        lambda: build_calls.append("build") or dashboard_runtime.DashboardCommandResult(["npm", "run", "build"], 0, "", ""),
+    )
+
+    runner = CliRunner()
+    enable_result = runner.invoke(main, ["dashboard", "enable"])
+    status_result = runner.invoke(main, ["dashboard", "status", "--json"])
+    doctor_result = runner.invoke(main, ["doctor"])
+    disable_result = runner.invoke(main, ["dashboard", "disable"])
+
+    payload = json.loads(status_result.output)
+    assert enable_result.exit_code == 0
+    assert status_result.exit_code == 0
+    assert disable_result.exit_code == 0
+    assert install_calls == ["install"]
+    assert build_calls == ["build"]
+    assert payload["enabled"] is True
+    assert payload["host"] == "127.0.0.1"
+    assert payload["port"] == 8795
+    assert "[Dashboard]" in doctor_result.output
+    assert "- enabled: yes" in doctor_result.output
+    assert "Dashboard disabled" in disable_result.output
 
 
 def test_should_recommend_setup_requires_provider_credential_for_remote_provider(tmp_path, monkeypatch):

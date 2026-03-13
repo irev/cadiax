@@ -40,6 +40,15 @@ from otonomassist.platform import (
     run_named_service_target,
     write_service_wrapper_artifacts,
 )
+from otonomassist.platform.dashboard_runtime import (
+    build_dashboard,
+    disable_dashboard,
+    enable_dashboard,
+    get_dashboard_status,
+    install_dashboard_dependencies,
+    render_dashboard_status,
+    run_dashboard_service,
+)
 from otonomassist.interfaces.email import EmailInterfaceService
 from otonomassist.interfaces.whatsapp import WhatsAppInterfaceService
 from otonomassist.services.personality.agent_scope_service import AgentScopeService
@@ -754,6 +763,94 @@ def heartbeat_pulse_command(trigger: str) -> None:
     )
 
 
+@main.group("dashboard")
+def dashboard_group() -> None:
+    """Optional monitoring dashboard commands."""
+
+
+@dashboard_group.command("status")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON dashboard status")
+def dashboard_status_command(as_json: bool) -> None:
+    """Show dashboard installation and access status."""
+    payload = get_dashboard_status()
+    if as_json:
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(render_dashboard_status())
+
+
+@dashboard_group.command("install")
+def dashboard_install_command() -> None:
+    """Install npm dependencies for the dashboard app."""
+    result = install_dashboard_dependencies()
+    click.echo(
+        f"Dashboard npm install completed (code={result.returncode}, command={' '.join(result.command)})"
+    )
+
+
+@dashboard_group.command("enable")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Dashboard bind host")
+@click.option("--port", default=8795, type=int, show_default=True, help="Dashboard bind port")
+@click.option("--admin-api-url", default="http://127.0.0.1:8787", show_default=True, help="Admin API base URL")
+@click.option("--install/--no-install", default=True, show_default=True, help="Automatically run npm install")
+@click.option("--build/--no-build", default=True, show_default=True, help="Automatically build dashboard assets")
+def dashboard_enable_command(host: str, port: int, admin_api_url: str, install: bool, build: bool) -> None:
+    """Enable the dashboard and optionally prepare dependencies/build artifacts."""
+    payload = enable_dashboard(
+        host=host,
+        port=port,
+        admin_api_url=admin_api_url,
+        install=install,
+        build=build,
+    )
+    click.echo(
+        f"Dashboard enabled host={payload['host']} port={payload['port']} "
+        f"access_mode={payload['access_mode']} build_ready={'yes' if payload['build_ready'] else 'no'}"
+    )
+
+
+@dashboard_group.command("disable")
+def dashboard_disable_command() -> None:
+    """Disable dashboard runtime access."""
+    payload = disable_dashboard()
+    click.echo(
+        f"Dashboard disabled host={payload['host']} port={payload['port']} "
+        f"build_ready={'yes' if payload['build_ready'] else 'no'}"
+    )
+
+
+@dashboard_group.command("build")
+def dashboard_build_command() -> None:
+    """Build dashboard client and server assets."""
+    result = build_dashboard()
+    click.echo(
+        f"Dashboard build completed (code={result.returncode}, command={' '.join(result.command)})"
+    )
+
+
+@dashboard_group.command("run")
+@click.option("--host", default=None, help="Override bind host")
+@click.option("--port", default=None, type=int, help="Override bind port")
+@click.option("--admin-api-url", default=None, help="Override admin API base URL")
+@click.option("--install-if-missing/--no-install-if-missing", default=True, show_default=True, help="Run npm install if node_modules is missing")
+@click.option("--build-if-needed/--no-build-if-needed", default=True, show_default=True, help="Run npm build if dist assets are missing")
+def dashboard_run_command(
+    host: str | None,
+    port: int | None,
+    admin_api_url: str | None,
+    install_if_missing: bool,
+    build_if_needed: bool,
+) -> None:
+    """Run dashboard as a foreground service process."""
+    run_dashboard_service(
+        host=host,
+        port=port,
+        admin_api_url=admin_api_url,
+        install_if_missing=install_if_missing,
+        build_if_needed=build_if_needed,
+    )
+
+
 @main.group("service")
 def service_group() -> None:
     """Foreground service runtime and wrapper commands."""
@@ -768,7 +865,7 @@ def service_status_command() -> None:
 @service_group.command("show")
 @click.argument(
     "target",
-    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api"], case_sensitive=False),
+    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api", "dashboard"], case_sensitive=False),
 )
 @click.option(
     "--runtime",
@@ -792,7 +889,7 @@ def service_show_command(target: str, runtime: str, skills_dir: Path) -> None:
 @click.argument(
     "target",
     required=False,
-    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api"], case_sensitive=False),
+    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api", "dashboard"], case_sensitive=False),
 )
 @click.option(
     "--runtime",
@@ -834,7 +931,7 @@ def service_write_command(
 @service_group.command("run")
 @click.argument(
     "target",
-    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api"], case_sensitive=False),
+    type=click.Choice(["worker", "scheduler", "admin-api", "conversation-api", "dashboard"], case_sensitive=False),
 )
 @click.option("--host", default="127.0.0.1", show_default=True, help="Bind address for API targets")
 @click.option("--port", default=None, type=int, help="Bind port for API targets")
