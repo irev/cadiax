@@ -4,6 +4,10 @@
 
 Push release confidence from `95%` toward `98-99%` by closing the remaining operational and deployment-specific risks that are not fully proven by repository tests alone.
 
+Companion execution form:
+
+- `RELEASE_CONFIDENCE_WORKSHEET.md`
+
 ## Exit Condition
 
 Release confidence can be treated as `98-99%` only if all items below are completed and recorded.
