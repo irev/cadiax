@@ -228,7 +228,7 @@ def get_config_status_report() -> str:
     provider = str(data["ai"]["provider"])
 
     lines = [
-        "OtonomAssist Config Status",
+        "Cadiax Config Status",
         "",
         "[Overall]",
         f"- status: {data['overall']['status']}",
@@ -665,9 +665,9 @@ def get_config_status_report() -> str:
 
     lines.extend(["", "[Next Steps]"])
     if data["issues"]:
-        lines.append("- Jalankan `otonomassist setup` untuk memperbaiki konfigurasi inti.")
+        lines.append("- Jalankan `cadiax setup` untuk memperbaiki konfigurasi inti.")
     else:
-        lines.append("- Konfigurasi inti terlihat sehat. Gunakan `otonomassist setup` bila ingin reconfigure.")
+        lines.append("- Konfigurasi inti terlihat sehat. Gunakan `cadiax setup` bila ingin reconfigure.")
     if provider in {"openai", "claude"} and not data["ai"]["configured"]:
         lines.append("- Simpan API key ke encrypted secrets lokal agar provider remote bisa dipakai.")
     if data["telegram"]["token_configured"] and not data["telegram"]["owner_ids"]:

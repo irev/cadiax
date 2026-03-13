@@ -1,4 +1,4 @@
-# Arsitektur OtonomAssist
+# Arsitektur Cadiax
 
 ## Tujuan
 
@@ -362,18 +362,18 @@ Layer konfigurasi sekarang dibagi dua:
 
 Entry point CLI resmi:
 
-- `otonomassist setup`
-- `otonomassist status`
-- `otonomassist doctor`
-- `otonomassist config status`
-- `otonomassist config setup`
-- `otonomassist chat`
-- `otonomassist run "<message>"`
-- `otonomassist worker`
-- `otonomassist scheduler`
-- `otonomassist metrics`
-- `otonomassist api`
-- `otonomassist telegram`
+- `cadiax setup`
+- `cadiax status`
+- `cadiax doctor`
+- `cadiax config status`
+- `cadiax config setup`
+- `cadiax chat`
+- `cadiax run "<message>"`
+- `cadiax worker`
+- `cadiax scheduler`
+- `cadiax metrics`
+- `cadiax api`
+- `cadiax telegram`
 
 ## Platform Layer
 

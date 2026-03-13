@@ -1,4 +1,4 @@
-"""CLI interface for OtonomAssist."""
+"""CLI interface for Cadiax."""
 
 from __future__ import annotations
 
@@ -70,10 +70,10 @@ def _build_conversation_service(skills_dir: Path) -> ConversationService:
 
 
 def _run_interactive(service: ConversationService) -> None:
-    click.echo(f"OtonomAssist v{__version__}")
+    click.echo(f"Cadiax v{__version__}")
     click.echo("Type 'help' for available commands, 'exit' to quit.")
     if should_recommend_setup():
-        click.echo("Konfigurasi awal belum lengkap. Jalankan `otonomassist setup` untuk wizard interaktif.")
+        click.echo("Konfigurasi awal belum lengkap. Jalankan `cadiax setup` untuk wizard interaktif.")
     click.echo("")
 
     while True:
@@ -116,12 +116,12 @@ def _run_interactive(service: ConversationService) -> None:
 @click.option(
     "--setup",
     is_flag=True,
-    help="Compatibility alias for `otonomassist setup`",
+    help="Compatibility alias for `cadiax setup`",
 )
 @click.option(
     "--doctor",
     is_flag=True,
-    help="Compatibility alias for `otonomassist doctor`",
+    help="Compatibility alias for `cadiax doctor`",
 )
 @click.pass_context
 def main(
@@ -131,7 +131,7 @@ def main(
     setup: bool,
     doctor: bool,
 ) -> None:
-    """OtonomAssist - Autonomous Assistant."""
+    """Cadiax - Autonomous Assistant."""
     if setup:
         click.echo(run_setup_wizard())
         return

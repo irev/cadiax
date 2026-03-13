@@ -338,7 +338,11 @@ def _is_authorized(headers: dict[str, str]) -> bool:
     if not expected:
         return True
     supplied = (
-        headers.get("X-OtonomAssist-Conversation-Token")
+        headers.get("X-Cadiax-Conversation-Token")
+        or headers.get("X-Autonomiq-Conversation-Token")
+        or headers.get("X-OtonomAssist-Conversation-Token")
+        or headers.get("X-Cadiax-Token")
+        or headers.get("X-Autonomiq-Token")
         or headers.get("X-OtonomAssist-Token")
         or headers.get("Authorization", "").removeprefix("Bearer ").strip()
     )

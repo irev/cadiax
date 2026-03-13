@@ -18,9 +18,9 @@
 
 ## Runtime
 
-- Run `otonomassist doctor --json`.
-- Run `otonomassist service status`.
-- Generate wrappers if needed with `otonomassist service write`.
+- Run `cadiax doctor --json`.
+- Run `cadiax service status`.
+- Generate wrappers if needed with `cadiax service write`.
 - Validate target services:
   - `worker`
   - `scheduler`
@@ -30,12 +30,12 @@
 
 ## Privacy And Scope
 
-- Review `otonomassist privacy show --json`.
+- Review `cadiax privacy show --json`.
 - Review scoped privacy if used:
-  - `otonomassist privacy show --json --scope <scope> --role <role>`
+  - `cadiax privacy show --json --scope <scope> --role <role>`
 - Review prune preview before cleanup:
-  - `otonomassist privacy prune --dry-run`
-  - `otonomassist privacy prune --dry-run --scope <scope> --role <role>`
+  - `cadiax privacy prune --dry-run`
+  - `cadiax privacy prune --dry-run --scope <scope> --role <role>`
 
 ## Channel Smoke Tests
 
@@ -45,17 +45,17 @@
 - Conversation API:
   - `POST /v1/messages`
 - Notifications:
-  - `otonomassist notify send "test message"`
+  - `cadiax notify send "test message"`
 - Email if enabled:
-  - `otonomassist email send "test" --to <address>`
+  - `cadiax email send "test" --to <address>`
 - WhatsApp if enabled:
-  - `otonomassist whatsapp send "test" --to <number>`
+  - `cadiax whatsapp send "test" --to <number>`
 - Telegram if enabled:
   - run transport and verify inbound/outbound behavior
 - Monitoring dashboard if enabled:
-  - `otonomassist dashboard status`
-  - `otonomassist dashboard enable --no-install --no-build` if already built
-  - `otonomassist dashboard run`
+  - `cadiax dashboard status`
+  - `cadiax dashboard enable --no-install --no-build` if already built
+  - `cadiax dashboard run`
   - verify `http://127.0.0.1:8795/api/dashboard`
 
 ## Audit Verification

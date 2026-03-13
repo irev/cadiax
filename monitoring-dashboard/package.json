@@ -1,6 +1,6 @@
 {
-  "name": "otonomassist-monitoring-dashboard",
-  "version": "1.1.0",
+  "name": "cadiax-monitoring-dashboard",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "scripts": {

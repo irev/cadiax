@@ -2,7 +2,7 @@
 
 ## Target
 
-Merge branch `feature/opclaw-phase-d-combination` as the new `v1.1.0` architecture baseline.
+Merge branch `feature/opclaw-phase-d-combination` as the new `v1.1.1` architecture baseline.
 
 ## Why This Branch Is Merge-Worthy
 
@@ -15,7 +15,7 @@ Merge branch `feature/opclaw-phase-d-combination` as the new `v1.1.0` architectu
 
 1. merge this branch as a normal merge commit
 2. keep the commit history intact because it captures the architecture progression and operational milestones
-3. tag the merge target as `v1.1.0` after post-merge smoke checks pass
+3. tag the merge target as `v1.1.1` after post-merge smoke checks pass
 
 ## Key Commits
 
@@ -59,6 +59,6 @@ Merge branch `feature/opclaw-phase-d-combination` as the new `v1.1.0` architectu
 
 After merge:
 
-1. tag release `v1.1.0`
+1. tag release `v1.1.1`
 2. run host-specific smoke tests for enabled channels and services
 3. decide whether the dashboard should stay local-only or sit behind a reverse proxy

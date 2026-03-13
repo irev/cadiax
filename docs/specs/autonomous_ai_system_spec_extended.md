@@ -3,9 +3,9 @@
 ## 1. Vision
 Membangun AI otonom personal assistant yang modular, scalable, cost-aware, memiliki skill management terstandar, multi-channel communication interface, scheduler untuk tugas rutin, personality yang konsisten, serta kemampuan memahami preferensi dan kebiasaan pengguna secara aman dan terkontrol.
 
-## 1.1 Konteks untuk OtonomAssist
+## 1.1 Konteks untuk Cadiax
 
-Dokumen ini adalah spesifikasi sistem utama dan menjadi source of truth terbaru untuk arah produk OtonomAssist.
+Dokumen ini adalah spesifikasi sistem utama dan menjadi source of truth terbaru untuk arah produk Cadiax.
 
 Jika ada perbedaan antara dokumen ini dengan dokumen lain, maka dokumen ini yang menjadi acuan utama. Dokumen lain berfungsi sebagai turunan implementasi, breakdown fase, atau snapshot arsitektur saat ini.
 

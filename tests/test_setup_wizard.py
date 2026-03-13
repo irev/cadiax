@@ -723,7 +723,7 @@ def test_cli_service_show_renders_posix_worker_artifacts(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert "Service Wrapper Artifacts: worker" in result.output
-    assert "[otonomassist-worker.service]" in result.output
+    assert "[cadiax-worker.service]" in result.output
     assert "service run worker" in result.output
 
 
@@ -735,7 +735,7 @@ def test_cli_service_show_renders_dashboard_artifacts(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert "Service Wrapper Artifacts: dashboard" in result.output
-    assert "[otonomassist-dashboard.service]" in result.output
+    assert "[cadiax-dashboard.service]" in result.output
     assert "dashboard run" in result.output
 
 
@@ -750,8 +750,8 @@ def test_cli_service_write_generates_wrapper_files(tmp_path, monkeypatch):
     )
 
     assert result.exit_code == 0
-    assert (output_dir / "otonomassist-worker.service").exists()
-    assert (output_dir / "otonomassist-worker.sh").exists()
+    assert (output_dir / "cadiax-worker.service").exists()
+    assert (output_dir / "cadiax-worker.sh").exists()
 
 
 def test_cli_service_run_uses_named_service_target(tmp_path, monkeypatch):
@@ -883,13 +883,13 @@ def test_cli_doctor_reports_missing_remote_provider_credential(tmp_path, monkeyp
     result = runner.invoke(main, ["doctor"])
 
     assert result.exit_code == 0
-    assert "OtonomAssist Config Status" in result.output
+    assert "Cadiax Config Status" in result.output
     assert "[Overall]" in result.output
     assert "- status: critical" in result.output
     assert "[AI]" in result.output
     assert "- provider: openai" in result.output
     assert "Credential untuk provider 'openai' belum dikonfigurasi." in result.output
-    assert "Jalankan `otonomassist setup`" in result.output
+    assert "Jalankan `cadiax setup`" in result.output
 
 
 def test_assistant_supports_doctor_and_config_status_commands(tmp_path, monkeypatch):
@@ -918,13 +918,13 @@ def test_assistant_supports_doctor_and_config_status_commands(tmp_path, monkeypa
     doctor_result = assistant.execute("doctor")
     alias_result = assistant.execute("config status")
 
-    assert "OtonomAssist Config Status" in doctor_result
+    assert "Cadiax Config Status" in doctor_result
     assert "[Overall]" in doctor_result
     assert "- status: healthy" in doctor_result
     assert "[Routing]" in doctor_result
     assert "[Routing]" in alias_result
     assert "[Workspace]" in doctor_result
-    assert "OtonomAssist Config Status" in alias_result
+    assert "Cadiax Config Status" in alias_result
     assert "[Overall]" in alias_result
     assert "- status: healthy" in alias_result
     assert "[Workspace]" in alias_result

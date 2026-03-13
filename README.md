@@ -1,4 +1,4 @@
-# OtonomAssist
+# Cadiax
 
 Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
 
@@ -18,12 +18,12 @@ Dokumen acuan utama terbaru ada di `docs/specs/autonomous_ai_system_spec_extende
 
 Dokumen pendukung:
 
-- `docs/architecture/ROADMAP.md`: urutan delivery menuju target rilis `v1.1.0`
+- `docs/architecture/ROADMAP.md`: urutan delivery menuju target rilis `v1.1.1`
 - `docs/architecture/TARGET_ARCHITECTURE_V2.md`: target boundary dan module architecture
 - `docs/architecture/ARCHITECTURE.md`: snapshot arsitektur implementasi saat ini
 - `docs/README.md`: indeks dokumentasi repo
 
-Target resmi repo sekarang bergerak pada baseline rilis `v1.1.0`: seluruh fondasi inti stabil ditambah dashboard monitoring opsional dan service wrapper yang lebih lengkap.
+Target resmi repo sekarang bergerak pada baseline rilis `v1.1.1`: seluruh fondasi inti stabil ditambah dashboard monitoring opsional dan service wrapper yang lebih lengkap.
 
 ## Fondasi yang Sudah Jadi
 
@@ -202,52 +202,52 @@ assistant: ai apa langkah berikutnya berdasarkan seluruh state yang ada?
 
 ```bash
 pip install -e .
-otonomassist setup
-otonomassist status
-otonomassist chat
+cadiax setup
+cadiax status
+cadiax chat
 ```
 
 CLI utama sekarang mendukung subcommand resmi:
 
-- `otonomassist setup`
-- `otonomassist status`
-- `otonomassist doctor`
-- `otonomassist doctor --json`
-- `otonomassist config status`
-- `otonomassist config setup`
-- `otonomassist chat`
-- `otonomassist run "<message>"`
-- `otonomassist telegram`
-- `otonomassist jobs list`
-- `otonomassist jobs enqueue`
-- `otonomassist worker --steps N`
-- `otonomassist worker --until-idle --enqueue-first`
-- `otonomassist metrics`
-- `otonomassist metrics --json`
-- `otonomassist api --host 127.0.0.1 --port 8787`
-- `otonomassist conversation-api --host 127.0.0.1 --port 8788`
-- `otonomassist service status`
-- `otonomassist service show worker --runtime posix`
-- `otonomassist service write`
-- `otonomassist service run worker --interval 5 --steps 5 --max-loops 0`
-- `otonomassist scheduler --cycles 3 --interval 5`
-- `otonomassist external audit`
-- `otonomassist external sync`
-- `otonomassist external install <path-atau-url>`
-- `otonomassist external approve <name>`
-- `otonomassist external reject <name>`
-- `otonomassist skills audit`
+- `cadiax setup`
+- `cadiax status`
+- `cadiax doctor`
+- `cadiax doctor --json`
+- `cadiax config status`
+- `cadiax config setup`
+- `cadiax chat`
+- `cadiax run "<message>"`
+- `cadiax telegram`
+- `cadiax jobs list`
+- `cadiax jobs enqueue`
+- `cadiax worker --steps N`
+- `cadiax worker --until-idle --enqueue-first`
+- `cadiax metrics`
+- `cadiax metrics --json`
+- `cadiax api --host 127.0.0.1 --port 8787`
+- `cadiax conversation-api --host 127.0.0.1 --port 8788`
+- `cadiax service status`
+- `cadiax service show worker --runtime posix`
+- `cadiax service write`
+- `cadiax service run worker --interval 5 --steps 5 --max-loops 0`
+- `cadiax scheduler --cycles 3 --interval 5`
+- `cadiax external audit`
+- `cadiax external sync`
+- `cadiax external install <path-atau-url>`
+- `cadiax external approve <name>`
+- `cadiax external reject <name>`
+- `cadiax skills audit`
 
-`otonomassist setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential.
+`cadiax setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential.
 
-`otonomassist status` dan `otonomassist doctor` menampilkan audit konfigurasi read-only: provider aktif, credential tersedia atau tidak, workspace guard, dan status Telegram. Report sekarang juga memberi level `healthy`, `warning`, atau `critical` agar hasil audit lebih cepat dibaca. Di dalam assistant, audit yang sama juga tersedia lewat command `doctor` atau `config status`.
+`cadiax status` dan `cadiax doctor` menampilkan audit konfigurasi read-only: provider aktif, credential tersedia atau tidak, workspace guard, dan status Telegram. Report sekarang juga memberi level `healthy`, `warning`, atau `critical` agar hasil audit lebih cepat dibaca. Di dalam assistant, audit yang sama juga tersedia lewat command `doctor` atau `config status`.
 
 Alias kompatibilitas lama masih didukung sementara:
 
-- `otonomassist --setup`
-- `otonomassist --doctor`
-- `otonomassist -i`
-- `otonomassist <pesan>`
+- `cadiax --setup`
+- `cadiax --doctor`
+- `cadiax -i`
+- `cadiax <pesan>`
 
 Ekstensi eksternal sekarang diarahkan ke layout workspace:
 
@@ -258,9 +258,9 @@ workspace/
 └── packages/
 ```
 
-`otonomassist external audit` atau command assistant `external audit` menampilkan inventaris asset eksternal yang teraudit, kapan terdeteksi/ditambahkan, dan di mana lokasinya.
-`otonomassist external sync` memaksa scan ulang `workspace/skills-external` lalu memperbarui registry audit bila ada skill baru atau metadata yang berubah.
-`otonomassist external install <path-lokal-atau-url-git>` memasang skill eksternal ke `workspace/skills-external/`, lalu langsung mencatat event audit install dan hasil cek kompatibilitas.
+`cadiax external audit` atau command assistant `external audit` menampilkan inventaris asset eksternal yang teraudit, kapan terdeteksi/ditambahkan, dan di mana lokasinya.
+`cadiax external sync` memaksa scan ulang `workspace/skills-external` lalu memperbarui registry audit bila ada skill baru atau metadata yang berubah.
+`cadiax external install <path-lokal-atau-url-git>` memasang skill eksternal ke `workspace/skills-external/`, lalu langsung mencatat event audit install dan hasil cek kompatibilitas.
 
 Skill eksternal bisa menambahkan manifest opsional `asset.json` di root skill untuk membantu audit dan cek kompatibilitas. Contoh:
 
@@ -295,9 +295,9 @@ OTONOMASSIST_EXTERNAL_CAPABILITY_ALLOW=workspace_read,network
 Contoh:
 
 ```bash
-otonomassist external install <path-atau-url-git>
-otonomassist external approve my-skill
-otonomassist external reject my-skill
+cadiax external install <path-atau-url-git>
+cadiax external approve my-skill
+cadiax external reject my-skill
 ```
 
 Jika ingin perilaku lama yang langsung memuat semua skill eksternal, set:
@@ -309,8 +309,8 @@ OTONOMASSIST_EXTERNAL_SKILL_POLICY=allow-all
 Telegram runner:
 
 ```bash
-otonomassist telegram
-otonomassist-telegram
+cadiax telegram
+cadiax-telegram
 ```
 
 Built-in commands:
@@ -407,7 +407,7 @@ assistant: secrets set telegram_bot_token <token>
 Lalu jalankan:
 
 ```bash
-otonomassist-telegram
+cadiax-telegram
 ```
 
 Policy authorization Telegram sekarang fail-closed:
@@ -439,7 +439,7 @@ Jika tetap ingin memakai environment variable, `TELEGRAM_BOT_TOKEN` masih diduku
 
 ## Validasi Fakta Real-World
 
-OtonomAssist sekarang memiliki skill `research` untuk pertanyaan yang sensitif terhadap:
+Cadiax sekarang memiliki skill `research` untuk pertanyaan yang sensitif terhadap:
 
 - tanggal
 - jadwal/libur
@@ -470,13 +470,13 @@ Fondasi observability minimum juga mulai aktif:
 
 - setiap command inbound sekarang punya `trace_id`
 - event inti seperti `command_received`, `skill_started`, `skill_completed`, dan `command_completed` ditulis ke `.otonomassist/execution_history.jsonl`
-- operator bisa melihat jejak terbaru lewat `otonomassist history`
-- operator bisa melihat agregat metrik lewat `otonomassist metrics`
+- operator bisa melihat jejak terbaru lewat `cadiax history`
+- operator bisa melihat agregat metrik lewat `cadiax metrics`
 - timeout skill global bisa diatur dengan `OTONOMASSIST_SKILL_TIMEOUT_SECONDS`
 - `doctor/status` sekarang juga mendukung output machine-readable lewat `--json`
 - report `doctor/status` sekarang juga memiliki section `[Runtime]` untuk queue worker
 - admin API read-only lokal tersedia untuk `/health`, `/status`, `/metrics`, `/jobs`, dan `/history`
-- jika `OTONOMASSIST_ADMIN_TOKEN` diisi, admin API memerlukan header `X-OtonomAssist-Token` atau `Authorization: Bearer ...`
+- jika `OTONOMASSIST_ADMIN_TOKEN` diisi, admin API memerlukan header `X-Cadiax-Token` atau `Authorization: Bearer ...`
 
 Fondasi runtime Phase 2 juga mulai aktif:
 
