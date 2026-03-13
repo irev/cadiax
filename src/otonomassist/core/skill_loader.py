@@ -254,7 +254,10 @@ class SkillLoader:
 
     def _build_external_handler(self, skill_dir: Path, handler_path: Path, skill_name: str):
         """Wrap external skills in an isolated subprocess runner."""
-        runner_path = Path(__file__).resolve().parents[1] / "platform" / "external_skill_runner.py"
+        runner_spec = importlib.util.find_spec("otonomassist.platform.external_skill_runner")
+        if runner_spec is None or not runner_spec.origin:
+            raise RuntimeError("External skill runner tidak ditemukan.")
+        runner_path = Path(runner_spec.origin).resolve()
 
         def _invoke(args: str) -> Any:
             command = [

@@ -53,7 +53,10 @@ otonomassist-telegram = "otonomassist.telegram_cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-otonomassist = ["py.typed"]
+otonomassist = [
+    "py.typed",
+    "bootstrap_assets/foundation/official/*.md",
+]
 
 [tool.ruff]
 line-length = 100

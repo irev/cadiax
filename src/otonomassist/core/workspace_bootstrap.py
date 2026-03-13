@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,6 @@ from otonomassist.core.execution_history import append_execution_event, new_trac
 from otonomassist.core.workspace_guard import get_workspace_root
 
 
-FOUNDATION_TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "bootstrap_assets" / "foundation" / "official"
 FOUNDATION_TEMPLATE_FILES = (
     "AGENTS.dev.md",
     "AGENTS.md",
@@ -29,6 +29,17 @@ FOUNDATION_TEMPLATE_FILES = (
     "USER.md",
 )
 BOOTSTRAP_MANIFEST_FILE = "bootstrap_manifest.json"
+
+
+def _foundation_template_dir() -> Path:
+    """Return the bundled template directory from installed package data."""
+    return Path(resources.files("otonomassist")).joinpath(
+        "bootstrap_assets",
+        "foundation",
+        "official",
+    )
+
+
 def ensure_workspace_skeleton(
     *,
     force: bool = False,
@@ -45,8 +56,9 @@ def ensure_workspace_skeleton(
 
     written: list[str] = []
     existing: list[str] = []
+    template_dir = _foundation_template_dir()
     for name in FOUNDATION_TEMPLATE_FILES:
-        source = FOUNDATION_TEMPLATE_DIR / name
+        source = template_dir / name
         target = workspace_root / name
         if target.exists() and not force:
             existing.append(name)
@@ -84,7 +96,7 @@ def get_workspace_bootstrap_status() -> dict[str, Any]:
             manifest = {}
     return {
         "template_count": len(FOUNDATION_TEMPLATE_FILES),
-        "bundled_template_dir": str(FOUNDATION_TEMPLATE_DIR),
+        "bundled_template_dir": str(_foundation_template_dir()),
         "workspace_seeded_count": len(seeded_files),
         "workspace_seeded_files": seeded_files,
         "manifest_file": str(manifest_path),

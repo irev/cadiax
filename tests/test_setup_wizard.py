@@ -80,6 +80,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "JOB_QUEUE_FILE", data_dir / "job_queue.json")
     monkeypatch.setattr(agent_context, "SCHEDULER_STATE_FILE", data_dir / "scheduler_state.json")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", data_dir)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
     agent_context.ensure_agent_storage()
 

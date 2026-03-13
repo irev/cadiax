@@ -7,14 +7,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from otonomassist.core import agent_context
 from otonomassist.core.agent_context import get_next_planner_task, load_planner_state, save_planner_state
 from otonomassist.core.result_builder import build_result
 from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = PROJECT_ROOT / ".otonomassist"
-PLANNER_FILE = DATA_DIR / "planner.json"
+
+
+def _planner_file() -> Path:
+    """Return the effective planner state file at call time."""
+    return agent_context.PLANNER_FILE
 
 
 def handle(args: str) -> str:
@@ -61,8 +65,9 @@ def _usage() -> str:
 
 
 def _ensure_storage() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not PLANNER_FILE.exists():
+    planner_file = _planner_file()
+    planner_file.parent.mkdir(parents=True, exist_ok=True)
+    if not planner_file.exists():
         _save_state({"goal": "", "tasks": []})
 
 
@@ -72,8 +77,9 @@ def _load_state() -> dict[str, Any]:
 
 
 def _save_state(state: dict[str, Any]) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    ensure_internal_state_write_allowed(PLANNER_FILE)
+    planner_file = _planner_file()
+    planner_file.parent.mkdir(parents=True, exist_ok=True)
+    ensure_internal_state_write_allowed(planner_file)
     save_planner_state(state)
 
 
