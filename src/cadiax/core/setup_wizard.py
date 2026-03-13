@@ -146,6 +146,18 @@ def run_setup_wizard() -> str:
     )
 
 
+def persist_env_updates(env_updates: dict[str, str]) -> Path:
+    """Persist env updates and refresh runtime helpers."""
+    env_file = _get_env_file()
+    _upsert_env_file(env_file, env_updates)
+    _apply_runtime_env(env_updates)
+    path_layout.load_runtime_env()
+    refresh_workspace_settings()
+    agent_context.refresh_runtime_paths()
+    refresh_secure_storage_paths()
+    return env_file
+
+
 def _collect_provider_settings(
     provider: str,
     env_values: dict[str, str],

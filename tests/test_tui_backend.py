@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from click.testing import CliRunner
 
+import cadiax.core.agent_context as agent_context
+import cadiax.core.setup_wizard as setup_wizard
 from cadiax.cli import main
+from cadiax.platform.dashboard_runtime import load_dashboard_state
 from cadiax.tui.app import (
+    CadiaxTuiApp,
     build_channels_view,
     build_doctor_view,
     build_home_view,
@@ -71,3 +77,37 @@ def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert called["screen"] == "services"
+
+
+def test_tui_toggle_actions_update_dashboard_and_telegram(tmp_path, monkeypatch) -> None:
+    env_file = tmp_path / "config.env"
+    state_dir = tmp_path / ".cadiax"
+    monkeypatch.setenv("CADIAX_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("OTONOMASSIST_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("CADIAX_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("OTONOMASSIST_STATE_DIR", str(state_dir))
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    monkeypatch.setattr(agent_context, "DATA_DIR", state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    env_file.write_text("TELEGRAM_ENABLED=false\nDASHBOARD_ENABLED=false\n", encoding="utf-8")
+
+    app = CadiaxTuiApp(initial_screen="setup")
+    app.status_data = {
+        "dashboard": {"enabled": False, "host": "127.0.0.1", "port": 8795, "admin_api_url": "http://127.0.0.1:8787"},
+        "telegram": {"enabled": False},
+    }
+    app.current_screen_name = "setup"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    app.action_toggle_telegram()
+    app.action_toggle_dashboard()
+
+    env_text = env_file.read_text(encoding="utf-8")
+    assert "TELEGRAM_ENABLED=true" in env_text
+    assert "DASHBOARD_ENABLED=true" in env_text
+    assert load_dashboard_state()["enabled"] is True
+    assert any("Telegram enabled" in item for item in notifications)
+    assert any("Dashboard enabled" in item for item in notifications)

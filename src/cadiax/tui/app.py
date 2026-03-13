@@ -10,7 +10,9 @@ from textual.widgets import Footer, Header, OptionList, Static
 
 from cadiax.core.config_doctor import get_config_status_data
 from cadiax.core.path_layout import get_runtime_layout_snapshot
+from cadiax.core.setup_wizard import persist_env_updates
 from cadiax.platform import get_service_runtime_info
+from cadiax.platform.dashboard_runtime import disable_dashboard, enable_dashboard
 
 
 SCREEN_OPTIONS: list[tuple[str, str]] = [
@@ -72,6 +74,8 @@ class CadiaxTuiApp(App[None]):
         ("6", "go_setup", "Setup"),
         ("n", "next_setup_step", "Next setup step"),
         ("p", "prev_setup_step", "Previous setup step"),
+        ("d", "toggle_dashboard", "Toggle Dashboard"),
+        ("t", "toggle_telegram", "Toggle Telegram"),
         ("r", "refresh_data", "Refresh"),
     ]
 
@@ -133,6 +137,47 @@ class CadiaxTuiApp(App[None]):
             return
         self.current_setup_step = max(self.current_setup_step - 1, 0)
         self._render_screen("setup")
+
+    def action_toggle_dashboard(self) -> None:
+        if self.current_screen_name not in {"channels", "services", "setup"}:
+            return
+        dashboard = self.status_data.get("dashboard", {})
+        if bool(dashboard.get("enabled")):
+            disable_dashboard()
+            persist_env_updates({"DASHBOARD_ENABLED": "false"})
+            self.notify("Dashboard disabled", severity="information")
+        else:
+            enabled = enable_dashboard(
+                host=str(dashboard.get("host") or "127.0.0.1"),
+                port=int(dashboard.get("port") or 8795),
+                admin_api_url=str(dashboard.get("admin_api_url") or "http://127.0.0.1:8787"),
+                install=False,
+                build=False,
+            )
+            persist_env_updates(
+                {
+                    "DASHBOARD_ENABLED": "true",
+                    "DASHBOARD_HOST": str(enabled.get("host") or "127.0.0.1"),
+                    "DASHBOARD_PORT": str(int(enabled.get("port") or 8795)),
+                    "DASHBOARD_ADMIN_API_URL": str(enabled.get("admin_api_url") or "http://127.0.0.1:8787"),
+                }
+            )
+            self.notify("Dashboard enabled", severity="information")
+        self._reload()
+        self._render_screen(self.current_screen_name)
+
+    def action_toggle_telegram(self) -> None:
+        if self.current_screen_name not in {"channels", "setup"}:
+            return
+        telegram = self.status_data.get("telegram", {})
+        currently_enabled = bool(telegram.get("enabled"))
+        persist_env_updates({"TELEGRAM_ENABLED": "false" if currently_enabled else "true"})
+        self.notify(
+            f"Telegram {'disabled' if currently_enabled else 'enabled'}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen(self.current_screen_name)
 
     def _reload(self) -> None:
         self.status_data = get_config_status_data()
@@ -199,6 +244,7 @@ def build_home_view(data: dict[str, Any]) -> str:
         "- Tekan 1/2/3/4 untuk pindah layar",
         "- Tekan 5/6 untuk layanan dan setup coverage",
         "- Saat di Setup, tekan n/p untuk pindah step",
+        "- Tekan d/t untuk toggle dashboard atau Telegram pada layar terkait",
         "- Tekan r untuk refresh snapshot",
         "- Tekan q untuk keluar",
     ]
@@ -332,6 +378,9 @@ def build_services_view(data: dict[str, Any]) -> str:
             f"- telegram_in_main_service: {'yes' if data.get('telegram', {}).get('enabled') else 'no'}",
             f"- dashboard_enabled       : {'yes' if dashboard.get('enabled') else 'no'}",
             "- note                    : Telegram ikut service `cadiax`; bukan service utama terpisah",
+            "",
+            "[Actions]",
+            "- d                       : toggle dashboard enable/disable",
         ]
     )
     return "\n".join(lines)
@@ -390,6 +439,7 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0) -> str:
                 "- setup global           : yes",
                 "- mutable via wizard     : token, owner IDs, DM/group policy, mention requirement",
                 "- service integration    : ikut service `cadiax`, bukan target utama terpisah",
+                "- quick action           : tekan t untuk toggle enabled",
             ]
         )
     elif step_key == "dashboard":
@@ -402,6 +452,7 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0) -> str:
                 f"- admin_api_url          : {dashboard.get('admin_api_url', '-')}",
                 "- setup global           : yes",
                 "- mutable via wizard     : enable/disable, access mode, port, admin API URL",
+                "- quick action           : tekan d untuk toggle enabled",
             ]
         )
     elif step_key == "interfaces":
@@ -427,8 +478,8 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0) -> str:
                 "",
                 "[Current Boundary]",
                 "- TUI sudah punya wizard step-by-step view",
-                "- mutasi konfigurasi utama masih dilakukan oleh `cadiax setup` sampai phase T2",
-                "- phase berikutnya: pindahkan write flow setup ke kontrol TUI yang memakai helper yang sama",
+                "- mutasi cepat yang sudah ada: toggle Telegram dan dashboard",
+                "- `cadiax setup` tetap jadi jalur write penuh sampai phase T2",
             ]
         )
     return "\n".join(lines)
