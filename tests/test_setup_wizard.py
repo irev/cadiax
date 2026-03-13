@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -14,7 +17,11 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from otonomassist.cli import main  # noqa: E402
+import otonomassist.cli as cli_module  # noqa: E402
 from otonomassist.core import agent_context, workspace_guard  # noqa: E402
+from otonomassist.core.admin_api import build_admin_snapshot  # noqa: E402
+from otonomassist.core.execution_history import load_execution_events  # noqa: E402
+from otonomassist.core.runtime_interaction import bind_interaction_context  # noqa: E402
 from otonomassist.core.assistant import Assistant  # noqa: E402
 from otonomassist.core.skill_loader import SkillLoader  # noqa: E402
 from otonomassist.core.skill_registry import SkillRegistry  # noqa: E402
@@ -22,7 +29,17 @@ import otonomassist.core.secure_storage as secure_storage  # noqa: E402
 import otonomassist.core.setup_wizard as setup_wizard  # noqa: E402
 import otonomassist.core.external_assets as external_assets  # noqa: E402
 import otonomassist.core.external_installer as external_installer  # noqa: E402
+from otonomassist.core.event_bus import get_event_bus_snapshot  # noqa: E402
 from otonomassist.platform import run_process  # noqa: E402
+from otonomassist.services.interactions import InteractionRequest  # noqa: E402
+
+
+def _load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    return module
 
 
 def _configure_temp_agent_state(tmp_path, monkeypatch):
@@ -45,6 +62,18 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "PLANNER_FILE", data_dir / "planner.json")
     monkeypatch.setattr(agent_context, "LESSONS_FILE", data_dir / "lessons.md")
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
+    monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
+    monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
+    monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
+    monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
+    monkeypatch.setattr(agent_context, "PROACTIVE_INSIGHTS_FILE", data_dir / "proactive_insights.json")
+    monkeypatch.setattr(agent_context, "HEARTBEAT_STATE_FILE", data_dir / "heartbeat.json")
+    monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
+    monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
+    monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
+    monkeypatch.setattr(agent_context, "EMAIL_MESSAGES_FILE", data_dir / "email_messages.json")
+    monkeypatch.setattr(agent_context, "WHATSAPP_MESSAGES_FILE", data_dir / "whatsapp_messages.json")
+    monkeypatch.setattr(agent_context, "PRIVACY_CONTROLS_FILE", data_dir / "privacy_controls.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -125,6 +154,687 @@ def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypat
     assert secrets_state["secrets"]["telegram_bot_token"]["encrypted_value"] == "enc:tg-test-token"
 
 
+def test_cli_conversation_api_command_starts_separate_service(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_conversation_api(service, host, port):
+        captured["service"] = service
+        captured["host"] = host
+        captured["port"] = port
+
+    monkeypatch.setattr(cli_module, "run_conversation_api", fake_run_conversation_api)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["conversation-api", "--host", "0.0.0.0", "--port", "8790"])
+
+    assert result.exit_code == 0
+    assert "Conversation API listening on http://0.0.0.0:8790" in result.output
+    assert captured["host"] == "0.0.0.0"
+    assert captured["port"] == 8790
+    assert captured["service"].__class__.__name__ == "ConversationService"
+
+
+def test_cli_notify_send_dispatches_notification(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["notify", "send", "halo operator", "--channel", "operator", "--title", "Alert", "--target", "cli-user"],
+    )
+
+    state = agent_context.load_notification_state()
+    assert result.exit_code == 0
+    assert "Notification #1 dispatched via operator" in result.output
+    assert state["notifications"][0]["message"] == "halo operator"
+
+
+def test_cli_notify_send_supports_multichannel_delivery_batch(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "notify",
+            "send",
+            "halo operator",
+            "--title",
+            "Alert",
+            "--delivery",
+            "email:ops@example.com",
+            "--delivery",
+            "whatsapp:+628123456789",
+            "--delivery",
+            "webhook:deploy-hook",
+        ],
+    )
+
+    notification_state = agent_context.load_notification_state()
+    email_state = agent_context.load_email_message_state()
+    whatsapp_state = agent_context.load_whatsapp_message_state()
+    assert result.exit_code == 0
+    assert "Notification batch" in result.output
+    assert len(notification_state["notifications"]) == 3
+    assert notification_state["notifications"][0]["metadata"]["notification_batch_id"]
+    assert email_state["messages"][0]["to_address"] == "ops@example.com"
+    assert whatsapp_state["messages"][0]["phone_number"] == "+628123456789"
+
+
+def test_cli_email_send_dispatches_email_notification(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["email", "send", "laporan siap", "--to", "ops@example.com", "--subject", "Daily Report"],
+    )
+
+    email_state = agent_context.load_email_message_state()
+    notification_state = agent_context.load_notification_state()
+    assert result.exit_code == 0
+    assert "Email #1 queued to ops@example.com" in result.output
+    assert email_state["messages"][0]["subject"] == "Daily Report"
+    assert notification_state["notifications"][0]["channel"] == "email"
+
+
+def test_cli_whatsapp_send_dispatches_whatsapp_notification(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["whatsapp", "send", "laporan siap", "--to", "+628123456789", "--name", "Budi"],
+    )
+
+    whatsapp_state = agent_context.load_whatsapp_message_state()
+    notification_state = agent_context.load_notification_state()
+    assert result.exit_code == 0
+    assert "WhatsApp #1 queued to +628123456789" in result.output
+    assert whatsapp_state["messages"][0]["display_name"] == "Budi"
+    assert notification_state["notifications"][0]["channel"] == "whatsapp"
+
+
+def test_cli_privacy_export_and_delete_memory_controls(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.append_memory_entry("catatan privat satu", source="manual")
+    agent_context.save_memory_summary_state(
+        {
+            "summaries": [{"topic": "planner", "summary": "ringkasan"}],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "prune_candidates": 0,
+        }
+    )
+    export_path = tmp_path / "privacy-export.json"
+
+    runner = CliRunner()
+    export_result = runner.invoke(main, ["privacy", "export", "--output", str(export_path)])
+    delete_result = runner.invoke(main, ["privacy", "delete-memory"])
+
+    assert export_result.exit_code == 0
+    assert export_path.exists()
+    exported = json.loads(export_path.read_text(encoding="utf-8"))
+    assert exported["memory_entries"][0]["text"] == "catatan privat satu"
+    assert delete_result.exit_code == 0
+    assert agent_context.load_all_memories() == []
+    assert agent_context.load_memory_summary_state()["summaries"] == []
+
+
+def test_cli_privacy_retention_prune_and_delete_personal_data(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.replace_memory_entries(
+        [
+            {
+                "id": 1,
+                "timestamp": "2024-01-01T00:00:00+00:00",
+                "source": "manual",
+                "text": "catatan lama",
+            }
+        ]
+    )
+    agent_context.save_notification_state(
+        {
+            "notifications": [
+                {
+                    "id": 1,
+                    "channel": "email",
+                    "title": "lama",
+                    "message": "lama",
+                    "target": "ops@example.com",
+                    "trace_id": "",
+                    "status": "queued",
+                    "metadata": {},
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2024-01-01T00:00:00+00:00",
+        }
+    )
+    agent_context.save_email_message_state(
+        {
+            "messages": [
+                {
+                    "id": 1,
+                    "direction": "outbound",
+                    "to_address": "ops@example.com",
+                    "subject": "lama",
+                    "body": "lama",
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2024-01-01T00:00:00+00:00",
+        }
+    )
+    agent_context.save_episode_state(
+        {
+            "episodes": [
+                {
+                    "trace_id": "trace-old",
+                    "status": "ok",
+                    "summary": "lama",
+                    "last_timestamp": "2024-01-01T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2024-01-01T00:00:00+00:00",
+            "episodes_analyzed": 1,
+        }
+    )
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "old",
+                    "confidence": "low",
+                    "summary": "lama",
+                    "reason": "old",
+                    "created_at": "2024-01-01T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2024-01-01T00:00:00+00:00",
+            "insights_generated": 1,
+        }
+    )
+
+    runner = CliRunner()
+    retention_result = runner.invoke(main, ["privacy", "retention", "--days", "30"])
+    prune_result = runner.invoke(main, ["privacy", "prune"])
+    delete_result = runner.invoke(main, ["privacy", "delete-personal-data"])
+
+    assert retention_result.exit_code == 0
+    assert "30 day" in retention_result.output
+    assert prune_result.exit_code == 0
+    assert "Pruned" in prune_result.output
+    assert delete_result.exit_code == 0
+    assert agent_context.load_notification_state()["notifications"] == []
+    assert agent_context.load_email_message_state()["messages"] == []
+    assert agent_context.load_episode_state()["episodes"] == []
+    assert agent_context.load_proactive_insight_state()["insights"] == []
+
+
+def test_cli_privacy_prune_preview_supports_scope_filter(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    agent_context.replace_memory_entries(
+        [
+            {
+                "id": 1,
+                "timestamp": "2024-01-01T00:00:00+00:00",
+                "source": "manual",
+                "text": "catatan default lama",
+                "agent_scope": "default",
+            },
+            {
+                "id": 2,
+                "timestamp": "2024-01-01T00:00:00+00:00",
+                "source": "manual",
+                "text": "catatan finance lama",
+                "agent_scope": "finance-agent",
+            },
+        ]
+    )
+    agent_context.save_session_state(
+        {
+            "sessions": [
+                {
+                    "id": "session_1",
+                    "identity_id": "identity_1",
+                    "source": "api",
+                    "raw_session_id": "default",
+                    "agent_scope": "default",
+                    "last_seen_at": "2024-01-01T00:00:00+00:00",
+                },
+                {
+                    "id": "session_2",
+                    "identity_id": "identity_2",
+                    "source": "api",
+                    "raw_session_id": "finance",
+                    "agent_scope": "finance-agent",
+                    "roles": ["finance"],
+                    "last_seen_at": "2024-01-01T00:00:00+00:00",
+                },
+            ],
+            "updated_at": "2024-01-01T00:00:00+00:00",
+        }
+    )
+    runner = CliRunner()
+    retention_result = runner.invoke(main, ["privacy", "retention", "--days", "30"])
+    preview_result = runner.invoke(
+        main,
+        ["privacy", "prune", "--dry-run", "--scope", "finance-agent", "--role", "finance"],
+    )
+
+    assert retention_result.exit_code == 0
+    assert preview_result.exit_code == 0
+    assert "Prune preview total=" in preview_result.output
+    assert "scope=finance-agent" in preview_result.output
+
+
+def test_cli_privacy_show_and_quiet_hours_configuration(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    update_result = runner.invoke(main, ["privacy", "quiet-hours", "--start", "21:30", "--end", "06:30"])
+    show_result = runner.invoke(main, ["privacy", "show"])
+    json_result = runner.invoke(main, ["privacy", "show", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert update_result.exit_code == 0
+    assert "Quiet hours updated" in update_result.output
+    assert show_result.exit_code == 0
+    assert "Privacy Controls" in show_result.output
+    assert "- quiet_hours_start: 21:30" in show_result.output
+    assert payload["quiet_hours"]["start"] == "21:30"
+    assert payload["quiet_hours"]["end"] == "06:30"
+
+
+def test_cli_privacy_show_and_export_support_scope_filter(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    agent_context.replace_memory_entries(
+        [
+            {
+                "id": 1,
+                "timestamp": "2026-03-12T00:00:00+00:00",
+                "source": "manual",
+                "text": "catatan default",
+                "agent_scope": "default",
+            },
+            {
+                "id": 2,
+                "timestamp": "2026-03-12T01:00:00+00:00",
+                "source": "manual",
+                "text": "catatan finance",
+                "agent_scope": "finance-agent",
+            },
+        ]
+    )
+    agent_context.save_notification_state(
+        {
+            "notifications": [
+                {
+                    "id": 1,
+                    "channel": "internal",
+                    "title": "default",
+                    "message": "default",
+                    "target": "",
+                    "trace_id": "",
+                    "status": "queued",
+                    "agent_scope": "default",
+                    "roles": ["approved"],
+                    "metadata": {},
+                    "created_at": "2026-03-12T00:00:00+00:00",
+                },
+                {
+                    "id": 2,
+                    "channel": "internal",
+                    "title": "finance",
+                    "message": "finance",
+                    "target": "",
+                    "trace_id": "",
+                    "status": "queued",
+                    "agent_scope": "finance-agent",
+                    "roles": ["finance"],
+                    "metadata": {},
+                    "created_at": "2026-03-12T01:00:00+00:00",
+                },
+            ],
+            "updated_at": "2026-03-12T01:00:00+00:00",
+        }
+    )
+    agent_context.save_identity_state(
+        {
+            "identities": [
+                {"id": "identity_1", "agent_scopes": ["default"], "last_agent_scope": "default"},
+                {"id": "identity_2", "agent_scopes": ["finance-agent"], "last_agent_scope": "finance-agent"},
+            ],
+            "updated_at": "2026-03-12T01:00:00+00:00",
+        }
+    )
+    agent_context.save_session_state(
+        {
+            "sessions": [
+                {"id": "session_1", "identity_id": "identity_1", "source": "api", "raw_session_id": "default", "agent_scope": "default"},
+                {"id": "session_2", "identity_id": "identity_2", "source": "api", "raw_session_id": "finance", "agent_scope": "finance-agent", "roles": ["finance"]},
+            ],
+            "updated_at": "2026-03-12T01:00:00+00:00",
+        }
+    )
+
+    runner = CliRunner()
+    show_result = runner.invoke(main, ["privacy", "show", "--json", "--scope", "finance-agent", "--role", "finance"])
+    export_path = tmp_path / "privacy-finance.json"
+    export_result = runner.invoke(
+        main,
+        ["privacy", "export", "--output", str(export_path), "--scope", "finance-agent", "--role", "finance"],
+    )
+
+    payload = json.loads(show_result.output)
+    exported = json.loads(export_path.read_text(encoding="utf-8"))
+    assert show_result.exit_code == 0
+    assert export_result.exit_code == 0
+    assert payload["filter_agent_scope"] == "finance-agent"
+    assert payload["memory_entry_count"] == 1
+    assert payload["notification_count"] == 1
+    assert payload["identity_count"] == 1
+    assert payload["session_count"] == 1
+    assert exported["export_scope"]["agent_scope"] == "finance-agent"
+    assert len(exported["memory_entries"]) == 1
+    assert exported["memory_entries"][0]["agent_scope"] == "finance-agent"
+    assert len(exported["notifications"]["notifications"]) == 1
+    assert exported["notifications"]["notifications"][0]["agent_scope"] == "finance-agent"
+
+
+def test_cli_privacy_scope_updates_scoped_controls(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "privacy",
+            "scope",
+            "--scope",
+            "finance-agent",
+            "--proactive-enabled",
+            "--consent-required",
+            "--allow-role",
+            "owner",
+            "--allow-role",
+            "finance",
+        ],
+    )
+    show_result = runner.invoke(main, ["privacy", "show", "--json"])
+
+    payload = json.loads(show_result.output)
+    assert result.exit_code == 0
+    assert "Scope `finance-agent` updated" in result.output
+    assert payload["scope_count"] == 1
+    assert payload["scoped_controls"]["finance-agent"]["allowed_roles"] == ["finance", "owner"]
+
+
+def test_cli_proactive_show_and_notify_respects_consent_boundary(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "next_task_focus",
+                    "confidence": "high",
+                    "summary": "Task berikutnya sudah siap: #1 memory add tindak lanjut",
+                    "suggested_action": "jobs enqueue",
+                    "reason": "planner_ready_task_detected",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "insights_generated": 1,
+        }
+    )
+
+    runner = CliRunner()
+    show_result = runner.invoke(main, ["proactive", "show"])
+    json_result = runner.invoke(main, ["proactive", "show", "--json"])
+    notify_result = runner.invoke(main, ["proactive", "notify", "--channel", "email", "--target", "ops@example.com"])
+
+    payload = json.loads(json_result.output)
+    notifications = agent_context.load_notification_state()
+    assert show_result.exit_code == 0
+    assert "Proactive Assistance" in show_result.output
+    assert payload["insights_generated"] == 1
+    assert notify_result.exit_code == 0
+    assert "status=deferred" in notify_result.output
+    assert notifications["notifications"][0]["status"] == "deferred"
+
+
+def test_cli_proactive_notify_respects_scope_role_boundary(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService  # noqa: E402
+
+    PrivacyControlService().set_scope_controls(
+        scope="finance-agent",
+        proactive_enabled=True,
+        consent_required=False,
+        allowed_roles=["owner"],
+    )
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "scope_role_test",
+                    "confidence": "high",
+                    "summary": "Insight sensitif finansial.",
+                    "suggested_action": "review finance",
+                    "reason": "scope_role_guard",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "insights_generated": 1,
+        }
+    )
+
+    runner = CliRunner()
+    notify_result = runner.invoke(
+        main,
+        [
+            "proactive",
+            "notify",
+            "--channel",
+            "email",
+            "--target",
+            "ops@example.com",
+            "--consented",
+            "--scope",
+            "finance-agent",
+            "--role",
+            "approved",
+        ],
+    )
+
+    notifications = agent_context.load_notification_state()
+    assert notify_result.exit_code == 0
+    assert "status=deferred" in notify_result.output
+    assert notifications["notifications"][0]["metadata"]["deferred_reason"] == "scope_role_denied"
+
+
+def test_cli_proactive_notify_defers_undeclared_scope(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "undeclared_scope_test",
+                    "confidence": "high",
+                    "summary": "Insight untuk scope belum terdaftar.",
+                    "suggested_action": "review scope",
+                    "reason": "scope_manifest_guard",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "insights_generated": 1,
+        }
+    )
+
+    runner = CliRunner()
+    notify_result = runner.invoke(
+        main,
+        [
+            "proactive",
+            "notify",
+            "--channel",
+            "internal",
+            "--consented",
+            "--scope",
+            "undeclared-agent",
+        ],
+    )
+
+    notifications = agent_context.load_notification_state()
+    assert notify_result.exit_code == 0
+    assert "status=deferred" in notify_result.output
+    assert notifications["notifications"][0]["metadata"]["deferred_reason"] == "scope_undeclared"
+
+
+def test_cli_service_status_reports_wrapper_targets(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["service", "status"])
+
+    assert result.exit_code == 0
+    assert "Service Runtime" in result.output
+    assert "wrapper_output_dir:" in result.output
+    assert "worker:" in result.output
+    assert "conversation-api:" in result.output
+    assert "dashboard:" in result.output
+
+
+def test_cli_service_show_renders_posix_worker_artifacts(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["service", "show", "worker", "--runtime", "posix"])
+
+    assert result.exit_code == 0
+    assert "Service Wrapper Artifacts: worker" in result.output
+    assert "[otonomassist-worker.service]" in result.output
+    assert "service run worker" in result.output
+
+
+def test_cli_service_show_renders_dashboard_artifacts(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["service", "show", "dashboard", "--runtime", "posix"])
+
+    assert result.exit_code == 0
+    assert "Service Wrapper Artifacts: dashboard" in result.output
+    assert "[otonomassist-dashboard.service]" in result.output
+    assert "dashboard run" in result.output
+
+
+def test_cli_service_write_generates_wrapper_files(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    output_dir = tmp_path / "wrappers"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["service", "write", "worker", "--runtime", "posix", "--output-dir", str(output_dir)],
+    )
+
+    assert result.exit_code == 0
+    assert (output_dir / "otonomassist-worker.service").exists()
+    assert (output_dir / "otonomassist-worker.sh").exists()
+
+
+def test_cli_service_run_uses_named_service_target(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_named_service_target(
+        target,
+        *,
+        skills_dir,
+        host,
+        port,
+        interval_seconds,
+        steps,
+        enqueue_first,
+        until_idle,
+        max_loops,
+    ):
+        captured.update(
+            {
+                "target": target,
+                "skills_dir": skills_dir,
+                "host": host,
+                "port": port,
+                "interval_seconds": interval_seconds,
+                "steps": steps,
+                "enqueue_first": enqueue_first,
+                "until_idle": until_idle,
+                "max_loops": max_loops,
+            }
+        )
+        return {"output": "service-run-ok"}
+
+    monkeypatch.setattr(cli_module, "run_named_service_target", fake_run_named_service_target)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["service", "run", "worker", "--max-loops", "1"])
+
+    assert result.exit_code == 0
+    assert "service-run-ok" in result.output
+    assert captured["target"] == "worker"
+    assert captured["max_loops"] == 1
+
+
+def test_cli_dashboard_status_enable_disable_and_doctor_snapshot(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    import otonomassist.platform.dashboard_runtime as dashboard_runtime  # noqa: E402
+
+    install_calls: list[str] = []
+    build_calls: list[str] = []
+
+    monkeypatch.setattr(
+        dashboard_runtime,
+        "install_dashboard_dependencies",
+        lambda: install_calls.append("install") or dashboard_runtime.DashboardCommandResult(["npm", "install"], 0, "", ""),
+    )
+    monkeypatch.setattr(
+        dashboard_runtime,
+        "build_dashboard",
+        lambda: build_calls.append("build") or dashboard_runtime.DashboardCommandResult(["npm", "run", "build"], 0, "", ""),
+    )
+
+    runner = CliRunner()
+    enable_result = runner.invoke(main, ["dashboard", "enable"])
+    status_result = runner.invoke(main, ["dashboard", "status", "--json"])
+    doctor_result = runner.invoke(main, ["doctor"])
+    disable_result = runner.invoke(main, ["dashboard", "disable"])
+
+    payload = json.loads(status_result.output)
+    assert enable_result.exit_code == 0
+    assert status_result.exit_code == 0
+    assert disable_result.exit_code == 0
+    assert install_calls == ["install"]
+    assert build_calls == ["build"]
+    assert payload["enabled"] is True
+    assert payload["host"] == "127.0.0.1"
+    assert payload["port"] == 8795
+    assert "[Dashboard]" in doctor_result.output
+    assert "- enabled: yes" in doctor_result.output
+    assert "Dashboard disabled" in disable_result.output
+
+
 def test_should_recommend_setup_requires_provider_credential_for_remote_provider(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     env_file = tmp_path / ".env"
@@ -191,6 +901,7 @@ def test_assistant_supports_doctor_and_config_status_commands(tmp_path, monkeypa
                 "AI_PROVIDER=ollama",
                 f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
                 "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+                "OTONOMASSIST_CONTEXT_BUDGET_CHARS=4321",
             ]
         )
         + "\n",
@@ -210,6 +921,8 @@ def test_assistant_supports_doctor_and_config_status_commands(tmp_path, monkeypa
     assert "OtonomAssist Config Status" in doctor_result
     assert "[Overall]" in doctor_result
     assert "- status: healthy" in doctor_result
+    assert "[Routing]" in doctor_result
+    assert "[Routing]" in alias_result
     assert "[Workspace]" in doctor_result
     assert "OtonomAssist Config Status" in alias_result
     assert "[Overall]" in alias_result
@@ -230,6 +943,7 @@ def test_cli_doctor_marks_warning_for_rw_workspace_and_pending_telegram(tmp_path
                 "TELEGRAM_BOT_TOKEN=dummy-token",
                 "TELEGRAM_DM_POLICY=pairing",
                 "TELEGRAM_GROUP_POLICY=allowlist",
+                "TELEGRAM_OWNER_ONLY_PREFIXES=workspace,external",
             ]
         )
         + "\n",
@@ -253,6 +967,8 @@ def test_cli_doctor_marks_warning_for_rw_workspace_and_pending_telegram(tmp_path
     monkeypatch.setattr(agent_context, "get_secret_value", lambda name: None)
 
     runner = CliRunner()
+    runner.invoke(main, ["run", "help"])
+    runner.invoke(main, ["run", "external audit"])
     result = runner.invoke(main, ["status"])
 
     assert result.exit_code == 0
@@ -261,6 +977,9 @@ def test_cli_doctor_marks_warning_for_rw_workspace_and_pending_telegram(tmp_path
     assert "[Workspace]" in result.output
     assert "[Telegram]" in result.output
     assert "- pending_requests: 1" in result.output
+    assert "[Policy]" in result.output
+    assert "- telegram_owner_only_prefixes: external, workspace" in result.output
+    assert "- policy_event_count:" in result.output
 
 
 def test_cli_doctor_reads_openai_api_key_from_env_file(tmp_path, monkeypatch):
@@ -297,6 +1016,7 @@ def test_cli_doctor_reads_openai_api_key_from_env_file(tmp_path, monkeypatch):
 def test_cli_doctor_reports_platform_runtime_capabilities(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setenv("OTONOMASSIST_SKILL_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setenv("OTONOMASSIST_CONTEXT_BUDGET_CHARS", "4321")
     env_file = tmp_path / ".env"
     env_file.write_text(
         "\n".join(
@@ -304,6 +1024,7 @@ def test_cli_doctor_reports_platform_runtime_capabilities(tmp_path, monkeypatch)
                 "AI_PROVIDER=ollama",
                 f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
                 "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+                "OTONOMASSIST_CONTEXT_BUDGET_CHARS=4321",
             ]
         )
         + "\n",
@@ -323,6 +1044,10 @@ def test_cli_doctor_reports_platform_runtime_capabilities(tmp_path, monkeypatch)
     assert "- service_runtime:" in result.output
     assert "[Toolchains]" in result.output
     assert "[Runtime]" in result.output
+    assert "[Context Budget]" in result.output
+    assert "- total_budget_chars: 4321" in result.output
+    assert "[Privacy]" in result.output
+    assert "- redaction_enabled: yes" in result.output
     assert "- python:" in result.output
     assert "- skill_timeout_seconds: 12.50" in result.output
 
@@ -381,8 +1106,538 @@ def test_cli_doctor_json_returns_machine_readable_report(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert payload["overall"]["status"] == "warning"
     assert payload["ai"]["provider"] == "ollama"
+    assert "policy" in payload
+    assert "budget" in payload
+    assert "context_budget" in payload
+    assert "routing" in payload
+    assert "heuristic_rate" in payload["routing"]
+    assert "privacy" in payload
+    assert "personality" in payload
+    assert "memory" in payload
     assert "runtime" in payload
     assert "storage" in payload
+    assert "event_bus" in payload
+    assert "identity" in payload
+    assert "notifications" in payload
+    assert "email" in payload
+    assert "whatsapp" in payload
+    assert "privacy_controls" in payload
+    assert "agent_scopes" in payload
+    assert "bootstrap" in payload
+    assert "proactive_insight_count" in payload["personality"]
+    assert "delivery_batch_count" in payload["notifications"]
+    assert "retention_candidates" in payload["privacy_controls"]
+    assert "preference_count" in payload["storage"]
+    assert "habit_count" in payload["storage"]
+    assert "identity_count" in payload["storage"]
+    assert "session_count" in payload["storage"]
+    assert "topics" in payload["event_bus"]
+    assert "provider_latency" in payload["metrics"]
+    assert "queue_depth" in payload["metrics"]
+
+
+def test_cli_doctor_report_exposes_email_interface_snapshot(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_email_message_state(
+        {
+            "messages": [
+                {
+                    "id": 1,
+                    "direction": "outbound",
+                    "subject": "Ops Digest",
+                    "from_address": "",
+                    "to_address": "ops@example.com",
+                    "body": "siap",
+                    "created_at": "2026-03-12T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+        }
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "[Email]" in result.output
+    assert "- message_count: 1" in result.output
+    assert "- latest_subject: Ops Digest" in result.output
+
+
+def test_cli_doctor_report_exposes_whatsapp_interface_snapshot(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_whatsapp_message_state(
+        {
+            "messages": [
+                {
+                    "id": 1,
+                    "direction": "outbound",
+                    "phone_number": "+628123456789",
+                    "display_name": "Budi",
+                    "body": "siap",
+                    "created_at": "2026-03-12T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+        }
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "[WhatsApp]" in result.output
+    assert "- message_count: 1" in result.output
+    assert "- latest_phone_number: +628123456789" in result.output
+    assert "[Privacy Controls]" in result.output
+
+
+def test_cli_doctor_reports_structured_preference_profile(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_preference_state(
+        {
+            "preferences": ["jawaban ringkas"],
+            "profile": {
+                "preferred_channels": ["telegram", "email"],
+                "preferred_brevity": "ringkas",
+                "formality": "formal",
+                "proactive_mode": "low",
+                "summary_style": "bullet",
+            },
+        }
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "- preferred_channels: telegram, email" in result.output
+    assert "- formality: formal" in result.output
+    assert payload["personality"]["preference_profile"]["preferred_brevity"] == "ringkas"
+
+
+def test_cli_doctor_reports_episodic_learning_summary(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_episode_state(
+        {
+            "episodes": [
+                {
+                    "trace_id": "trace-1",
+                    "status": "ok",
+                    "summary": "Episode: command `list` | berakhir `ok` | sumber cli",
+                    "last_timestamp": "2026-03-12T00:00:00+00:00",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "episodes_analyzed": 1,
+        }
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "- episode_count: 1" in result.output
+    assert "episode:ok -> Episode: command `list`" in result.output
+    assert payload["personality"]["episodes_analyzed"] == 1
+
+
+def test_cli_doctor_reports_proactive_insights(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_proactive_insight_state(
+        {
+            "insights": [
+                {
+                    "kind": "runtime_follow_up",
+                    "confidence": "medium",
+                    "summary": "Ada 1 job queued yang bisa diproses.",
+                    "suggested_action": "worker --until-idle",
+                    "reason": "queued_jobs_detected",
+                }
+            ],
+            "updated_at": "2026-03-12T00:00:00+00:00",
+            "insights_generated": 1,
+        }
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "- proactive_insight_count: 1" in result.output
+    assert "proactive:medium -> Ada 1 job queued yang bisa diproses." in result.output
+    assert payload["personality"]["proactive_insights_generated"] == 1
+
+
+def test_cli_doctor_reports_retention_candidates(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.save_privacy_control_state(
+        {
+            "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00"},
+            "consent_required_for_proactive": True,
+            "proactive_assistance_enabled": True,
+            "memory_retention_days": 30,
+            "updated_at": "2026-03-12T00:00:00+00:00",
+        }
+    )
+    agent_context.replace_memory_entries(
+        [
+            {
+                "id": 1,
+                "timestamp": "2024-01-01T00:00:00+00:00",
+                "source": "manual",
+                "text": "catatan lama",
+            }
+        ]
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "retention_candidate_memory_entries" in result.output
+    assert payload["privacy_controls"]["retention_candidates"]["memory_entries"] >= 1
+
+
+def test_bootstrap_foundation_records_execution_event(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["bootstrap", "foundation"])
+    events = load_execution_events(limit=10)
+
+    assert result.exit_code == 0
+    assert any(event["event_type"] == "workspace_bootstrap_completed" for event in events)
+
+
+def test_admin_snapshot_request_records_execution_event(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    status_code, _ = build_admin_snapshot("/status")
+    events = load_execution_events(limit=10)
+
+    assert status_code == 200
+    assert any(
+        event["event_type"] == "admin_snapshot_requested" and (event.get("data") or {}).get("route") == "/status"
+        for event in events
+    )
+
+
+def test_cli_doctor_reports_scope_controls(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    from otonomassist.services.privacy.privacy_control_service import PrivacyControlService  # noqa: E402
+
+    PrivacyControlService().set_scope_controls(
+        scope="finance-agent",
+        proactive_enabled=False,
+        consent_required=True,
+        allowed_roles=["owner", "finance"],
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "scope:finance-agent -> proactive=no consent=yes roles=finance, owner" in result.output
+    assert payload["privacy_controls"]["scope_count"] == 1
+
+
+def test_cli_doctor_reports_scope_state_breakdown(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    agent_context.append_memory_entry("catatan default", source="manual", agent_scope="default")
+    with bind_interaction_context(session_mode="main", agent_scope="finance-agent", roles=("finance",)):
+        agent_context.append_memory_entry("catatan finance", source="manual")
+        agent_context.add_planner_task("memory add tindak lanjut finance", status="todo")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "- scope_count: 2" in result.output
+    assert "scope:finance-agent -> planner=1" in result.output
+    assert payload["memory"]["scope_state"]["scope_count"] == 2
+    finance_scope = next(item for item in payload["memory"]["scope_state"]["scopes"] if item["scope"] == "finance-agent")
+    assert finance_scope["planner_task_count"] == 1
+    assert finance_scope["memory_entry_count"] == 1
+
+
+def test_cli_agents_show_reads_scope_registry_from_agents_document(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "\n".join(
+            [
+                "# AGENTS",
+                "",
+                "## Agent Scopes",
+                "- default: Runtime umum | roles: owner, approved",
+                "- finance-agent: Analisis finansial | roles: owner, finance",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["agents", "show"])
+    json_result = runner.invoke(main, ["agents", "show", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "Agent Scopes" in result.output
+    assert "finance-agent: Analisis finansial" in result.output
+    assert payload["scope_count"] == 2
+    assert payload["scopes"][1]["scope"] == "finance-agent"
+
+
+def test_cli_startup_show_reads_workspace_startup_documents(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text("# AGENTS\n\n- aturan startup.\n", encoding="utf-8")
+    (tmp_path / "SOUL.md").write_text("# SOUL\n\n- reflektif.\n", encoding="utf-8")
+    (tmp_path / "USER.md").write_text("# USER\n\n- ringkas.\n", encoding="utf-8")
+    (tmp_path / "IDENTITY.md").write_text("# IDENTITY\n\n- akurat.\n", encoding="utf-8")
+    (tmp_path / "TOOLS.md").write_text("# TOOLS\n\n- terminal.\n", encoding="utf-8")
+    (tmp_path / "MEMORY.md").write_text("# Memory\n\n- privat utama.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["startup", "show"])
+    json_result = runner.invoke(main, ["startup", "show", "--json", "--session-mode", "shared"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "## Session Startup Docs" in result.output
+    assert "aturan startup" in result.output
+    assert payload["session_mode"] == "shared"
+    assert payload["curated_memory"] == ""
+
+
+def test_conversation_service_marks_shared_session_for_chat_channels(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n- aturan shared startup\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "SOUL.md").write_text("# SOUL\n\n- reflektif\n", encoding="utf-8")
+    (tmp_path / "USER.md").write_text("# USER\n\n- data sensitif.\n", encoding="utf-8")
+    (tmp_path / "MEMORY.md").write_text("# Memory\n\n- konteks privat\n", encoding="utf-8")
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    service = cli_module.ConversationService(assistant)
+
+    response = service.handle(
+        InteractionRequest(
+            message="list",
+            source="telegram",
+            user_id="1",
+            chat_id="100",
+            roles=("approved",),
+            agent_scope="finance-agent",
+        )
+    )
+
+    assert response.metadata["canonical_session_id"]
+    assert response.metadata["session_mode"] == "shared"
+    assert response.metadata["agent_scope"] == "finance-agent"
+    assert response.metadata["startup_document_names"] == ["agents"]
+    assert response.metadata["startup_restricted_document_names"] == ["soul", "user", "identity"]
+    assert response.metadata["startup_curated_memory_loaded"] is False
+
+
+def test_conversation_service_accepts_main_session_override(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "AGENTS.md").write_text(
+        "# AGENTS\n\n## Agent Scopes\n- finance-agent: Scope finansial | roles: owner, finance\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "IDENTITY.md").write_text("# IDENTITY\n\n- main mode aktif\n", encoding="utf-8")
+    (tmp_path / "MEMORY.md").write_text("# Memory\n\n- curated utama\n", encoding="utf-8")
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    service = cli_module.ConversationService(assistant)
+
+    response = service.handle(
+        InteractionRequest(
+            message="list",
+            source="api",
+            session_mode="main",
+            agent_scope="finance-agent",
+            roles=("finance",),
+        )
+    )
+
+    assert response.status == "ok"
+    assert response.metadata["session_mode"] == "main"
+    assert response.metadata["agent_scope"] == "finance-agent"
+    assert "identity" in response.metadata["startup_document_names"]
+    assert response.metadata["startup_curated_memory_loaded"] is True
+
+
+def test_shared_session_blocks_curated_memory_command(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    service = cli_module.ConversationService(assistant)
+
+    response = service.handle(
+        InteractionRequest(
+            message="memory curate rahasia utama",
+            source="telegram",
+            user_id="1",
+            chat_id="100",
+            roles=("owner",),
+        )
+    )
+
+    assert "Curated memory hanya boleh ditulis dari main session." in response.response
+    memory_file = tmp_path / "MEMORY.md"
+    assert not memory_file.exists() or "rahasia utama" not in memory_file.read_text(encoding="utf-8", errors="replace")
+
+
+def test_memory_skill_journal_writes_workspace_daily_log(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    module = _load_module(ROOT / "skills" / "memory" / "script" / "handler.py", "memory_handler_journal_test")
+
+    result = module.handle("journal catatan dari jurnal harian")
+    journal_path = tmp_path / "memory" / f"{datetime.now(timezone.utc).date().isoformat()}.md"
+
+    assert "Daily journal tersimpan" in result
+    assert journal_path.exists()
+    assert "catatan dari jurnal harian" in journal_path.read_text(encoding="utf-8")
 
 
 def test_cli_run_subcommand_executes_single_message(tmp_path, monkeypatch):
@@ -409,6 +1664,84 @@ def test_cli_history_shows_recent_execution_events(tmp_path, monkeypatch):
     assert "command_completed" in history_result.output
 
 
+def test_cli_events_reports_internal_event_bus_activity(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+
+    runner = CliRunner()
+    run_result = runner.invoke(main, ["run", "list"])
+    events_result = runner.invoke(main, ["events"])
+    events_json_result = runner.invoke(main, ["events", "--json"])
+
+    payload = json.loads(events_json_result.output)
+    assert run_result.exit_code == 0
+    assert events_result.exit_code == 0
+    assert "Internal Event Bus" in events_result.output
+    assert "interaction.command" in events_result.output
+    assert payload["total_events"] >= 2
+    assert "interaction.command" in payload["topics"]
+
+
+def test_event_bus_tracks_external_asset_audit_events(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+
+    source_skill_dir = tmp_path / "external-bus-skill"
+    (source_skill_dir / "script").mkdir(parents=True, exist_ok=True)
+    (source_skill_dir / "SKILL.md").write_text(
+        "# External Bus Skill\n\n## Metadata\n- name: external-bus\n- description: External bus\n\n## Triggers\n- external-bus\n",
+        encoding="utf-8",
+    )
+    (source_skill_dir / "script" / "handler.py").write_text(
+        "def handle(args: str) -> str:\n    return 'ok'\n",
+        encoding="utf-8",
+    )
+    (source_skill_dir / "asset.json").write_text(
+        json.dumps({"name": "external-bus", "capabilities": ["workspace_read"]}, indent=2),
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    install_result = runner.invoke(main, ["external", "install", str(source_skill_dir)])
+
+    snapshot = get_event_bus_snapshot()
+    assert install_result.exit_code == 0
+    assert snapshot["external_event_count"] >= 1
+    assert "external.asset" in snapshot["topics"]
+
+
+def test_external_audit_and_doctor_show_approval_audit_summary(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+
+    source_skill_dir = tmp_path / "approval-skill"
+    (source_skill_dir / "script").mkdir(parents=True, exist_ok=True)
+    (source_skill_dir / "SKILL.md").write_text(
+        "# Approval Skill\n\n## Metadata\n- name: approval-skill\n- description: Approval skill\n\n## Triggers\n- approval-skill\n",
+        encoding="utf-8",
+    )
+    (source_skill_dir / "script" / "handler.py").write_text(
+        "def handle(args: str) -> str:\n    return 'ok'\n",
+        encoding="utf-8",
+    )
+    (source_skill_dir / "asset.json").write_text(
+        json.dumps({"name": "approval-skill", "capabilities": ["workspace_read"]}, indent=2),
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    runner.invoke(main, ["external", "install", str(source_skill_dir)])
+    runner.invoke(main, ["external", "approve", "approval-skill"])
+    audit_result = runner.invoke(main, ["external", "audit"])
+    doctor_json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(doctor_json_result.output)
+    assert "approval_event_count:" in audit_result.output
+    assert payload["external_assets"]["approval_event_count"] >= 1
+    assert payload["external_assets"]["latest_approval_event"]["action"] == "approval-approved"
+
+
 def test_cli_metrics_reports_aggregated_execution_data(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
 
@@ -422,6 +1755,7 @@ def test_cli_metrics_reports_aggregated_execution_data(tmp_path, monkeypatch):
     assert metrics_result.exit_code == 0
     assert "Execution Metrics" in metrics_result.output
     assert payload["summary"]["commands_total"] >= 1
+    assert "queue_depth" in payload
 
 
 def test_cli_worker_until_idle_processes_runtime_queue(tmp_path, monkeypatch):
@@ -465,6 +1799,7 @@ def test_cli_status_reports_metrics_file_path(tmp_path, monkeypatch):
 
     assert result.exit_code == 0
     assert "- metrics_file:" in result.output
+    assert "- state_db_file:" in result.output
 
 
 def test_cli_scheduler_runs_cycles_and_updates_status_report(tmp_path, monkeypatch):
@@ -523,6 +1858,18 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
     monkeypatch.setattr(agent_context, "PLANNER_FILE", data_dir / "planner.json")
     monkeypatch.setattr(agent_context, "LESSONS_FILE", data_dir / "lessons.md")
     monkeypatch.setattr(agent_context, "PROFILE_FILE", data_dir / "profile.md")
+    monkeypatch.setattr(agent_context, "PREFERENCES_FILE", data_dir / "preferences.json")
+    monkeypatch.setattr(agent_context, "HABITS_FILE", data_dir / "habits.json")
+    monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
+    monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
+    monkeypatch.setattr(agent_context, "PROACTIVE_INSIGHTS_FILE", data_dir / "proactive_insights.json")
+    monkeypatch.setattr(agent_context, "HEARTBEAT_STATE_FILE", data_dir / "heartbeat.json")
+    monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
+    monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
+    monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
+    monkeypatch.setattr(agent_context, "EMAIL_MESSAGES_FILE", data_dir / "email_messages.json")
+    monkeypatch.setattr(agent_context, "WHATSAPP_MESSAGES_FILE", data_dir / "whatsapp_messages.json")
+    monkeypatch.setattr(agent_context, "PRIVACY_CONTROLS_FILE", data_dir / "privacy_controls.json")
     monkeypatch.setattr(agent_context, "SECRETS_FILE", data_dir / "secrets.json")
     monkeypatch.setattr(agent_context, "EXECUTION_HISTORY_FILE", data_dir / "execution_history.jsonl")
     monkeypatch.setattr(agent_context, "METRICS_FILE", data_dir / "execution_metrics.json")
@@ -535,6 +1882,125 @@ def test_agent_storage_bootstrap_creates_default_workspace_directory(tmp_path, m
 
     assert workspace_root.exists()
     assert workspace_root.is_dir()
+    assert agent_context.get_state_db_path().exists()
+    assert (workspace_root / "AGENTS.md").exists()
+    assert (workspace_root / "SOUL.md").exists()
+    assert (workspace_root / "USER.md").exists()
+
+
+def test_cli_bootstrap_foundation_seeds_workspace_templates(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace-clean")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["bootstrap", "foundation"])
+    status_result = runner.invoke(main, ["bootstrap", "status", "--json"])
+
+    payload = json.loads(status_result.output)
+    assert result.exit_code == 0
+    assert "Foundation bootstrap written=" in result.output
+    assert (workspace_guard.WORKSPACE_ROOT / "AGENTS.md").exists()
+    assert (workspace_guard.WORKSPACE_ROOT / "IDENTITY.md").exists()
+    assert payload["workspace_seeded_count"] >= 4
+
+
+def test_cli_doctor_reports_bootstrap_status(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+
+    runner = CliRunner()
+    bootstrap_result = runner.invoke(main, ["bootstrap", "foundation", "--force"])
+    doctor_result = runner.invoke(main, ["doctor"])
+    doctor_json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(doctor_json_result.output)
+    assert bootstrap_result.exit_code == 0
+    assert doctor_result.exit_code == 0
+    assert "[Bootstrap]" in doctor_result.output
+    assert "- template_count:" in doctor_result.output
+    assert payload["bootstrap"]["workspace_seeded_count"] >= 4
+
+
+def test_cli_doctor_reports_identity_and_soul_previews(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "IDENTITY.md").write_text("# Identity\n\n- Akurat dan sabar.\n", encoding="utf-8")
+    (tmp_path / "SOUL.md").write_text("# Soul\n\n- Reflektif dan tenang.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor"])
+    json_result = runner.invoke(main, ["doctor", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert result.exit_code == 0
+    assert "- identity_preview:" in result.output
+    assert "- soul_preview:" in result.output
+    assert "Akurat dan sabar." in payload["personality"]["identity_preview"]
+    assert "Reflektif dan tenang." in payload["personality"]["soul_preview"]
+
+
+def test_cli_heartbeat_show_and_pulse_expose_runtime_state(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    (tmp_path / "HEARTBEAT.md").write_text("# Heartbeat\n\n- cek kesiapan queue dan planner.\n", encoding="utf-8")
+
+    runner = CliRunner()
+    pulse_result = runner.invoke(main, ["heartbeat", "pulse", "--trigger", "cli-test"])
+    show_result = runner.invoke(main, ["heartbeat", "show"])
+    json_result = runner.invoke(main, ["heartbeat", "show", "--json"])
+
+    payload = json.loads(json_result.output)
+    assert pulse_result.exit_code == 0
+    assert "Heartbeat pulse #" in pulse_result.output
+    assert show_result.exit_code == 0
+    assert "Heartbeat" in show_result.output
+    assert payload["last_trigger"] in {"cli-test", "cli-show"}
+
+
+def test_scheduler_updates_heartbeat_mode_in_status_report(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "AI_PROVIDER=ollama",
+                f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path}",
+                "OTONOMASSIST_WORKSPACE_ACCESS=ro",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    import otonomassist.core.config_doctor as config_doctor  # noqa: E402
+
+    monkeypatch.setattr(config_doctor, "ENV_FILE", env_file)
+    runner = CliRunner()
+    runner.invoke(main, ["run", "planner add memory add heartbeat from scheduler"])
+    scheduler_result = runner.invoke(main, ["scheduler", "--cycles", "1", "--steps", "5"])
+    status_result = runner.invoke(main, ["status"])
+    status_json_result = runner.invoke(main, ["status", "--json"])
+
+    payload = json.loads(status_json_result.output)
+    assert scheduler_result.exit_code == 0
+    assert status_result.exit_code == 0
+    assert "- last_heartbeat_mode:" in status_result.output
+    assert payload["scheduler"]["last_heartbeat_mode"] in {"active", "ready", "reflective", "deferred"}
+    assert payload["personality"]["heartbeat"]["pulse_count"] >= 1
 
 
 def test_run_process_wrapper_executes_python_command():
@@ -585,6 +2051,30 @@ def test_assistant_loads_external_skill_from_workspace(tmp_path, monkeypatch):
     assert result == "EXTERNAL:halo"
 
 
+def test_assistant_runs_external_skill_in_subprocess(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("OTONOMASSIST_EXTERNAL_SKILL_POLICY", "allow-all")
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+    external_skill_dir = workspace_guard.WORKSPACE_ROOT / "skills-external" / "pid-skill"
+    (external_skill_dir / "script").mkdir(parents=True, exist_ok=True)
+    (external_skill_dir / "SKILL.md").write_text(
+        "# PID Skill\n\n## Metadata\n- name: pid-skill\n- description: Report subprocess pid\n\n## Triggers\n- pid-skill\n",
+        encoding="utf-8",
+    )
+    (external_skill_dir / "script" / "handler.py").write_text(
+        "import os\n\ndef handle(args: str) -> str:\n    return str(os.getpid())\n",
+        encoding="utf-8",
+    )
+
+    assistant = Assistant(skills_dir=ROOT / "skills")
+    assistant.initialize()
+
+    result = assistant.execute("pid-skill")
+
+    assert int(result) != os.getpid()
+
+
 def test_external_audit_lists_workspace_managed_skill(tmp_path, monkeypatch):
     _configure_temp_agent_state(tmp_path, monkeypatch)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace")
@@ -603,6 +2093,7 @@ def test_external_audit_lists_workspace_managed_skill(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "External Asset Audit" in result.output
     assert "audit-skill" in result.output
+    assert "execution=subprocess-isolated" in result.output
     assert "skills_dir:" in result.output
 
 
@@ -661,6 +2152,7 @@ def test_external_audit_reports_manifest_requirements_and_degraded_compatibility
     assert status_result.exit_code == 0
     assert "[External Assets]" in status_result.output
     assert "- incompatible_count: 1" in status_result.output
+    assert "- isolated_skill_count: 1" in status_result.output
     assert "- unapproved_count: 1" in status_result.output
 
 
@@ -934,6 +2426,9 @@ def test_skill_loader_parses_autonomy_metadata(tmp_path):
                 "- side_effects: [planner_write, memory_write]",
                 "- requires: [ai_provider, workspace_access]",
                 "- idempotency: non_idempotent",
+                "- schema_version: v1",
+                "- timeout_behavior: fail_fast",
+                "- retry_policy: planner_transient_retry",
                 "",
                 "## Triggers",
                 "- taxonomy-skill",
@@ -962,6 +2457,9 @@ def test_skill_loader_parses_autonomy_metadata(tmp_path):
     assert skill.definition.side_effects == ["planner_write", "memory_write"]
     assert skill.definition.requires == ["ai_provider", "workspace_access"]
     assert skill.definition.idempotency == "non_idempotent"
+    assert skill.definition.schema_version == "v1"
+    assert skill.definition.timeout_behavior == "fail_fast"
+    assert skill.definition.retry_policy == "planner_transient_retry"
 
 
 def test_assistant_and_cli_expose_skill_layer_audit(tmp_path, monkeypatch):
@@ -991,7 +2489,7 @@ def test_assistant_and_cli_expose_skill_layer_audit(tmp_path, monkeypatch):
     assert "[planning]" in audit_text
     assert "[governance]" in audit_text
     assert "secrets [risk=critical" in audit_text
-    assert "workspace [risk=medium, idempotency=idempotent]" in audit_text
+    assert "workspace [risk=medium, idempotency=idempotent, schema=v1, timeout=fail_fast, retry=none]" in audit_text
 
     runner = CliRunner()
     cli_result = runner.invoke(main, ["skills", "audit"])

@@ -12,5 +12,9 @@ class TransportContext:
     source: str = "cli"
     user_id: str | None = None
     chat_id: str | None = None
+    session_id: str | None = None
+    identity_id: str | None = None
     roles: tuple[str, ...] = ()
     trace_id: str | None = None
+    session_mode: str = "main"
+    agent_scope: str = "default"

@@ -3,7 +3,7 @@
 Modular assistant system with skill-based architecture.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.1.0"
 __author__ = "OtonomAssist Team"
 
 from otonomassist.core.assistant import Assistant

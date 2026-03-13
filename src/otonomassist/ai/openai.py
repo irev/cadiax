@@ -106,6 +106,16 @@ class OpenAIProvider(AIProvider):
         response = await self.chat(messages, **kwargs)
         return response.content
 
+    async def chat_completion_response(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        **kwargs: Any,
+    ) -> AIResponse:
+        """Simple chat completion that preserves usage metadata."""
+        messages = self._prepare_messages(prompt, system_prompt)
+        return await self.chat(messages, **kwargs)
+
     def get_model_name(self) -> str:
         """Get the model name."""
         return self._model

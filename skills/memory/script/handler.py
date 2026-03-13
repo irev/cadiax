@@ -11,10 +11,18 @@ from typing import Any
 from otonomassist.core.agent_context import (
     LESSONS_FILE,
     append_lesson,
+    append_curated_memory,
+    append_daily_memory_note,
     append_memory_entry,
     ensure_agent_storage,
+    get_daily_memory_dir,
+    get_daily_memory_journal_path,
+    load_memory_summary_state,
+    load_recent_workspace_daily_notes,
+    save_memory_summary_state,
     retrieve_relevant_memories,
 )
+from otonomassist.memory import MemoryConsolidationService
 from otonomassist.core.result_builder import build_result
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -35,6 +43,8 @@ def handle(args: str) -> str:
 
     if command in {"add", "remember"}:
         return _add_memory(remainder)
+    if command == "curate":
+        return _curate_memory(remainder)
     if command == "list":
         return _list_memories(remainder)
     if command == "search":
@@ -47,16 +57,20 @@ def handle(args: str) -> str:
         return _consolidate_memories(remainder)
     if command == "context":
         return _memory_context()
+    if command == "journal":
+        return _journal_memory(remainder)
 
     return _add_memory(args)
 
 
 def _usage() -> str:
     return (
-        "Usage: memory <add|list|search|get|summarize|consolidate|context> ...\n"
+        "Usage: memory <add|curate|list|search|get|summarize|consolidate|context|journal> ...\n"
         "Examples:\n"
         "- memory add private ai harus fokus lokal\n"
+        "- memory curate user suka ringkasan singkat\n"
         "- memory search planner\n"
+        "- memory journal\n"
         "- memory summarize\n"
         "- memory consolidate"
     )
@@ -96,6 +110,14 @@ def _add_memory(text: str) -> str:
         _consolidate_recent_entries(entries_to_merge=5)
         message += " Auto-consolidation dijalankan."
     return message
+
+
+def _curate_memory(text: str) -> str:
+    if not text:
+        return "Memory curate membutuhkan isi memori."
+
+    payload = append_curated_memory(text, source="memory-skill")
+    return f"Curated memory tersimpan ke {payload['path']}."
 
 
 def _list_memories(limit_text: str) -> str:
@@ -151,7 +173,7 @@ def _search_memories(query: str) -> str:
             "query": query,
             "match_count": len(matches),
             "returned_entries": len(selected),
-            "retrieval_mode": "hybrid_exact_token_overlap",
+            "retrieval_mode": "hybrid_semantic_recency",
             "entries": [_memory_row(entry) for entry in selected],
             "summary": f"Ditemukan {len(matches)} memory yang cocok untuk '{query}'.",
         },
@@ -196,6 +218,8 @@ def _summarize_memories() -> str:
         top_terms = [term for term, _ in tokens.most_common(5)]
 
     recent_entries = [_memory_row(entry) for entry in entries[-3:]]
+    summary_state = MemoryConsolidationService().summarize_collection(entries)
+    save_memory_summary_state(summary_state)
     return _wrap_result(
         result_type="memory_summary",
         data={
@@ -203,6 +227,8 @@ def _summarize_memories() -> str:
             "last_entry_id": entries[-1]["id"],
             "top_terms": top_terms,
             "recent_entries": recent_entries,
+            "summary_chunks": summary_state.get("summaries", []),
+            "prune_candidates": summary_state.get("prune_candidates", 0),
             "summary": (
                 f"Memory berisi {len(entries)} entry"
                 + (f"; top terms: {', '.join(top_terms)}." if top_terms else ".")
@@ -228,7 +254,10 @@ def _consolidate_memories(topic: str) -> str:
             return f"Tidak ada memori bertopik '{topic}' untuk dikonsolidasikan."
 
     recent = selected[-5:]
-    append_lesson(" | ".join(entry.get("text", "") for entry in recent))
+    summary = MemoryConsolidationService().summarize(recent, topic=topic)
+    append_lesson(summary or "memory consolidation: tidak ada ringkasan")
+    summary_state = MemoryConsolidationService().summarize_collection(selected)
+    save_memory_summary_state(summary_state)
     return f"{len(recent)} memori dikonsolidasikan ke lessons.md."
 
 
@@ -239,11 +268,27 @@ def _memory_context() -> str:
             "files": [
                 {"name": "jsonl", "path": str(MEMORY_FILE.relative_to(PROJECT_ROOT))},
                 {"name": "lessons", "path": str(LESSONS_FILE.relative_to(PROJECT_ROOT))},
+                {"name": "daily_journal_dir", "path": str(get_daily_memory_dir().relative_to(PROJECT_ROOT))},
+                {"name": "today_journal", "path": str(get_daily_memory_journal_path().relative_to(PROJECT_ROOT))},
             ],
+            "summary_state": load_memory_summary_state(),
             "summary": "Lokasi file memory agent.",
         },
         default_view="table",
     )
+
+
+def _journal_memory(args: str) -> str:
+    text = args.strip()
+    if text:
+        payload = append_daily_memory_note(text, source="memory-journal")
+        if payload["written"]:
+            return f"Daily journal tersimpan ke {payload['path']}."
+        return f"Daily journal dilewati karena workspace tidak writable: {payload['path']}"
+    content = load_recent_workspace_daily_notes(days=2, max_chars=2200)
+    if not content:
+        return "Belum ada daily journal workspace."
+    return content
 
 
 def _consolidate_recent_entries(entries_to_merge: int) -> None:
@@ -251,7 +296,9 @@ def _consolidate_recent_entries(entries_to_merge: int) -> None:
     if not entries:
         return
     recent = entries[-entries_to_merge:]
-    append_lesson(" | ".join(entry.get("text", "") for entry in recent))
+    summary = MemoryConsolidationService().summarize(recent)
+    append_lesson(summary or "memory consolidation: tidak ada ringkasan")
+    save_memory_summary_state(MemoryConsolidationService().summarize_collection(entries))
 
 
 def _memory_row(entry: dict[str, Any]) -> dict[str, object]:

@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 import otonomassist.core.agent_context as agent_context
+from otonomassist.core.event_bus import publish_execution_event
+from otonomassist.core.runtime_interaction import get_current_interaction_context
+from otonomassist.storage import SQLiteStateStore
 from otonomassist.core.workspace_guard import ensure_internal_state_write_allowed, ensure_read_allowed
 
 
@@ -29,6 +32,13 @@ def append_execution_event(
 ) -> dict[str, Any]:
     """Append one structured execution event to the local history log."""
     agent_context.ensure_agent_storage()
+    _sync_execution_history_store()
+    interaction = get_current_interaction_context()
+    payload_data = dict(data or {})
+    if interaction:
+        payload_data.setdefault("agent_scope", str(interaction.get("agent_scope") or "default"))
+        payload_data.setdefault("session_mode", str(interaction.get("session_mode") or "main"))
+        payload_data.setdefault("roles", list(interaction.get("roles") or ()))
     event = {
         "event_id": uuid.uuid4().hex,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -39,33 +49,34 @@ def append_execution_event(
         "command": _truncate_text(command),
         "skill_name": skill_name,
         "duration_ms": duration_ms,
-        "data": data or {},
+        "data": payload_data,
     }
     ensure_internal_state_write_allowed(agent_context.EXECUTION_HISTORY_FILE)
     with agent_context.EXECUTION_HISTORY_FILE.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=True) + "\n")
+    _get_state_store().append_execution_event(event)
+    publish_execution_event(event)
     return event
 
 
 def load_execution_events(limit: int = 20) -> list[dict[str, Any]]:
     """Load the most recent execution events."""
     agent_context.ensure_agent_storage()
-    ensure_read_allowed(agent_context.EXECUTION_HISTORY_FILE)
-    entries: list[dict[str, Any]] = []
-    for line in agent_context.EXECUTION_HISTORY_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entries.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
-    return entries[-limit:]
+    _sync_execution_history_store()
+    return _get_state_store().load_execution_events(limit=limit)
 
 
-def export_execution_events(limit: int = 20) -> list[dict[str, Any]]:
+def export_execution_events(
+    limit: int = 20,
+    *,
+    agent_scope: str | None = None,
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
     """Export recent execution events as machine-readable data."""
-    return load_execution_events(limit=limit)
+    events = load_execution_events(limit=limit)
+    if not agent_scope:
+        return events
+    return _filter_execution_events(events, agent_scope=agent_scope, roles=roles)
 
 
 def render_execution_history(limit: int = 20) -> str:
@@ -105,8 +116,56 @@ def render_execution_history(limit: int = 20) -> str:
     return "\n".join(lines)
 
 
+def filter_execution_events(
+    limit: int = 20,
+    *,
+    agent_scope: str,
+    roles: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """Load and filter recent execution events by scope visibility."""
+    return _filter_execution_events(load_execution_events(limit=limit), agent_scope=agent_scope, roles=roles)
+
+
 def _truncate_text(value: str, limit: int = 240) -> str:
     text = (value or "").strip()
     if len(text) <= limit:
         return text
     return text[:limit].rstrip() + "..."
+
+
+def _get_state_store() -> SQLiteStateStore:
+    return SQLiteStateStore(agent_context.get_state_db_path())
+
+
+def _sync_execution_history_store() -> None:
+    store = _get_state_store()
+    if store.count_execution_events() > 0:
+        return
+    ensure_read_allowed(agent_context.EXECUTION_HISTORY_FILE)
+    for line in agent_context.EXECUTION_HISTORY_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict):
+            store.append_execution_event(event)
+
+
+def _filter_execution_events(
+    events: list[dict[str, Any]],
+    *,
+    agent_scope: str,
+    roles: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    return [
+        event
+        for event in events
+        if agent_context._is_scope_visible(  # type: ignore[attr-defined]
+            str((event.get("data") or {}).get("agent_scope") or "default"),
+            str(agent_scope or "").strip().lower() or "default",
+            roles=roles,
+        )
+    ]

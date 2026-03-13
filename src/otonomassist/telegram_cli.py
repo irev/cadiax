@@ -7,13 +7,15 @@ from pathlib import Path
 import click
 
 from otonomassist.core import Assistant
-from otonomassist.transports import TelegramPollingTransport
+from otonomassist.interfaces.telegram import TelegramPollingTransport
+from otonomassist.services.interactions import ConversationService
 
 
 def run_telegram_transport(skills_dir: Path) -> None:
     """Run Telegram long polling for OtonomAssist."""
     assistant = Assistant(skills_dir=skills_dir)
     assistant.initialize()
+    service = ConversationService(assistant)
 
     transport = TelegramPollingTransport()
     if not transport.is_configured():
@@ -23,7 +25,7 @@ def run_telegram_transport(skills_dir: Path) -> None:
         )
 
     click.echo("Starting Telegram polling...")
-    transport.run(assistant)
+    transport.run(service)
 
 
 @click.command()

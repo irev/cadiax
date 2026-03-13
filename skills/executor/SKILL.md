@@ -14,6 +14,44 @@
 ## Description
 Skill ini adalah jembatan dari planner ke eksekusi semi-otonom.
 
+## Purpose
+- Menjalankan task planner atau command internal secara terkontrol.
+- Menutup loop antara planning, execution result, dan update memory/planner state.
+
+## Boundaries
+- Gunakan saat ada aksi yang memang perlu dieksekusi, bukan hanya dianalisis.
+- Jangan gunakan untuk membuat tujuan baru tanpa planner.
+- Aksi high-risk tetap tunduk pada policy, timeout, dan retry contract yang berlaku.
+
+## Primary Inputs
+- `executor next`
+- `executor run <command>`
+- `executor run planner next`
+- `executor run memory add <text>`
+
+## Expected Outputs
+- Hasil eksekusi yang menyebut command yang dijalankan, status, dan error jika ada.
+- Update planner task atau memory saat aksi memang berhasil atau gagal.
+- Penolakan eksplisit untuk command yang tidak aman atau tidak valid.
+
+## State Touchpoints
+- Planner task state.
+- Execution history dan audit trail.
+- Memory/lesson write yang berasal dari outcome task.
+- Runtime interaction context untuk scope/session inheritance.
+
+## Failure Modes
+- Task planner tidak tersedia.
+- Command target gagal dieksekusi atau timeout.
+- Retry policy habis sebelum hasil sukses tercapai.
+- Policy memblokir aksi karena session/scope atau risk level.
+
+## Success Criteria
+- Task berikutnya dapat dijalankan tanpa kehilangan trace, timeout, atau retry metadata.
+- Outcome eksekusi tercermin ke planner dan memory bila relevan.
+- Eksekusi nested tetap mewarisi scope/session yang benar.
+- Error bersifat operasional, jelas, dan tidak meninggalkan state separuh ter-update.
+
 ## Triggers
 - executor
 - execute

@@ -5,9 +5,10 @@ from __future__ import annotations
 from otonomassist.ai.factory import AIProviderFactory
 from otonomassist.core.agent_context import (
     append_memory_entry,
-    build_agent_context_block,
     get_next_planner_task,
 )
+from otonomassist.services.personality import PersonalityService
+from otonomassist.services.runtime import ContextBudgeter
 
 
 async def handle(args: str) -> str:
@@ -30,7 +31,7 @@ async def handle(args: str) -> str:
         else "Next planner task: tidak ada"
     )
     prompt = (
-        f"{build_agent_context_block()}\n\n"
+        f"{ContextBudgeter().build_general_reasoning_context(query=args, personality_service=PersonalityService())}\n\n"
         f"{next_task_text}\n\n"
         "Buat respons ringkas dengan format:\n"
         "1. Observasi\n"

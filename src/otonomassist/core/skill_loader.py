@@ -9,13 +9,16 @@ skills/
 """
 
 import importlib.util
+import json
 import re
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from otonomassist.core.external_assets import get_external_skills_dir, is_external_skill_approved
 from otonomassist.models import Skill, SkillDefinition
+from otonomassist.platform import run_process
 
 if TYPE_CHECKING:
     from otonomassist.core.skill_registry import SkillRegistry
@@ -104,6 +107,9 @@ class SkillLoader:
         side_effects: list[str] = []
         requires: list[str] = []
         idempotency = "unknown"
+        schema_version = "v1"
+        timeout_behavior = "fail_fast"
+        retry_policy = "none"
         triggers: list[str] = []
         ai_instructions = ""
 
@@ -157,6 +163,12 @@ class SkillLoader:
                         requires = self._parse_list(value)
                     elif key == "idempotency":
                         idempotency = value.strip()
+                    elif key == "schema_version":
+                        schema_version = value.strip()
+                    elif key == "timeout_behavior":
+                        timeout_behavior = value.strip()
+                    elif key == "retry_policy":
+                        retry_policy = value.strip()
 
             elif in_ai_instructions:
                 ai_instructions += line + "\n"
@@ -183,6 +195,9 @@ class SkillLoader:
             side_effects=side_effects,
             requires=requires,
             idempotency=idempotency,
+            schema_version=schema_version,
+            timeout_behavior=timeout_behavior,
+            retry_policy=retry_policy,
             triggers=triggers,
             handler_code="",
             response_template="{result}",
@@ -202,6 +217,9 @@ class SkillLoader:
                 lambda args: f"Skill '{skill_name}' has no handler",
                 False,
             )
+
+        if self._is_external_skill_directory(skill_dir):
+            return self._build_external_handler(skill_dir, handler_path, skill_name), False
 
         try:
             # Load module from file path
@@ -225,6 +243,54 @@ class SkillLoader:
             False,
         )
 
+    def _is_external_skill_directory(self, skill_dir: Path) -> bool:
+        """Return True when a skill directory lives under workspace external skills."""
+        try:
+            external_root = get_external_skills_dir().resolve()
+            resolved = skill_dir.resolve()
+        except OSError:
+            return False
+        return resolved == external_root or external_root in resolved.parents
+
+    def _build_external_handler(self, skill_dir: Path, handler_path: Path, skill_name: str):
+        """Wrap external skills in an isolated subprocess runner."""
+        runner_path = Path(__file__).resolve().parents[1] / "platform" / "external_skill_runner.py"
+
+        def _invoke(args: str) -> Any:
+            command = [
+                sys.executable,
+                str(runner_path),
+                "--handler",
+                str(handler_path),
+                "--skill-dir",
+                str(skill_dir),
+                "--args",
+                args,
+            ]
+            env = os.environ.copy()
+            src_root = str(Path(__file__).resolve().parents[2])
+            existing_pythonpath = env.get("PYTHONPATH", "").strip()
+            env["PYTHONPATH"] = src_root if not existing_pythonpath else f"{src_root}{os.pathsep}{existing_pythonpath}"
+            result = run_process(
+                command,
+                cwd=skill_dir,
+                timeout_seconds=120.0,
+                env=env,
+            )
+            payload_text = str(result.get("stdout") or "").strip()
+            payload: dict[str, Any] = {}
+            if payload_text:
+                try:
+                    payload = json.loads(payload_text)
+                except json.JSONDecodeError:
+                    payload = {}
+            if not result.get("ok") or not payload.get("ok"):
+                detail = str(payload.get("error") or result.get("stderr") or payload_text or "unknown external skill error").strip()
+                return f"Error executing skill: {detail}"
+            return payload.get("result")
+
+        return _invoke
+
     def _load_legacy_skill(self, file_path: Path) -> Skill | None:
         """Load a skill from legacy flat .md file."""
         try:
@@ -247,6 +313,9 @@ class SkillLoader:
         side_effects: list[str] = []
         requires: list[str] = []
         idempotency = "unknown"
+        schema_version = "v1"
+        timeout_behavior = "fail_fast"
+        retry_policy = "none"
         triggers: list[str] = []
         handler_code = ""
         response_template = "{result}"
@@ -290,6 +359,12 @@ class SkillLoader:
                         requires = self._parse_list(value)
                     elif key == "idempotency":
                         idempotency = value.strip()
+                    elif key == "schema_version":
+                        schema_version = value.strip()
+                    elif key == "timeout_behavior":
+                        timeout_behavior = value.strip()
+                    elif key == "retry_policy":
+                        retry_policy = value.strip()
 
             if in_handlers:
                 match = self.TRIGGER_PATTERN.match(line)
@@ -314,6 +389,9 @@ class SkillLoader:
             side_effects=side_effects,
             requires=requires,
             idempotency=idempotency,
+            schema_version=schema_version,
+            timeout_behavior=timeout_behavior,
+            retry_policy=retry_policy,
             triggers=triggers,
             handler_code=handler_code,
             response_template=response_template,

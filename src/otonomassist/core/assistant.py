@@ -1,7 +1,7 @@
 """Core assistant implementation."""
 
 import asyncio
-import os
+import contextvars
 import re
 import sys
 import time
@@ -11,25 +11,21 @@ from typing import TYPE_CHECKING
 from dotenv import load_dotenv
 
 from otonomassist.ai.factory import AIProviderFactory
-from otonomassist.core.agent_context import build_agent_context_block, ensure_agent_storage
-from otonomassist.core.admin_api import build_admin_snapshot
-from otonomassist.core.config_doctor import get_config_status_report
-from otonomassist.core.execution_control import classify_result_status, get_skill_timeout_seconds, run_with_timeout
+from otonomassist.core.agent_context import build_runtime_context_block, ensure_agent_storage
+from otonomassist.core.execution_control import classify_result_status, get_skill_timeout_seconds
 from otonomassist.core.execution_history import append_execution_event, new_trace_id, render_execution_history
 from otonomassist.core.execution_metrics import record_execution_metric, render_execution_metrics
+from otonomassist.core.runtime_interaction import bind_interaction_context, get_current_interaction_context
 from otonomassist.core.external_assets import (
     ensure_external_asset_layout,
     get_external_skills_dir,
-    render_external_asset_audit,
-    set_external_asset_approval,
-    sync_external_skill_inventory,
 )
-from otonomassist.core.external_installer import install_external_skill, render_external_install_result
-from otonomassist.core.result_formatter import extract_presentation_request, format_result
 from otonomassist.core.skill_loader import SkillLoader
 from otonomassist.core.skill_registry import SkillRegistry
 from otonomassist.core.transport import TransportContext
-from otonomassist.core.job_runtime import enqueue_ready_planner_task, render_job_queue
+from otonomassist.services.personality import PersonalityService
+from otonomassist.services.policy import PolicyService
+from otonomassist.services.runtime import BudgetManager, ContextBudgeter, ExecutionService, InteractionOrchestrator, ModelRouter
 
 if TYPE_CHECKING:
     from otonomassist.models import Skill
@@ -37,11 +33,6 @@ if TYPE_CHECKING:
 
 class Assistant:
     """Core assistant that manages skills and command execution."""
-
-    SKILL_RESPONSE_PATTERN = re.compile(
-        r"^SKILL:\s*(\w+)\s*\|\s*ARGS:\s*(.*)$",
-        re.IGNORECASE | re.MULTILINE
-    )
     FACT_VALIDATION_PATTERN = re.compile(
         r"\b(20\d{2}|kapan|tanggal|bulan apa|jadwal|schedule|hari raya|idul fitri|lebaran|"
         r"terbaru|latest|hari ini|today|saat ini|current|presiden|ceo|harga|"
@@ -54,6 +45,21 @@ class Assistant:
         ensure_agent_storage()
         self.registry = SkillRegistry()
         self.loader = SkillLoader(skills_dir)
+        self.personality_service = PersonalityService()
+        self.policy_service = PolicyService()
+        self.budget_manager = BudgetManager()
+        self.context_budgeter = ContextBudgeter()
+        self.model_router = ModelRouter(self.budget_manager)
+        self.execution_service = ExecutionService(
+            self.registry,
+            self.policy_service,
+            provider_getter=self._get_provider,
+            system_prompt_builder=self._get_orchestration_system_prompt,
+            error_formatter=self._format_error,
+            async_runner=self._run_async,
+            help_renderer=self.get_help,
+        )
+        self.orchestrator = InteractionOrchestrator(self, self.policy_service, self.execution_service)
         self._initialized = False
 
     def initialize(self) -> None:
@@ -88,10 +94,27 @@ class Assistant:
                 lines.append(f"  Requires: {', '.join(defn.requires)}")
             if defn.idempotency and defn.idempotency != "unknown":
                 lines.append(f"  Idempotency: {defn.idempotency}")
+            lines.append(
+                f"  Contract: schema={defn.schema_version}, timeout={defn.timeout_behavior}, retry={defn.retry_policy}"
+            )
             # Add AI-specific instructions if available
             if defn.ai_instructions:
                 lines.append(f"  AI Instructions: {defn.ai_instructions[:200]}...")
 
+        return "\n".join(lines)
+
+    def _build_routing_capabilities_context(self) -> str:
+        """Build a compact capability list for low-cost AI routing."""
+        skills = self.registry.list_skills()
+        if not skills:
+            return "No routing targets available."
+
+        lines = ["Routing targets:"]
+        for skill in skills:
+            definition = skill.definition
+            aliases = ", ".join(definition.aliases[:2]) if definition.aliases else ""
+            alias_text = f" aliases={aliases}" if aliases else ""
+            lines.append(f"- {definition.name}: {definition.description[:96]}{alias_text}")
         return "\n".join(lines)
 
     def _render_skill_layer_audit(self) -> str:
@@ -108,7 +131,8 @@ class Assistant:
             lines.extend(["", f"[{category}]"])
             for item in skills:
                 lines.append(
-                    f"- {item['name']} [risk={item['risk_level']}, idempotency={item['idempotency']}]"
+                    f"- {item['name']} [risk={item['risk_level']}, idempotency={item['idempotency']}, "
+                    f"schema={item['schema_version']}, timeout={item['timeout_behavior']}, retry={item['retry_policy']}]"
                 )
                 if item["requires"]:
                     lines.append("  requires: " + ", ".join(item["requires"]))
@@ -116,46 +140,67 @@ class Assistant:
                     lines.append("  side_effects: " + ", ".join(item["side_effects"]))
         return "\n".join(lines)
 
-    def _get_orchestration_system_prompt(self, command: str) -> str:
+    def _get_orchestration_system_prompt(self, command: str, context: TransportContext | None = None) -> str:
         """Build system prompt for AI orchestration."""
+        context_block = self.context_budgeter.build_orchestration_context(
+            command=command,
+            skills_context=self._build_routing_capabilities_context(),
+            personality_service=self.personality_service,
+            session_mode=context.session_mode if context else "main",
+            agent_scope=context.agent_scope if context else "default",
+            roles=context.roles if context else (),
+        )
         return f"""Anda adalah asisten yang menentukan skill mana yang akan digunakan berdasarkan input user.
 
-{self._build_skills_context()}
+{context_block}
 
-{build_agent_context_block(command)}
+Aturan inti:
+- Respon HANYA: SKILL: <nama_skill> | ARGS: <argumen>
+- Pilih skill paling spesifik yang cocok dengan intent user.
+- Gunakan `ai` hanya untuk chat umum, penjelasan umum, atau intent yang tidak cocok ke skill lain.
+- Gunakan `memory` untuk menyimpan fakta, keputusan, atau catatan.
+- Gunakan `planner` untuk goal, backlog, task, dan next action agent internal.
+- Gunakan `workspace` untuk file lokal: tree, read, find, files, summary.
+- Gunakan `research` untuk fakta eksternal yang sensitif waktu atau perlu verifikasi.
+- Gunakan `observe` untuk snapshot read-only; `monitor` untuk warning/health yang perlu perhatian.
+- Gunakan `decide` untuk memilih next action; `executor` untuk menjalankan action.
+- Gunakan `profile`, `identity`, `policy`, `notify`, `schedule`, `self-review`, atau `secrets` bila intent user jelas menuju capability itu.
+- Pastikan ARGS executable dan ringkas; jangan hanya mengulang kalimat user jika skill butuh subcommand.
 
-Petunjuk:
-1. Analisis input user untuk menentukan skill yang tepat
-2. Jika user hanya ingin chatting/pertanyaan umum tanpa skill spesifik, gunakan skill 'ai'
-3. Respon dengan format: SKILL: <nama_skill> | ARGS: <argumen untuk skill>
-4. Jika user ingin menyimpan fakta atau keputusan, prioritaskan skill 'memory'
-5. Gunakan skill 'planner' hanya untuk goal, backlog, task, atau langkah kerja agent internal; jangan gunakan 'planner' untuk rencana umum seperti itinerary, jadwal liburan, atau outline non-agent. Untuk itu gunakan skill 'ai'
-6. Jika user ingin mengatur identitas, preferensi, atau personalisasi agent, prioritaskan skill 'profile'
-7. Jika user ingin refleksi mandiri atau langkah berikutnya berdasarkan state agent, prioritaskan skill 'agent-loop'
-8. Jika user ingin mengeksekusi next task atau menjalankan action dari planner, prioritaskan skill 'executor'
-9. Jika user ingin menjalankan loop otomatis beberapa langkah atau sampai idle, prioritaskan skill 'runner'
-10. Jika user ingin menyimpan atau mengelola kredensial, prioritaskan skill 'secrets'
-11. Jika user ingin membaca, mencari, melihat struktur, atau merangkum file proyek, prioritaskan skill 'workspace' dan ubah ke subcommand yang executable seperti `workspace tree .`, `workspace read README.md`, `workspace find OPENAI_MODEL`, atau `workspace summary src`
-12. Jika user meminta fakta real-world yang sensitif terhadap waktu, tanggal, jadwal, atau informasi terbaru, prioritaskan skill 'research'
-13. Jika user ingin audit atau evaluasi hasil kerja, prioritaskan skill 'self-review'
-14. Jika user input "apa itu python", respons: SKILL: ai | ARGS: apa itu python
-15. Jika user berkata "lihat struktur file yang ada di workspace", respons: SKILL: workspace | ARGS: tree .
-16. Jika user berkata "baca README.md", respons: SKILL: workspace | ARGS: read README.md
-17. Jika user berkata "buat rencana libur idul fitri 2026", respons: SKILL: research | ARGS: buat rencana libur idul fitri 2026 di indonesia
-18. Pastikan ARGS berisi informasi yang dibutuhkan skill untuk menjalankan tugasnya, bukan sekadar mengulang kalimat user mentah bila skill membutuhkan subcommand tertentu
+Contoh singkat:
+- user: "apa itu python" -> SKILL: ai | ARGS: apa itu python
+- user: "lihat struktur file yang ada di workspace" -> SKILL: workspace | ARGS: tree .
+- user: "lihat status runtime" -> SKILL: observe | ARGS: status
+- user: "lihat alert aktif" -> SKILL: monitor | ARGS: alerts
+- user: "pilih next action terbaik" -> SKILL: decide | ARGS: next
+- user: "buat rencana libur idul fitri 2026" -> SKILL: research | ARGS: buat rencana libur idul fitri 2026 di indonesia
 
 Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 
     def _get_provider(self):
         """Get available AI provider."""
         try:
-            return AIProviderFactory.auto_detect()
+            return self.model_router.get_provider()
         except Exception:
             return None
 
     def execute(self, command: str) -> str:
         """Execute a command using AI-First orchestration."""
-        return self._execute_with_context(command, context=None)
+        inherited = get_current_interaction_context()
+        context = None
+        if inherited:
+            context = TransportContext(
+                source=str(inherited.get("source") or "cli"),
+                user_id=inherited.get("user_id"),
+                chat_id=inherited.get("chat_id"),
+                session_id=inherited.get("session_id"),
+                identity_id=inherited.get("identity_id"),
+                roles=tuple(inherited.get("roles") or ()),
+                trace_id=inherited.get("trace_id"),
+                session_mode=str(inherited.get("session_mode") or "main"),
+                agent_scope=str(inherited.get("agent_scope") or "default"),
+            )
+        return self._execute_with_context(command, context=context)
 
     def _execute_with_context(self, command: str, context: TransportContext | None) -> str:
         """Execute a command with optional transport context."""
@@ -178,121 +223,22 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
             data={
                 "user_id": context.user_id or "",
                 "chat_id": context.chat_id or "",
+                "session_id": context.session_id or "",
+                "identity_id": context.identity_id or "",
             },
         )
-
-        # Built-in commands
-        cmd_lower = command.strip().lower()
-        if cmd_lower == "help":
-            return self._finalize_command_result(context, command, self.get_help(), command_started)
-
-        if cmd_lower == "list":
-            return self._finalize_command_result(context, command, self.list_skills_str(), command_started)
-
-        if cmd_lower in {"history", "history recent"}:
-            return self._finalize_command_result(context, command, render_execution_history(), command_started)
-        if cmd_lower in {"metrics", "metrics summary"}:
-            return self._finalize_command_result(context, command, render_execution_metrics(), command_started)
-        if cmd_lower in {"jobs", "jobs list", "job queue"}:
-            return self._finalize_command_result(context, command, render_job_queue(), command_started)
-        if cmd_lower in {"api status", "admin status"}:
-            _, payload = build_admin_snapshot("/status")
-            return self._finalize_command_result(context, command, str(payload), command_started)
-        if cmd_lower in {"jobs enqueue", "job enqueue"}:
-            job = enqueue_ready_planner_task()
-            if not job:
-                return self._finalize_command_result(context, command, "Tidak ada task ready untuk dimasukkan ke job queue.", command_started)
-            return self._finalize_command_result(
-                context,
-                command,
-                f"Job #{job['id']} dibuat untuk task #{job['task_id']} {job['task_text']}",
-                command_started,
-            )
-
-        if cmd_lower in {"external audit", "external list"}:
-            return self._finalize_command_result(context, command, render_external_asset_audit(), command_started)
-        if cmd_lower.startswith("external approve "):
-            name = command.strip()[len("external approve "):].strip()
-            if not name:
-                return self._finalize_command_result(context, command, "Gunakan: external approve <name>", command_started)
-            try:
-                asset = set_external_asset_approval(name, "approved", actor="assistant")
-            except Exception as exc:
-                return self._finalize_command_result(context, command, f"External approve gagal: {exc}", command_started)
-            return self._finalize_command_result(context, command, f"External asset `{asset['name']}` diset ke approved.", command_started)
-        if cmd_lower.startswith("external reject "):
-            name = command.strip()[len("external reject "):].strip()
-            if not name:
-                return self._finalize_command_result(context, command, "Gunakan: external reject <name>", command_started)
-            try:
-                asset = set_external_asset_approval(name, "rejected", actor="assistant")
-            except Exception as exc:
-                return self._finalize_command_result(context, command, f"External reject gagal: {exc}", command_started)
-            return self._finalize_command_result(context, command, f"External asset `{asset['name']}` diset ke rejected.", command_started)
-        if cmd_lower == "external sync":
-            result = sync_external_skill_inventory(installed_by="assistant")
-            return self._finalize_command_result(context, command, (
-                f"External assets synced: {result['discovered_count']} scanned from "
-                f"{get_external_skills_dir()}"
-            ), command_started)
-        if cmd_lower.startswith("external install "):
-            source = command.strip()[len("external install "):].strip()
-            if not source:
-                return self._finalize_command_result(context, command, "Gunakan: external install <path-lokal-atau-url-git>", command_started)
-            try:
-                result = install_external_skill(source, actor="assistant")
-                return self._finalize_command_result(context, command, render_external_install_result(result), command_started)
-            except Exception as exc:
-                return self._finalize_command_result(context, command, f"External install gagal: {exc}", command_started)
-        if cmd_lower in {"skills audit", "skill audit"}:
-            return self._finalize_command_result(context, command, self._render_skill_layer_audit(), command_started)
-
-        if cmd_lower in {"doctor", "config status", "config-status"}:
-            return self._finalize_command_result(context, command, get_config_status_report(), command_started)
-
-        if cmd_lower == "debug-config":
-            denied = self._authorize_command("debug-config", "", context)
-            if denied:
-                return self._finalize_command_result(context, command, denied, command_started)
-            return self._finalize_command_result(context, command, self.get_debug_config(), command_started)
-
-        if cmd_lower == "list-models":
-            denied = self._authorize_command("list-models", "", context)
-            if denied:
-                return self._finalize_command_result(context, command, denied, command_started)
-            return self._finalize_command_result(context, command, self.get_model_listing(), command_started)
-
-        for prefix in ("cari informasi ", "cek informasi ", "cari fakta ", "verifikasi "):
-            if cmd_lower.startswith(prefix):
-                research_skill = self.registry.get("research")
-                if research_skill:
-                    query = command.strip()[len(prefix):].strip()
-                    denied = self._authorize_command("research", query, context)
-                    if denied:
-                        return self._finalize_command_result(context, command, denied, command_started)
-                    result = self._execute_skill(research_skill, query, original_command=command, trace_id=trace_id)
-                    return self._finalize_command_result(context, command, result, command_started)
-
-        # Hybrid approach: try direct skill match first
-        skill, args = self.registry.find_by_command(command)
-        if skill:
-            denied = self._authorize_command(skill.name.lower(), args, context)
-            if denied:
-                return self._finalize_command_result(context, command, denied, command_started)
-            result = self._execute_skill(skill, args, original_command=command, trace_id=trace_id)
-            return self._finalize_command_result(context, command, result, command_started)
-
-        if self._should_force_research(command):
-            research_skill = self.registry.get("research")
-            if research_skill:
-                denied = self._authorize_command("research", command, context)
-                if denied:
-                    return self._finalize_command_result(context, command, denied, command_started)
-                result = self._execute_skill(research_skill, command, original_command=command, trace_id=trace_id)
-                return self._finalize_command_result(context, command, result, command_started)
-
-        # Fallback to AI routing for natural language input
-        result = self._route_via_ai(command, context=context)
+        with bind_interaction_context(
+            source=context.source,
+            user_id=context.user_id,
+            chat_id=context.chat_id,
+            session_id=context.session_id,
+            identity_id=context.identity_id,
+            roles=context.roles,
+            trace_id=context.trace_id,
+            session_mode=context.session_mode,
+            agent_scope=context.agent_scope,
+        ):
+            result = self.orchestrator.handle_command(command, context)
         return self._finalize_command_result(context, command, result, command_started)
 
     def handle_message(self, message: str, context: TransportContext | None = None) -> str:
@@ -303,30 +249,6 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
             return "Please enter a command. Type 'help' for available commands."
 
         return self._execute_with_context(text, context)
-
-    def _route_via_ai(self, command: str, context: TransportContext | None = None) -> str:
-        """Route command through AI to determine which skill to use."""
-        provider = self._get_provider()
-
-        if not provider:
-            return self._format_error(
-                error_type="no_provider",
-                message="Tidak ada AI provider tersedia. Cek konfigurasi di .env"
-            )
-
-        try:
-            response = self._run_async(provider.chat_completion(
-                prompt=command,
-                system_prompt=self._get_orchestration_system_prompt(command)
-            ))
-
-            return self._parse_and_execute(response, command, context=context)
-
-        except Exception as e:
-            return self._format_error(
-                error_type="api_error",
-                message=str(e)
-            )
 
     def _run_async(self, coro):
         """Run coroutine safely, handling existing event loops."""
@@ -359,108 +281,11 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
                     new_loop.close()
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(run_in_new_loop)
+                copied = contextvars.copy_context()
+                future = executor.submit(copied.run, run_in_new_loop)
                 return future.result()
         else:
             return asyncio.run(coro)
-
-    def _parse_and_execute(
-        self,
-        ai_response: str,
-        original_command: str,
-        context: TransportContext | None = None,
-    ) -> str:
-        """Parse AI response and execute the determined skill."""
-        match = self.SKILL_RESPONSE_PATTERN.match(ai_response.strip())
-
-        if not match:
-            # AI didn't return expected format, fallback to direct response
-            return ai_response
-
-        skill_name = match.group(1).strip().lower()
-        skill_args = match.group(2).strip()
-
-        # Find skill in registry
-        skill = self.registry.get(skill_name)
-
-        if not skill:
-            return self._format_error(
-                error_type="skill_not_found",
-                message=f"Skill '{skill_name}' tidak ditemukan. Available: {', '.join(s.name for s in self.registry)}"
-            )
-
-        try:
-            denied = self._authorize_command(skill.name.lower(), skill_args, context)
-            if denied:
-                return denied
-            return self._execute_skill(
-                skill,
-                skill_args,
-                original_command=original_command,
-                trace_id=context.trace_id if context else "",
-            )
-        except Exception as e:
-            return f"Error executing skill '{skill_name}': {str(e)}"
-
-    def _execute_skill(
-        self,
-        skill: "Skill",
-        args: str,
-        original_command: str | None = None,
-        trace_id: str = "",
-    ) -> str:
-        """Execute a skill with assistant-level special cases."""
-        if skill.name.lower() == "help":
-            return self.get_help()
-
-        skill_started = time.perf_counter()
-        if trace_id:
-            append_execution_event(
-                "skill_started",
-                trace_id=trace_id,
-                status="started",
-                skill_name=skill.name,
-                command=original_command or args,
-                data={
-                    "args": args,
-                },
-            )
-        cleaned_args, presentation = extract_presentation_request(original_command or args, args)
-        timeout_seconds = get_skill_timeout_seconds()
-        raw_result, timed_out = run_with_timeout(
-            lambda: skill.run(cleaned_args),
-            timeout_seconds=timeout_seconds,
-        )
-        if timed_out:
-            formatted = (
-                f"[ERROR] TIMEOUT\n"
-                f"Skill `{skill.name}` melebihi batas waktu {timeout_seconds:.2f} detik."
-            )
-        else:
-            formatted = format_result(raw_result, presentation)
-        if trace_id:
-            status = classify_result_status(formatted)
-            append_execution_event(
-                "skill_completed",
-                trace_id=trace_id,
-                status=status,
-                skill_name=skill.name,
-                command=original_command or args,
-                duration_ms=int((time.perf_counter() - skill_started) * 1000),
-                data={
-                    "result_preview": formatted[:240],
-                    "view": presentation.view,
-                    "timed_out": timed_out,
-                    "timeout_seconds": timeout_seconds,
-                },
-            )
-            record_execution_metric(
-                "skill_completed",
-                status=status,
-                skill_name=skill.name,
-                duration_ms=int((time.perf_counter() - skill_started) * 1000),
-            )
-        return formatted
 
     def _format_error(self, error_type: str, message: str) -> str:
         """Format error message with diagnostic info."""
@@ -509,98 +334,6 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
             return False
         return bool(self.FACT_VALIDATION_PATTERN.search(text))
 
-    def _authorize_command(
-        self,
-        prefix: str,
-        args: str,
-        context: TransportContext | None,
-    ) -> str | None:
-        """Authorize a command/skill prefix and subcommand for a transport context."""
-        if context is None or context.source != "telegram":
-            return None
-
-        roles = set(context.roles)
-        if "owner" in roles:
-            return None
-        if "approved" not in roles:
-            return "Akses Telegram belum diotorisasi untuk operasi ini."
-
-        prefix = prefix.strip().lower()
-        subcommand = _extract_subcommand(args)
-        owner_only = _parse_prefix_set(
-            "TELEGRAM_OWNER_ONLY_PREFIXES",
-            {"debug-config", "list-models", "secrets", "executor", "runner"},
-        )
-        approved = _parse_prefix_set(
-            "TELEGRAM_APPROVED_PREFIXES",
-            {
-                "help",
-                "list",
-                "ai",
-                "research",
-                "memory",
-                "planner",
-                "profile",
-                "agent-loop",
-                "workspace",
-                "self-review",
-            },
-        )
-
-        if prefix in owner_only:
-            return (
-                f"Command/skill `{prefix}` dibatasi untuk owner Telegram. "
-                "Gunakan akun owner atau minta owner menjalankannya."
-            )
-
-        if prefix in approved:
-            action_denied = self._authorize_approved_action(prefix, subcommand)
-            if action_denied:
-                return action_denied
-            return None
-
-        return (
-            f"Command/skill `{prefix}` tidak diizinkan untuk user Telegram non-owner."
-        )
-
-    def _authorize_approved_action(self, prefix: str, subcommand: str) -> str | None:
-        """Apply finer-grained action checks for approved Telegram users."""
-        read_only_actions: dict[str, set[str]] = {
-            "help": {""},
-            "list": {""},
-            "ai": {"*"},
-            "research": {"*"},
-            "workspace": {"tree", "read", "find", "files", "summary"},
-            "memory": {"list", "search", "get", "summarize", "summary", "context"},
-            "planner": {"list", "next", "summary"},
-            "profile": {"show"},
-        }
-        mutate_denial: dict[str, str] = {
-            "memory": "Operasi ubah memory Telegram dibatasi untuk owner.",
-            "planner": "Operasi ubah planner Telegram dibatasi untuk owner.",
-            "profile": "Operasi ubah profile Telegram dibatasi untuk owner.",
-            "self-review": "Self-review Telegram dibatasi untuk owner karena menulis memory, lessons, dan planner.",
-            "agent-loop": "Agent-loop Telegram dibatasi untuk owner karena menulis memory pembelajaran.",
-        }
-
-        allowed = read_only_actions.get(prefix)
-        if allowed is None:
-            if prefix in mutate_denial:
-                return mutate_denial[prefix]
-            return (
-                f"Operasi `{prefix}` tidak diizinkan untuk user Telegram approved."
-            )
-
-        if "*" in allowed:
-            return None
-        if subcommand in allowed:
-            return None
-        if prefix in mutate_denial:
-            return mutate_denial[prefix]
-        return (
-            f"Subcommand `{prefix} {subcommand or '(default)'}` dibatasi untuk owner Telegram."
-        )
-
     def get_help(self) -> str:
         """Get help text."""
         return """OtonomAssist - Available commands:
@@ -618,9 +351,31 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 - skills audit: Show autonomous skill-layer categories, risk, and requirements
 - doctor: Show read-only configuration status
 - config status: Alias for doctor
+- observe <summary|status|metrics|events|history|jobs|scheduler|identity|notifications>: Show read-only runtime observations
+- notify <send|batch|history> ...: Dispatch or inspect durable notifications
+- identity <show|sessions|resolve> ...: Inspect or resolve identity/session continuity
+- schedule <show|run|enqueue> ...: Inspect scheduler state or prime runtime queue
+- policy <show|prefixes|check> ...: Inspect active policy and simulate authorization
+- monitor <summary|alerts|health|queue|latency> ...: Highlight operational warnings and health signals
+- decide <next|between> ...: Choose the most relevant next action without executing it
 - debug-config: Show active AI provider configuration
 - list-models: List models visible to the active API key
 - <any other command>: Will be routed to AI to determine appropriate skill
+
+Standard capability aliases:
+- chat -> ai
+- plan -> planner
+- act -> executor
+- reflect -> agent-loop
+- inspect -> workspace
+- persona -> profile
+- review -> self-review
+
+Recommended capability chains:
+- observe -> decide -> act
+- review -> plan
+- research -> memory
+- inspect -> plan
 
 Skills are loaded from the skills/ directory."""
 
@@ -648,16 +403,37 @@ Skills are loaded from the skills/ directory."""
 
         return "\n".join(lines)
 
+    def render_skill_layer_audit(self) -> str:
+        """Expose skill-layer audit through the orchestration service boundary."""
+        return self._render_skill_layer_audit()
 
-def _parse_prefix_set(name: str, default: set[str]) -> set[str]:
-    raw = os.getenv(name, "").strip()
-    if not raw:
-        return set(default)
-    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+    def render_execution_history(self) -> str:
+        """Expose execution history rendering through the orchestration boundary."""
+        return render_execution_history()
 
+    def render_execution_metrics(self) -> str:
+        """Expose execution metrics rendering through the orchestration boundary."""
+        return render_execution_metrics()
 
-def _extract_subcommand(args: str) -> str:
-    args = args.strip().lower()
-    if not args:
-        return ""
-    return args.split()[0]
+    def should_force_research(self, command: str) -> bool:
+        """Expose fact-validation detection through the orchestration boundary."""
+        return self._should_force_research(command)
+
+    def route_via_ai(self, command: str, context: TransportContext | None = None) -> str:
+        """Expose AI routing through the execution service boundary."""
+        return self.execution_service.route_via_ai(command, context=context)
+
+    def execute_skill(
+        self,
+        skill: "Skill",
+        args: str,
+        original_command: str | None = None,
+        trace_id: str = "",
+    ) -> str:
+        """Expose skill execution through the execution service boundary."""
+        return self.execution_service.execute_skill(
+            skill,
+            args,
+            original_command=original_command,
+            trace_id=trace_id,
+        )
