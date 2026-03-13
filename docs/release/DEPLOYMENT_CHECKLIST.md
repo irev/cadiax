@@ -18,9 +18,9 @@
 
 ## Runtime
 
-- Run `autonomiq doctor --json`.
-- Run `autonomiq service status`.
-- Generate wrappers if needed with `autonomiq service write`.
+- Run `cadiax doctor --json`.
+- Run `cadiax service status`.
+- Generate wrappers if needed with `cadiax service write`.
 - Validate target services:
   - `worker`
   - `scheduler`
@@ -30,12 +30,12 @@
 
 ## Privacy And Scope
 
-- Review `autonomiq privacy show --json`.
+- Review `cadiax privacy show --json`.
 - Review scoped privacy if used:
-  - `autonomiq privacy show --json --scope <scope> --role <role>`
+  - `cadiax privacy show --json --scope <scope> --role <role>`
 - Review prune preview before cleanup:
-  - `autonomiq privacy prune --dry-run`
-  - `autonomiq privacy prune --dry-run --scope <scope> --role <role>`
+  - `cadiax privacy prune --dry-run`
+  - `cadiax privacy prune --dry-run --scope <scope> --role <role>`
 
 ## Channel Smoke Tests
 
@@ -45,17 +45,17 @@
 - Conversation API:
   - `POST /v1/messages`
 - Notifications:
-  - `autonomiq notify send "test message"`
+  - `cadiax notify send "test message"`
 - Email if enabled:
-  - `autonomiq email send "test" --to <address>`
+  - `cadiax email send "test" --to <address>`
 - WhatsApp if enabled:
-  - `autonomiq whatsapp send "test" --to <number>`
+  - `cadiax whatsapp send "test" --to <number>`
 - Telegram if enabled:
   - run transport and verify inbound/outbound behavior
 - Monitoring dashboard if enabled:
-  - `autonomiq dashboard status`
-  - `autonomiq dashboard enable --no-install --no-build` if already built
-  - `autonomiq dashboard run`
+  - `cadiax dashboard status`
+  - `cadiax dashboard enable --no-install --no-build` if already built
+  - `cadiax dashboard run`
   - verify `http://127.0.0.1:8795/api/dashboard`
 
 ## Audit Verification

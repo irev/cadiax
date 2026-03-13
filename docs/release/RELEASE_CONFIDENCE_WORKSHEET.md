@@ -47,8 +47,8 @@ Date:
 | Command | Result | Notes |
 |---|---|---|
 | `pytest -q` | [ ] Pass / [ ] Fail | |
-| `autonomiq doctor --json` | [ ] Pass / [ ] Fail | |
-| `autonomiq service status` | [ ] Pass / [ ] Fail | |
+| `cadiax doctor --json` | [ ] Pass / [ ] Fail | |
+| `cadiax service status` | [ ] Pass / [ ] Fail | |
 | `npm install` if dashboard enabled | [ ] Pass / [ ] Fail | |
 | `npm run build` if dashboard enabled | [ ] Pass / [ ] Fail | |
 
@@ -97,9 +97,9 @@ Only complete if dashboard is enabled.
 
 | Check | Result | Notes |
 |---|---|---|
-| `autonomiq dashboard status` | [ ] Pass / [ ] Fail | |
-| `autonomiq dashboard enable` | [ ] Pass / [ ] Fail | |
-| `autonomiq dashboard run` | [ ] Pass / [ ] Fail | |
+| `cadiax dashboard status` | [ ] Pass / [ ] Fail | |
+| `cadiax dashboard enable` | [ ] Pass / [ ] Fail | |
+| `cadiax dashboard run` | [ ] Pass / [ ] Fail | |
 | `/api/dashboard` reachable | [ ] Pass / [ ] Fail | |
 | browser UI reachable locally | [ ] Pass / [ ] Fail | |
 | sidebar navigation renders | [ ] Pass / [ ] Fail | |

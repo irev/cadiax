@@ -1,10 +1,10 @@
-"""Autonomiq - Autonomous Assistant.
+"""Cadiax - Autonomous Assistant.
 
 Modular assistant system with skill-based architecture.
 """
 
-__version__ = "1.1.0"
-__author__ = "Autonomiq Team"
+__version__ = "1.1.1"
+__author__ = "Cadiax Team"
 
 from otonomassist.core.assistant import Assistant
 from otonomassist.models.skill import Skill, SkillDefinition

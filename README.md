@@ -1,4 +1,4 @@
-# Autonomiq
+# Cadiax
 
 Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
 
@@ -18,12 +18,12 @@ Dokumen acuan utama terbaru ada di `docs/specs/autonomous_ai_system_spec_extende
 
 Dokumen pendukung:
 
-- `docs/architecture/ROADMAP.md`: urutan delivery menuju target rilis `v1.1.0`
+- `docs/architecture/ROADMAP.md`: urutan delivery menuju target rilis `v1.1.1`
 - `docs/architecture/TARGET_ARCHITECTURE_V2.md`: target boundary dan module architecture
 - `docs/architecture/ARCHITECTURE.md`: snapshot arsitektur implementasi saat ini
 - `docs/README.md`: indeks dokumentasi repo
 
-Target resmi repo sekarang bergerak pada baseline rilis `v1.1.0`: seluruh fondasi inti stabil ditambah dashboard monitoring opsional dan service wrapper yang lebih lengkap.
+Target resmi repo sekarang bergerak pada baseline rilis `v1.1.1`: seluruh fondasi inti stabil ditambah dashboard monitoring opsional dan service wrapper yang lebih lengkap.
 
 ## Fondasi yang Sudah Jadi
 
@@ -202,52 +202,52 @@ assistant: ai apa langkah berikutnya berdasarkan seluruh state yang ada?
 
 ```bash
 pip install -e .
-autonomiq setup
-autonomiq status
-autonomiq chat
+cadiax setup
+cadiax status
+cadiax chat
 ```
 
 CLI utama sekarang mendukung subcommand resmi:
 
-- `autonomiq setup`
-- `autonomiq status`
-- `autonomiq doctor`
-- `autonomiq doctor --json`
-- `autonomiq config status`
-- `autonomiq config setup`
-- `autonomiq chat`
-- `autonomiq run "<message>"`
-- `autonomiq telegram`
-- `autonomiq jobs list`
-- `autonomiq jobs enqueue`
-- `autonomiq worker --steps N`
-- `autonomiq worker --until-idle --enqueue-first`
-- `autonomiq metrics`
-- `autonomiq metrics --json`
-- `autonomiq api --host 127.0.0.1 --port 8787`
-- `autonomiq conversation-api --host 127.0.0.1 --port 8788`
-- `autonomiq service status`
-- `autonomiq service show worker --runtime posix`
-- `autonomiq service write`
-- `autonomiq service run worker --interval 5 --steps 5 --max-loops 0`
-- `autonomiq scheduler --cycles 3 --interval 5`
-- `autonomiq external audit`
-- `autonomiq external sync`
-- `autonomiq external install <path-atau-url>`
-- `autonomiq external approve <name>`
-- `autonomiq external reject <name>`
-- `autonomiq skills audit`
+- `cadiax setup`
+- `cadiax status`
+- `cadiax doctor`
+- `cadiax doctor --json`
+- `cadiax config status`
+- `cadiax config setup`
+- `cadiax chat`
+- `cadiax run "<message>"`
+- `cadiax telegram`
+- `cadiax jobs list`
+- `cadiax jobs enqueue`
+- `cadiax worker --steps N`
+- `cadiax worker --until-idle --enqueue-first`
+- `cadiax metrics`
+- `cadiax metrics --json`
+- `cadiax api --host 127.0.0.1 --port 8787`
+- `cadiax conversation-api --host 127.0.0.1 --port 8788`
+- `cadiax service status`
+- `cadiax service show worker --runtime posix`
+- `cadiax service write`
+- `cadiax service run worker --interval 5 --steps 5 --max-loops 0`
+- `cadiax scheduler --cycles 3 --interval 5`
+- `cadiax external audit`
+- `cadiax external sync`
+- `cadiax external install <path-atau-url>`
+- `cadiax external approve <name>`
+- `cadiax external reject <name>`
+- `cadiax skills audit`
 
-`autonomiq setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential.
+`cadiax setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential.
 
-`autonomiq status` dan `autonomiq doctor` menampilkan audit konfigurasi read-only: provider aktif, credential tersedia atau tidak, workspace guard, dan status Telegram. Report sekarang juga memberi level `healthy`, `warning`, atau `critical` agar hasil audit lebih cepat dibaca. Di dalam assistant, audit yang sama juga tersedia lewat command `doctor` atau `config status`.
+`cadiax status` dan `cadiax doctor` menampilkan audit konfigurasi read-only: provider aktif, credential tersedia atau tidak, workspace guard, dan status Telegram. Report sekarang juga memberi level `healthy`, `warning`, atau `critical` agar hasil audit lebih cepat dibaca. Di dalam assistant, audit yang sama juga tersedia lewat command `doctor` atau `config status`.
 
 Alias kompatibilitas lama masih didukung sementara:
 
-- `autonomiq --setup`
-- `autonomiq --doctor`
-- `autonomiq -i`
-- `autonomiq <pesan>`
+- `cadiax --setup`
+- `cadiax --doctor`
+- `cadiax -i`
+- `cadiax <pesan>`
 
 Ekstensi eksternal sekarang diarahkan ke layout workspace:
 
@@ -258,9 +258,9 @@ workspace/
 └── packages/
 ```
 
-`autonomiq external audit` atau command assistant `external audit` menampilkan inventaris asset eksternal yang teraudit, kapan terdeteksi/ditambahkan, dan di mana lokasinya.
-`autonomiq external sync` memaksa scan ulang `workspace/skills-external` lalu memperbarui registry audit bila ada skill baru atau metadata yang berubah.
-`autonomiq external install <path-lokal-atau-url-git>` memasang skill eksternal ke `workspace/skills-external/`, lalu langsung mencatat event audit install dan hasil cek kompatibilitas.
+`cadiax external audit` atau command assistant `external audit` menampilkan inventaris asset eksternal yang teraudit, kapan terdeteksi/ditambahkan, dan di mana lokasinya.
+`cadiax external sync` memaksa scan ulang `workspace/skills-external` lalu memperbarui registry audit bila ada skill baru atau metadata yang berubah.
+`cadiax external install <path-lokal-atau-url-git>` memasang skill eksternal ke `workspace/skills-external/`, lalu langsung mencatat event audit install dan hasil cek kompatibilitas.
 
 Skill eksternal bisa menambahkan manifest opsional `asset.json` di root skill untuk membantu audit dan cek kompatibilitas. Contoh:
 
@@ -295,9 +295,9 @@ OTONOMASSIST_EXTERNAL_CAPABILITY_ALLOW=workspace_read,network
 Contoh:
 
 ```bash
-autonomiq external install <path-atau-url-git>
-autonomiq external approve my-skill
-autonomiq external reject my-skill
+cadiax external install <path-atau-url-git>
+cadiax external approve my-skill
+cadiax external reject my-skill
 ```
 
 Jika ingin perilaku lama yang langsung memuat semua skill eksternal, set:
@@ -309,8 +309,8 @@ OTONOMASSIST_EXTERNAL_SKILL_POLICY=allow-all
 Telegram runner:
 
 ```bash
-autonomiq telegram
-autonomiq-telegram
+cadiax telegram
+cadiax-telegram
 ```
 
 Built-in commands:
@@ -407,7 +407,7 @@ assistant: secrets set telegram_bot_token <token>
 Lalu jalankan:
 
 ```bash
-autonomiq-telegram
+cadiax-telegram
 ```
 
 Policy authorization Telegram sekarang fail-closed:
@@ -439,7 +439,7 @@ Jika tetap ingin memakai environment variable, `TELEGRAM_BOT_TOKEN` masih diduku
 
 ## Validasi Fakta Real-World
 
-Autonomiq sekarang memiliki skill `research` untuk pertanyaan yang sensitif terhadap:
+Cadiax sekarang memiliki skill `research` untuk pertanyaan yang sensitif terhadap:
 
 - tanggal
 - jadwal/libur
@@ -470,13 +470,13 @@ Fondasi observability minimum juga mulai aktif:
 
 - setiap command inbound sekarang punya `trace_id`
 - event inti seperti `command_received`, `skill_started`, `skill_completed`, dan `command_completed` ditulis ke `.otonomassist/execution_history.jsonl`
-- operator bisa melihat jejak terbaru lewat `autonomiq history`
-- operator bisa melihat agregat metrik lewat `autonomiq metrics`
+- operator bisa melihat jejak terbaru lewat `cadiax history`
+- operator bisa melihat agregat metrik lewat `cadiax metrics`
 - timeout skill global bisa diatur dengan `OTONOMASSIST_SKILL_TIMEOUT_SECONDS`
 - `doctor/status` sekarang juga mendukung output machine-readable lewat `--json`
 - report `doctor/status` sekarang juga memiliki section `[Runtime]` untuk queue worker
 - admin API read-only lokal tersedia untuk `/health`, `/status`, `/metrics`, `/jobs`, dan `/history`
-- jika `OTONOMASSIST_ADMIN_TOKEN` diisi, admin API memerlukan header `X-Autonomiq-Token` atau `Authorization: Bearer ...`
+- jika `OTONOMASSIST_ADMIN_TOKEN` diisi, admin API memerlukan header `X-Cadiax-Token` atau `Authorization: Bearer ...`
 
 Fondasi runtime Phase 2 juga mulai aktif:
 

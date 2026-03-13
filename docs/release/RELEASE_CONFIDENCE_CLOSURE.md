@@ -60,11 +60,11 @@ Evidence to record:
 ### Linux
 
 - Generate wrappers:
-  - `autonomiq service write worker --runtime posix`
-  - `autonomiq service write scheduler --runtime posix`
-  - `autonomiq service write admin-api --runtime posix`
-  - `autonomiq service write conversation-api --runtime posix`
-  - `autonomiq service write dashboard --runtime posix` if dashboard is enabled
+  - `cadiax service write worker --runtime posix`
+  - `cadiax service write scheduler --runtime posix`
+  - `cadiax service write admin-api --runtime posix`
+  - `cadiax service write conversation-api --runtime posix`
+  - `cadiax service write dashboard --runtime posix` if dashboard is enabled
 - Install and start actual `systemd` units on target host.
 - Verify restart behavior:
   - stop service
@@ -74,11 +74,11 @@ Evidence to record:
 ### Windows
 
 - Generate wrappers:
-  - `autonomiq service write worker --runtime windows`
-  - `autonomiq service write scheduler --runtime windows`
-  - `autonomiq service write admin-api --runtime windows`
-  - `autonomiq service write conversation-api --runtime windows`
-  - `autonomiq service write dashboard --runtime windows` if dashboard is enabled
+  - `cadiax service write worker --runtime windows`
+  - `cadiax service write scheduler --runtime windows`
+  - `cadiax service write admin-api --runtime windows`
+  - `cadiax service write conversation-api --runtime windows`
+  - `cadiax service write dashboard --runtime windows` if dashboard is enabled
 - Install via Scheduled Task or chosen Windows supervisor.
 - Verify restart behavior:
   - stop task/service
@@ -122,9 +122,9 @@ Evidence to record:
 Only required if dashboard is part of the release target.
 
 - Run:
-  - `autonomiq dashboard status`
-  - `autonomiq dashboard enable`
-  - `autonomiq dashboard run`
+  - `cadiax dashboard status`
+  - `cadiax dashboard enable`
+  - `cadiax dashboard run`
 - Verify local access:
   - `GET /api/dashboard`
   - open browser UI locally
@@ -181,10 +181,10 @@ Evidence to record:
 
 ## 7. Privacy And Scope Closure
 
-- Run `autonomiq privacy show --json`.
+- Run `cadiax privacy show --json`.
 - If scoped usage exists, run scoped privacy checks.
 - Run prune preview:
-  - `autonomiq privacy prune --dry-run`
+  - `cadiax privacy prune --dry-run`
 - Verify quiet hours behavior if enabled.
 - Verify consent gating for proactive notifications.
 - Verify scope filtering for:
@@ -268,7 +268,7 @@ Release can move from `95%` to `98-99%` only if:
 Use this compact sign-off block:
 
 ```text
-Release target: v1.1.0
+Release target: v1.1.1
 Host OS:
 Python:
 Node:

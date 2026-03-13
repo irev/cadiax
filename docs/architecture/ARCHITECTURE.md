@@ -1,4 +1,4 @@
-# Arsitektur Autonomiq
+# Arsitektur Cadiax
 
 ## Tujuan
 
@@ -362,18 +362,18 @@ Layer konfigurasi sekarang dibagi dua:
 
 Entry point CLI resmi:
 
-- `autonomiq setup`
-- `autonomiq status`
-- `autonomiq doctor`
-- `autonomiq config status`
-- `autonomiq config setup`
-- `autonomiq chat`
-- `autonomiq run "<message>"`
-- `autonomiq worker`
-- `autonomiq scheduler`
-- `autonomiq metrics`
-- `autonomiq api`
-- `autonomiq telegram`
+- `cadiax setup`
+- `cadiax status`
+- `cadiax doctor`
+- `cadiax config status`
+- `cadiax config setup`
+- `cadiax chat`
+- `cadiax run "<message>"`
+- `cadiax worker`
+- `cadiax scheduler`
+- `cadiax metrics`
+- `cadiax api`
+- `cadiax telegram`
 
 ## Platform Layer
 

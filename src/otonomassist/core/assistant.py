@@ -336,7 +336,7 @@ Responskan HANYA format SKILL: ... | ARGS: ... tanpa teks lain."""
 
     def get_help(self) -> str:
         """Get help text."""
-        return """Autonomiq - Available commands:
+        return """Cadiax - Available commands:
 - help: Show this help message
 - list: List all available skills
 - history: Show recent execution history

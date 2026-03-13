@@ -1,6 +1,6 @@
 # Operations Guide
 
-Panduan ini fokus ke operasi harian Autonomiq:
+Panduan ini fokus ke operasi harian Cadiax:
 
 - install
 - first-run
@@ -19,7 +19,7 @@ pip install -e .
 Verifikasi command utama tersedia:
 
 ```bash
-autonomiq status
+cadiax status
 ```
 
 ## First-Run
@@ -27,7 +27,7 @@ autonomiq status
 Jalankan wizard interaktif:
 
 ```bash
-autonomiq setup
+cadiax setup
 ```
 
 Wizard akan membantu:
@@ -57,15 +57,15 @@ Gunakan folder ini sebagai lokasi kerja utama dan tempat penyimpanan aset/skill 
 Untuk melihat status konfigurasi:
 
 ```bash
-autonomiq status
+cadiax status
 ```
 
 Alias yang setara:
 
 ```bash
-autonomiq doctor
-autonomiq config status
-autonomiq doctor --json
+cadiax doctor
+cadiax config status
+cadiax doctor --json
 ```
 
 Di dalam assistant/chat mode:
@@ -84,8 +84,8 @@ Makna status:
 Untuk automation atau audit oleh tool lain, gunakan output JSON:
 
 ```bash
-autonomiq doctor --json
-autonomiq status --json
+cadiax doctor --json
+cadiax status --json
 ```
 
 Section `[Platform]` di report membantu menilai kesiapan lintas-OS:
@@ -125,13 +125,13 @@ Contoh temuan umum:
 Untuk mengubah konfigurasi setelah install:
 
 ```bash
-autonomiq setup
+cadiax setup
 ```
 
 atau:
 
 ```bash
-autonomiq config setup
+cadiax config setup
 ```
 
 Wizard akan menulis nilai non-secret ke `.env` dan menawarkan update credential di `secrets`.
@@ -141,34 +141,34 @@ Wizard akan menulis nilai non-secret ke `.env` dan menawarkan update credential 
 Mode chat interaktif:
 
 ```bash
-autonomiq chat
+cadiax chat
 ```
 
 Alias kompatibilitas:
 
 ```bash
-autonomiq -i
+cadiax -i
 ```
 
 Menjalankan satu pesan langsung:
 
 ```bash
-autonomiq run "list"
-autonomiq run "research siapa presiden saat ini"
-autonomiq run "workspace cari README dalam bentuk tabel"
+cadiax run "list"
+cadiax run "research siapa presiden saat ini"
+cadiax run "workspace cari README dalam bentuk tabel"
 ```
 
 Alias kompatibilitas lama:
 
 ```bash
-autonomiq list
-autonomiq research siapa presiden saat ini
+cadiax list
+cadiax research siapa presiden saat ini
 ```
 
 Audit taxonomy skill layer:
 
 ```bash
-autonomiq skills audit
+cadiax skills audit
 ```
 
 Command ini membantu melihat kategori skill otonom, risk level, idempotency, requirement, dan side effect yang sudah dideklarasikan oleh skill aktif.
@@ -176,12 +176,12 @@ Command ini membantu melihat kategori skill otonom, risk level, idempotency, req
 Runtime job queue:
 
 ```bash
-autonomiq jobs list
-autonomiq jobs enqueue
-autonomiq worker --steps 1 --enqueue-first
-autonomiq worker --steps 10 --until-idle --enqueue-first
-autonomiq worker --steps 5 --until-idle --enqueue-first --max-cycles 3 --interval 2
-autonomiq scheduler --cycles 3 --interval 5 --steps 5
+cadiax jobs list
+cadiax jobs enqueue
+cadiax worker --steps 1 --enqueue-first
+cadiax worker --steps 10 --until-idle --enqueue-first
+cadiax worker --steps 5 --until-idle --enqueue-first --max-cycles 3 --interval 2
+cadiax scheduler --cycles 3 --interval 5 --steps 5
 ```
 
 Ini berguna bila Anda ingin memisahkan tahap `task ready` dari planner dan `job execution` di runtime worker.
@@ -190,7 +190,7 @@ Section `[Runtime]` pada `status/doctor` sekarang juga menunjukkan ringkasan que
 Lihat jejak eksekusi terbaru:
 
 ```bash
-autonomiq history
+cadiax history
 ```
 
 Command ini membaca event dari `.otonomassist/execution_history.jsonl` dan menampilkan ringkasan eksekusi terbaru beserta `trace_id`.
@@ -198,8 +198,8 @@ Command ini membaca event dari `.otonomassist/execution_history.jsonl` dan menam
 Lihat metrik agregat runtime:
 
 ```bash
-autonomiq metrics
-autonomiq metrics --json
+cadiax metrics
+cadiax metrics --json
 ```
 
 Command ini membaca agregat dari `.otonomassist/execution_metrics.json` untuk melihat volume command/skill, timeout, error, dan timing rata-rata.
@@ -216,7 +216,7 @@ Jika sebuah skill melewati batas ini, assistant akan mengembalikan error timeout
 Admin API read-only lokal:
 
 ```bash
-autonomiq api --host 127.0.0.1 --port 8787
+cadiax api --host 127.0.0.1 --port 8787
 ```
 
 Endpoint yang tersedia:
@@ -230,13 +230,13 @@ Endpoint yang tersedia:
 
 Jika `OTONOMASSIST_ADMIN_TOKEN` diisi, sertakan salah satu:
 
-- header `X-Autonomiq-Token: <token>`
+- header `X-Cadiax-Token: <token>`
 - header `Authorization: Bearer <token>`
 
 Conversation API lokal:
 
 ```bash
-autonomiq conversation-api --host 127.0.0.1 --port 8788
+cadiax conversation-api --host 127.0.0.1 --port 8788
 ```
 
 Endpoint yang tersedia:
@@ -247,7 +247,7 @@ Endpoint yang tersedia:
 
 Jika `OTONOMASSIST_CONVERSATION_TOKEN` diisi, sertakan salah satu:
 
-- header `X-Autonomiq-Conversation-Token: <token>`
+- header `X-Cadiax-Conversation-Token: <token>`
 - header `Authorization: Bearer <token>`
 
 ## Service Wrapper
@@ -255,21 +255,21 @@ Jika `OTONOMASSIST_CONVERSATION_TOKEN` diisi, sertakan salah satu:
 Untuk melihat readiness runtime service:
 
 ```bash
-autonomiq service status
+cadiax service status
 ```
 
 Untuk melihat artifact wrapper yang digenerate:
 
 ```bash
-autonomiq service show worker --runtime posix
-autonomiq service show admin-api --runtime windows
+cadiax service show worker --runtime posix
+cadiax service show admin-api --runtime windows
 ```
 
 Untuk menulis wrapper ke disk:
 
 ```bash
-autonomiq service write
-autonomiq service write worker --runtime posix
+cadiax service write
+cadiax service write worker --runtime posix
 ```
 
 Default output ada di:
@@ -281,10 +281,10 @@ Default output ada di:
 Untuk menjalankan target sebagai foreground process yang siap disupervise:
 
 ```bash
-autonomiq service run worker --interval 5 --steps 5 --max-loops 0
-autonomiq service run scheduler --interval 60 --steps 5 --max-loops 0
-autonomiq service run admin-api --host 127.0.0.1 --port 8787
-autonomiq service run conversation-api --host 127.0.0.1 --port 8788
+cadiax service run worker --interval 5 --steps 5 --max-loops 0
+cadiax service run scheduler --interval 60 --steps 5 --max-loops 0
+cadiax service run admin-api --host 127.0.0.1 --port 8787
+cadiax service run conversation-api --host 127.0.0.1 --port 8788
 ```
 
 `--max-loops 0` berarti berjalan terus sampai dihentikan supervisor atau operator.
@@ -303,11 +303,11 @@ workspace/
 Audit asset eksternal:
 
 ```bash
-autonomiq external install <path-lokal-atau-url-git>
-autonomiq external sync
-autonomiq external audit
-autonomiq external approve <name>
-autonomiq external reject <name>
+cadiax external install <path-lokal-atau-url-git>
+cadiax external sync
+cadiax external audit
+cadiax external approve <name>
+cadiax external reject <name>
 ```
 
 Di dalam assistant:
@@ -438,13 +438,13 @@ Prinsip:
 Menjalankan transport Telegram:
 
 ```bash
-autonomiq telegram
+cadiax telegram
 ```
 
 Alias lama masih tersedia:
 
 ```bash
-autonomiq-telegram
+cadiax-telegram
 ```
 
 Syarat minimal:
@@ -494,16 +494,16 @@ Konfigurasi non-secret:
 
 - pastikan `AI_PROVIDER` benar
 - simpan API key ke `secrets`
-- cek ulang dengan `autonomiq status`
+- cek ulang dengan `cadiax status`
 
 `status` menunjukkan workspace root tidak ada
 
-- jalankan `autonomiq setup`
+- jalankan `cadiax setup`
 - perbaiki `OTONOMASSIST_WORKSPACE_ROOT`
 
 Telegram tidak merespons
 
-- cek `autonomiq status`
+- cek `cadiax status`
 - pastikan token terpasang
 - pastikan `TELEGRAM_OWNER_IDS` terisi
 - bila DM policy `pairing`, user baru harus `/pair`
@@ -511,7 +511,7 @@ Telegram tidak merespons
 Agent terlalu agresif menulis file
 
 - ubah workspace access ke `ro`
-- audit kembali dengan `autonomiq status`
+- audit kembali dengan `cadiax status`
 
 Output skill tidak sesuai format yang diminta
 

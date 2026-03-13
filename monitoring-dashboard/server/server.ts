@@ -19,7 +19,7 @@ async function proxyJson(route: string) {
     Accept: "application/json",
   };
   if (adminToken.trim()) {
-    headers["X-Autonomiq-Token"] = adminToken.trim();
+    headers["X-Cadiax-Token"] = adminToken.trim();
   }
   const response = await fetch(`${adminApiUrl}${route}`, {
     headers,
@@ -70,5 +70,5 @@ app.get(/.*/, (_request, response) => {
 });
 
 app.listen(port, host, () => {
-  console.log(`Autonomiq dashboard listening on http://${host}:${port}`);
+  console.log(`Cadiax dashboard listening on http://${host}:${port}`);
 });

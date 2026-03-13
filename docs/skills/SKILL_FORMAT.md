@@ -1,6 +1,6 @@
 # Skill Format Specification
 
-Dokumentasi ini menjelaskan format skill yang digunakan oleh Autonomiq saat ini.
+Dokumentasi ini menjelaskan format skill yang digunakan oleh Cadiax saat ini.
 
 Format utama bukan lagi satu file markdown yang berisi kode handler. Format aktual adalah direktori skill yang berisi metadata markdown dan file Python handler terpisah.
 

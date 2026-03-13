@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The monitoring dashboard is an optional web application that runs as a separate Node.js process and reads telemetry from the local Autonomiq admin API.
+The monitoring dashboard is an optional web application that runs as a separate Node.js process and reads telemetry from the local Cadiax admin API.
 
 ## Characteristics
 
@@ -17,25 +17,25 @@ The monitoring dashboard is an optional web application that runs as a separate 
 Enable and prepare the dashboard:
 
 ```powershell
-autonomiq dashboard enable
+cadiax dashboard enable
 ```
 
 Show dashboard status:
 
 ```powershell
-autonomiq dashboard status
+cadiax dashboard status
 ```
 
 Run the dashboard foreground service:
 
 ```powershell
-autonomiq dashboard run
+cadiax dashboard run
 ```
 
 Disable dashboard access:
 
 ```powershell
-autonomiq dashboard disable
+cadiax dashboard disable
 ```
 
 ## Service Wrappers
@@ -43,14 +43,14 @@ autonomiq dashboard disable
 Render generated wrapper artifacts:
 
 ```powershell
-autonomiq service show dashboard --runtime posix
-autonomiq service show dashboard --runtime windows
+cadiax service show dashboard --runtime posix
+cadiax service show dashboard --runtime windows
 ```
 
 Write wrapper artifacts to disk:
 
 ```powershell
-autonomiq service write dashboard
+cadiax service write dashboard
 ```
 
 ## Default Ports
