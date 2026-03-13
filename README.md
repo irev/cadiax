@@ -13,19 +13,73 @@ meaning intelligent or wise.
 
 Pronunciation: cha-di-aks (`/tʃa.di.aks/`)
 
+Cadiax is a public autonomous AI agent framework with durable state, planning, memory, execution, privacy controls, and an optional monitoring dashboard.
+
+## Quick Start
+
+### Windows
+
+```powershell
+./install.ps1
+```
+
+Atau:
+
+```bat
+install.bat
+```
+
+### Linux
+
+```bash
+chmod +x ./install.sh
+./install.sh
+```
+
+Setelah install:
+
+```bash
+cadiax setup
+cadiax status
+cadiax chat
+```
+
+Installer Cadiax akan:
+
+- membuat virtual environment
+- menginstall paket `cadiax`
+- men-seed dokumen workspace aktif ke workspace root
+- menjalankan `cadiax setup` kecuali diminta skip
+
+## Highlights
+
+- autonomous runtime dengan memory, planning, execution, review, dan research
+- workspace docs aktif yang bisa diedit user:
+  - `AGENTS.md`
+  - `SOUL.md`
+  - `USER.md`
+  - `IDENTITY.md`
+  - `TOOLS.md`
+  - `HEARTBEAT.md`
+- internal durable state di `.cadiax/`
+- installer Windows/Linux dengan bootstrap workspace aktif
+- dashboard monitoring TypeScript opsional
+- multi-channel runtime dan service wrappers
+
 ## Repository
 
 - Docs index: `docs/README.md`
 - Install guide: `docs/operations/INSTALL.md`
 - Release notes: `docs/release/RELEASE_NOTES.md`
 - Release notes `v1.1.2`: `docs/release/RELEASE_NOTES_v1.1.2.md`
+- Release notes `v1.1.3`: `docs/release/RELEASE_NOTES_v1.1.3.md`
 - Deployment checklist: `docs/release/DEPLOYMENT_CHECKLIST.md`
 - Security policy: `SECURITY.md`
 - Code of conduct: `CODE_OF_CONDUCT.md`
 - Support guide: `SUPPORT.md`
 - Contributing guide: `CONTRIBUTING.md`
 
-Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
+Cadiax sekarang sudah mencakup:
 
 - state persisten antar sesi
 - personalisasi markdown
@@ -43,12 +97,12 @@ Dokumen acuan utama terbaru ada di `docs/specs/autonomous_ai_system_spec_extende
 
 Dokumen pendukung:
 
-- `docs/architecture/ROADMAP.md`: urutan delivery menuju target rilis `v1.1.1`
+- `docs/architecture/ROADMAP.md`: urutan delivery menuju target rilis publik terbaru
 - `docs/architecture/TARGET_ARCHITECTURE_V2.md`: target boundary dan module architecture
 - `docs/architecture/ARCHITECTURE.md`: snapshot arsitektur implementasi saat ini
 - `docs/README.md`: indeks dokumentasi repo
 
-Target resmi repo sekarang bergerak pada baseline rilis `v1.1.1`: seluruh fondasi inti stabil ditambah dashboard monitoring opsional dan service wrapper yang lebih lengkap.
+Target resmi repo sekarang bergerak pada baseline rilis `v1.1.3`: fondasi inti stabil dengan namespace `Cadiax`, installer yang lebih tegas, bootstrap workspace aktif, dashboard monitoring opsional, dan service wrapper yang lebih lengkap.
 
 ## Fondasi yang Sudah Jadi
 
@@ -264,7 +318,7 @@ Installer ini:
 Cadiax memang memakai dokumen hasil seed itu setelah setup selesai. User boleh mengeditnya manual, dan runtime akan membaca hasil edit tersebut pada startup berikutnya.
 
 Catatan:
-`pip` memang menampilkan format standar seperti `Successfully installed cadiax-1.1.1`.
+`pip` memang menampilkan format standar seperti `Successfully installed cadiax-1.1.3`.
 Itu perilaku normal `pip`. Installer Cadiax menutup proses dengan pesan publik yang lebih bersih: `Cadiax installed`.
 
 ## Menjalankan Aplikasi
