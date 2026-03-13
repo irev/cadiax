@@ -11,7 +11,7 @@ from textual.widgets import Footer, Header, OptionList, Static
 from cadiax.core.config_doctor import get_config_status_data
 from cadiax.core.path_layout import get_runtime_layout_snapshot
 from cadiax.core.setup_wizard import persist_env_updates
-from cadiax.platform import get_service_runtime_info
+from cadiax.platform import get_service_runtime_info, get_service_wrapper_output_dir, write_service_wrapper_artifacts
 from cadiax.platform.dashboard_runtime import disable_dashboard, enable_dashboard
 
 
@@ -76,6 +76,7 @@ class CadiaxTuiApp(App[None]):
         ("p", "prev_setup_step", "Previous setup step"),
         ("d", "toggle_dashboard", "Toggle Dashboard"),
         ("t", "toggle_telegram", "Toggle Telegram"),
+        ("w", "write_service_wrappers", "Write Service Wrappers"),
         ("r", "refresh_data", "Refresh"),
     ]
 
@@ -174,6 +175,18 @@ class CadiaxTuiApp(App[None]):
         persist_env_updates({"TELEGRAM_ENABLED": "false" if currently_enabled else "true"})
         self.notify(
             f"Telegram {'disabled' if currently_enabled else 'enabled'}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen(self.current_screen_name)
+
+    def action_write_service_wrappers(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        written = write_service_wrapper_artifacts(target="cadiax")
+        output_dir = get_service_wrapper_output_dir()
+        self.notify(
+            f"Service wrappers written: {len(written)} files -> {output_dir}",
             severity="information",
         )
         self._reload()
@@ -359,6 +372,7 @@ def build_services_view(data: dict[str, Any]) -> str:
         f"recommended_mode : {service_info.get('recommended_mode', '-')}",
         f"runtime_status   : {runtime.get('status', '-')}",
         f"scheduler_status : {scheduler.get('status', '-')}",
+        f"wrapper_output   : {service_info.get('wrapper_output_dir', '-')}",
         "",
         "[Targets]",
     ]
@@ -381,6 +395,7 @@ def build_services_view(data: dict[str, Any]) -> str:
             "",
             "[Actions]",
             "- d                       : toggle dashboard enable/disable",
+            "- w                       : write service wrapper artifacts for `cadiax`",
         ]
     )
     return "\n".join(lines)

@@ -111,3 +111,19 @@ def test_tui_toggle_actions_update_dashboard_and_telegram(tmp_path, monkeypatch)
     assert load_dashboard_state()["enabled"] is True
     assert any("Telegram enabled" in item for item in notifications)
     assert any("Dashboard enabled" in item for item in notifications)
+
+
+def test_tui_service_action_writes_wrappers(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="services")
+    app.status_data = {"dashboard": {"enabled": False}, "telegram": {"enabled": False}}
+    app.current_screen_name = "services"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+    monkeypatch.setattr("cadiax.tui.app.write_service_wrapper_artifacts", lambda target="cadiax": [Path("cadiax-cadiax.service")])
+    monkeypatch.setattr("cadiax.tui.app.get_service_wrapper_output_dir", lambda: Path("C:/Cadiax/state/service-wrappers"))
+
+    app.action_write_service_wrappers()
+
+    assert any("Service wrappers written: 1 files" in item for item in notifications)
