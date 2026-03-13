@@ -2,6 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/irev/cadiax?display_name=tag)](https://github.com/irev/cadiax/releases)
 [![License](https://img.shields.io/github/license/irev/cadiax)](https://github.com/irev/cadiax/blob/main/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/irev/cadiax/ci.yml?branch=main&label=ci)](https://github.com/irev/cadiax/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Dashboard](https://img.shields.io/badge/dashboard-optional-0f766e)](https://github.com/irev/cadiax/tree/main/monitoring-dashboard)
 
@@ -18,6 +19,7 @@ Pronunciation: cha-di-aks (`/tʃa.di.aks/`)
 - Release notes: `docs/release/RELEASE_NOTES.md`
 - Deployment checklist: `docs/release/DEPLOYMENT_CHECKLIST.md`
 - Security policy: `SECURITY.md`
+- Code of conduct: `CODE_OF_CONDUCT.md`
 - Contributing guide: `CONTRIBUTING.md`
 
 Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
