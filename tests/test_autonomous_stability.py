@@ -78,6 +78,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
     monkeypatch.setattr(agent_context, "PROACTIVE_INSIGHTS_FILE", data_dir / "proactive_insights.json")
+    monkeypatch.setattr(agent_context, "HEARTBEAT_STATE_FILE", data_dir / "heartbeat.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")

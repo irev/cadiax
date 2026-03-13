@@ -1595,6 +1595,7 @@ def _filter_planner_tasks_by_active_scope(tasks: list[dict[str, Any]]) -> list[d
 
 def _write_text_atomic(path: Path, text: str) -> None:
     """Write a file atomically to avoid partial reads of JSON state."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f"{path.name}.tmp")
     temp_path.write_text(text, encoding="utf-8")
     temp_path.replace(path)
