@@ -66,14 +66,16 @@ show_next_steps() {
   local config_path=""
   local state_path=""
   local workspace_path=""
+  local dashboard_path=""
   local layout_info
   if command -v cadiax >/dev/null 2>&1; then
     resolved="$(command -v cadiax)"
   fi
-  if layout_info="$("$venv_path/bin/python" -c 'from cadiax.core.path_layout import get_config_env_file, get_state_dir, get_workspace_root; print(get_config_env_file()); print(get_state_dir()); print(get_workspace_root())' 2>/dev/null)"; then
+  if layout_info="$("$venv_path/bin/python" -c 'from cadiax.core.path_layout import get_config_env_file, get_state_dir, get_workspace_root, get_dashboard_root; print(get_config_env_file()); print(get_state_dir()); print(get_workspace_root()); print(get_dashboard_root())' 2>/dev/null)"; then
     config_path="$(printf '%s\n' "$layout_info" | sed -n '1p')"
     state_path="$(printf '%s\n' "$layout_info" | sed -n '2p')"
     workspace_path="$(printf '%s\n' "$layout_info" | sed -n '3p')"
+    dashboard_path="$(printf '%s\n' "$layout_info" | sed -n '4p')"
   fi
 
   echo
@@ -85,6 +87,7 @@ show_next_steps() {
     echo "Config: $config_path"
     echo "State: $state_path"
     echo "Workspace: $workspace_path"
+    echo "Dashboard: $dashboard_path"
   fi
   echo
   echo "Use one of these:"
@@ -146,26 +149,71 @@ need_cmd() {
 install_pkg() {
   local label="$1"
   shift
+  local sudo_prefix=()
+  if [[ "$(id -u)" -ne 0 ]]; then
+    if ! need_cmd sudo; then
+      echo "sudo tidak tersedia. Install $label secara manual lalu jalankan script ini lagi." >&2
+      exit 1
+    fi
+    if [[ ! -t 0 ]] && ! sudo -n true >/dev/null 2>&1; then
+      echo "Installer butuh hak sudo untuk menginstall $label, tetapi shell ini non-interaktif dan sudo meminta password." >&2
+      echo "Install dependency tersebut secara manual, atau jalankan installer dari terminal interaktif." >&2
+      exit 1
+    fi
+    sudo_prefix=(sudo)
+  fi
   if need_cmd apt-get; then
-    sudo apt-get update
-    sudo apt-get install -y "$@"
+    "${sudo_prefix[@]}" apt-get update
+    "${sudo_prefix[@]}" apt-get install -y "$@"
     return
   fi
   if need_cmd dnf; then
-    sudo dnf install -y "$@"
+    "${sudo_prefix[@]}" dnf install -y "$@"
     return
   fi
   if need_cmd pacman; then
-    sudo pacman -Sy --noconfirm "$@"
+    "${sudo_prefix[@]}" pacman -Sy --noconfirm "$@"
     return
   fi
   echo "Package manager tidak dikenali. Install $label secara manual lalu jalankan script ini lagi." >&2
   exit 1
 }
 
+ensure_python_venv_support() {
+  local probe_dir=""
+  probe_dir="$(mktemp -d 2>/dev/null || mktemp -d -t cadiax-venv)"
+  if "$PYTHON_BIN" -m venv "$probe_dir" >/dev/null 2>&1; then
+    rm -rf "$probe_dir"
+    return
+  fi
+  rm -rf "$probe_dir"
+
+  step "Menyiapkan dukungan virtual environment Python"
+  if need_cmd apt-get; then
+    install_pkg "Python virtual environment support" python3-venv python3-pip
+  elif need_cmd dnf; then
+    install_pkg "Python virtual environment support" python3
+  elif need_cmd pacman; then
+    install_pkg "Python virtual environment support" python
+  else
+    echo "Python tersedia tetapi modul venv/ensurepip belum siap. Install dukungan venv secara manual lalu jalankan script ini lagi." >&2
+    exit 1
+  fi
+
+  probe_dir="$(mktemp -d 2>/dev/null || mktemp -d -t cadiax-venv)"
+  if ! "$PYTHON_BIN" -m venv "$probe_dir" >/dev/null 2>&1; then
+    rm -rf "$probe_dir"
+    echo "Gagal menyiapkan virtual environment Python setelah instalasi dependency. Pastikan paket venv untuk Python aktif di sistem ini." >&2
+    exit 1
+  fi
+  rm -rf "$probe_dir"
+}
+
 if ! need_cmd "$PYTHON_BIN"; then
   install_pkg "Python" python3 python3-venv python3-pip
 fi
+
+ensure_python_venv_support
 
 if ! need_cmd git; then
   install_pkg "Git" git

@@ -82,6 +82,9 @@ atau:
 - membuat runtime aplikasi di direktori install native OS:
   - Windows: `%LOCALAPPDATA%\Cadiax\app\`
   - Linux: `~/.local/share/cadiax/app/`
+- menempatkan monitoring dashboard opsional di dalam runtime aplikasi native OS:
+  - Windows: `%LOCALAPPDATA%\Cadiax\app\monitoring-dashboard\`
+  - Linux: `~/.local/share/cadiax/app/monitoring-dashboard/`
 - membuat virtual environment di dalam direktori aplikasi itu:
   - Windows: `%LOCALAPPDATA%\Cadiax\app\venv\`
   - Linux: `~/.local/share/cadiax/app/venv/`
@@ -92,10 +95,12 @@ atau:
     - config: `%APPDATA%\Cadiax\config.env`
     - state: `%LOCALAPPDATA%\Cadiax\state\`
     - workspace: `%USERPROFILE%\Cadiax\workspace\`
+    - dashboard: `%LOCALAPPDATA%\Cadiax\app\monitoring-dashboard\`
   - Linux:
     - config: `~/.config/cadiax/config.env`
     - state: `~/.local/state/cadiax/`
     - workspace: `~/cadiax/workspace/`
+    - dashboard: `~/.local/share/cadiax/app/monitoring-dashboard/`
 - men-seed dokumen workspace aktif ke workspace root:
   - `AGENTS.md`
   - `SOUL.md`

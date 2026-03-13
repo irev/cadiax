@@ -4,6 +4,23 @@ Dokumen ini merangkum perubahan penting yang sudah mendarat di OtonomAssist.
 
 ## Unreleased
 
+## v1.1.4
+
+### Changed
+
+- moved user installs to native OS application directories for Cadiax runtime binaries
+- made monitoring dashboard placement explicit under the native app root on Windows and Linux
+- unified the recommended service model around `cadiax service run cadiax`
+- made Telegram an optional integrated runtime controlled by user settings instead of a separate primary service target
+- hardened the Linux installer to detect missing `venv` support before runtime install
+
+### Validation
+
+- Windows native install smoke passed
+- Linux native install smoke passed in WSL
+- dashboard native path placement verified on both platforms
+- `pytest -q tests/test_setup_wizard.py tests/test_public_package.py` -> `82 passed`
+
 ## v1.1.2
 
 ### Changed

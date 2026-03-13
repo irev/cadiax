@@ -66,14 +66,16 @@ function Show-NextSteps {
 
     $VenvCadiax = Join-Path $VenvPath "Scripts\\cadiax.exe"
     $ResolvedCadiax = Get-Command "cadiax" -ErrorAction SilentlyContinue
-    $LayoutInfo = & $VenvPython -c "from cadiax.core.path_layout import get_config_env_file, get_state_dir, get_workspace_root; print(get_config_env_file()); print(get_state_dir()); print(get_workspace_root())"
+    $LayoutInfo = & $VenvPython -c "from cadiax.core.path_layout import get_config_env_file, get_state_dir, get_workspace_root, get_dashboard_root; print(get_config_env_file()); print(get_state_dir()); print(get_workspace_root()); print(get_dashboard_root())"
     $ConfigPath = ""
     $StatePath = ""
     $WorkspacePath = ""
-    if ($LayoutInfo.Count -ge 3) {
+    $DashboardPath = ""
+    if ($LayoutInfo.Count -ge 4) {
         $ConfigPath = $LayoutInfo[0]
         $StatePath = $LayoutInfo[1]
         $WorkspacePath = $LayoutInfo[2]
+        $DashboardPath = $LayoutInfo[3]
     }
 
     Write-Host ""
@@ -85,6 +87,7 @@ function Show-NextSteps {
         Write-Host "Config: $ConfigPath"
         Write-Host "State: $StatePath"
         Write-Host "Workspace: $WorkspacePath"
+        Write-Host "Dashboard: $DashboardPath"
     }
     Write-Host ""
     Write-Host "Gunakan salah satu cara berikut:"
