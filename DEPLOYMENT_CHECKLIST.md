@@ -6,6 +6,7 @@
 - Run `pytest -q`.
 - Review `VALIDATION_MATRIX.md`.
 - Review `RELEASE_NOTES.md`.
+- Review `RELEASE_CONFIDENCE_CLOSURE.md`.
 
 ## Environment
 
