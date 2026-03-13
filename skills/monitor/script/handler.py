@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from otonomassist.core.config_doctor import get_config_status_data
-from otonomassist.core.result_builder import build_result
+from cadiax.core.config_doctor import get_config_status_data
+from cadiax.core.result_builder import build_result
 
 QUEUE_WARNING_DEPTH = 5
 LATENCY_WARNING_MS = 2500

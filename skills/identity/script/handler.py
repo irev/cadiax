@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from otonomassist.core.result_builder import build_result
-from otonomassist.core.runtime_interaction import get_current_interaction_context
-from otonomassist.services.interactions.identity_service import IdentitySessionService
-from otonomassist.services.interactions.models import InteractionRequest
+from cadiax.core.result_builder import build_result
+from cadiax.core.runtime_interaction import get_current_interaction_context
+from cadiax.services.interactions.identity_service import IdentitySessionService
+from cadiax.services.interactions.models import InteractionRequest
 
 
 def handle(args: str) -> dict[str, object] | str:

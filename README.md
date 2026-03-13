@@ -16,10 +16,13 @@ Pronunciation: cha-di-aks (`/tʃa.di.aks/`)
 ## Repository
 
 - Docs index: `docs/README.md`
+- Install guide: `docs/operations/INSTALL.md`
 - Release notes: `docs/release/RELEASE_NOTES.md`
+- Release notes `v1.1.2`: `docs/release/RELEASE_NOTES_v1.1.2.md`
 - Deployment checklist: `docs/release/DEPLOYMENT_CHECKLIST.md`
 - Security policy: `SECURITY.md`
 - Code of conduct: `CODE_OF_CONDUCT.md`
+- Support guide: `SUPPORT.md`
 - Contributing guide: `CONTRIBUTING.md`
 
 Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
@@ -105,7 +108,7 @@ Ini dipakai untuk memperkaya konteks routing AI dan audit skill layer.
 State agent disimpan di:
 
 ```text
-.otonomassist/
+.cadiax/
 ├── memory.jsonl
 ├── planner.json
 ├── profile.md
@@ -123,7 +126,7 @@ Makna file:
 - `secrets.json`: kredensial lokal
 - `telegram_auth.json`: allowlist dan request pairing Telegram
 
-`.otonomassist/` sekarang di-ignore oleh git, jadi data lokal dan secret tidak ikut ter-commit.
+`.cadiax/` sekarang di-ignore oleh git, jadi data lokal dan secret tidak ikut ter-commit.
 
 Di Windows, value secret sekarang disimpan terenkripsi lokal memakai DPAPI sebelum ditulis ke `secrets.json`.
 Di Linux/macOS, runtime memakai backend portable berbasis local file key agar service utama tetap bisa berjalan lintas OS.
@@ -136,13 +139,13 @@ Akses file workspace sekarang dibatasi oleh guard terpusat:
 - semua path harus tetap berada di dalam root workspace
 - traversal seperti `../..` ke luar workspace ditolak
 - symlink yang resolve ke luar workspace di-skip saat traversal
-- mode akses workspace default adalah read-only secara kebijakan: `OTONOMASSIST_WORKSPACE_ACCESS=ro`
+- mode akses workspace default adalah read-only secara kebijakan: `CADIAX_WORKSPACE_ACCESS=ro`
 
 Konfigurasi:
 
 ```bash
-OTONOMASSIST_WORKSPACE_ROOT=
-OTONOMASSIST_WORKSPACE_ACCESS=ro
+CADIAX_WORKSPACE_ROOT=
+CADIAX_WORKSPACE_ACCESS=ro
 ```
 
 Default workspace sekarang diarahkan ke folder `workspace/` di root project. Ini menjadi lokasi default untuk file kerja user, skill tambahan, dan aset eksternal yang dikelola di dalam boundary workspace.
@@ -220,13 +223,64 @@ assistant: ai apa langkah berikutnya berdasarkan seluruh state yang ada?
 - `secrets`
 - `research`
 
+## Install
+
+Jalur install resmi:
+
+### Windows
+
+```powershell
+./install.ps1
+```
+
+Atau:
+
+```bat
+install.bat
+```
+
+### Linux
+
+```bash
+chmod +x ./install.sh
+./install.sh
+```
+
+Installer ini:
+
+- memastikan dependency dasar tersedia
+- membuat `.venv`
+- menginstall paket `cadiax`
+- men-seed dokumen workspace aktif ke `workspace root`:
+  - `AGENTS.md`
+  - `SOUL.md`
+  - `USER.md`
+  - `IDENTITY.md`
+  - `TOOLS.md`
+  - `HEARTBEAT.md`
+- opsional menyiapkan dashboard dependency
+- menjalankan `cadiax setup`
+
+Cadiax memang memakai dokumen hasil seed itu setelah setup selesai. User boleh mengeditnya manual, dan runtime akan membaca hasil edit tersebut pada startup berikutnya.
+
+Catatan:
+`pip` memang menampilkan format standar seperti `Successfully installed cadiax-1.1.1`.
+Itu perilaku normal `pip`. Installer Cadiax menutup proses dengan pesan publik yang lebih bersih: `Cadiax installed`.
+
 ## Menjalankan Aplikasi
 
 ```bash
-pip install -e .
-cadiax setup
-cadiax status
-cadiax chat
+.venv/bin/cadiax setup
+.venv/bin/cadiax status
+.venv/bin/cadiax chat
+```
+
+Di Windows:
+
+```powershell
+.venv\Scripts\cadiax.exe setup
+.venv\Scripts\cadiax.exe status
+.venv\Scripts\cadiax.exe chat
 ```
 
 CLI utama sekarang mendukung subcommand resmi:
@@ -260,7 +314,7 @@ CLI utama sekarang mendukung subcommand resmi:
 - `cadiax external reject <name>`
 - `cadiax skills audit`
 
-`cadiax setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential.
+`cadiax setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential. Setup juga memastikan dokumen workspace aktif tetap tersedia pada `workspace root` yang dipilih user.
 
 `cadiax status` dan `cadiax doctor` menampilkan audit konfigurasi read-only: provider aktif, credential tersedia atau tidak, workspace guard, dan status Telegram. Report sekarang juga memberi level `healthy`, `warning`, atau `critical` agar hasil audit lebih cepat dibaca. Di dalam assistant, audit yang sama juga tersedia lewat command `doctor` atau `config status`.
 
@@ -311,7 +365,7 @@ Approval sekarang juga memerlukan capability declaration yang valid di `asset.js
 Secara default, capability yang diizinkan untuk skill eksternal hanya `workspace_read`. Capability lain harus dibuka eksplisit lewat:
 
 ```bash
-OTONOMASSIST_EXTERNAL_CAPABILITY_ALLOW=workspace_read,network
+CADIAX_EXTERNAL_CAPABILITY_ALLOW=workspace_read,network
 ```
 
 Contoh:
@@ -325,7 +379,7 @@ cadiax external reject my-skill
 Jika ingin perilaku lama yang langsung memuat semua skill eksternal, set:
 
 ```bash
-OTONOMASSIST_EXTERNAL_SKILL_POLICY=allow-all
+CADIAX_EXTERNAL_SKILL_POLICY=allow-all
 ```
 
 Telegram runner:
@@ -452,7 +506,7 @@ Policy authorization Telegram sekarang fail-closed:
 State authorization Telegram disimpan lokal di:
 
 ```text
-.otonomassist/telegram_auth.json
+.cadiax/telegram_auth.json
 ```
 
 Semua pesan Telegram tetap masuk ke jalur yang sama dengan CLI melalui `Assistant.handle_message(...)`, jadi loop agent inti tidak perlu diubah.
@@ -491,24 +545,24 @@ Suite test sekarang mencakup area yang paling riskan untuk operasi lebih serius:
 Fondasi observability minimum juga mulai aktif:
 
 - setiap command inbound sekarang punya `trace_id`
-- event inti seperti `command_received`, `skill_started`, `skill_completed`, dan `command_completed` ditulis ke `.otonomassist/execution_history.jsonl`
+- event inti seperti `command_received`, `skill_started`, `skill_completed`, dan `command_completed` ditulis ke `.cadiax/execution_history.jsonl`
 - operator bisa melihat jejak terbaru lewat `cadiax history`
 - operator bisa melihat agregat metrik lewat `cadiax metrics`
-- timeout skill global bisa diatur dengan `OTONOMASSIST_SKILL_TIMEOUT_SECONDS`
+- timeout skill global bisa diatur dengan `CADIAX_SKILL_TIMEOUT_SECONDS`
 - `doctor/status` sekarang juga mendukung output machine-readable lewat `--json`
 - report `doctor/status` sekarang juga memiliki section `[Runtime]` untuk queue worker
 - admin API read-only lokal tersedia untuk `/health`, `/status`, `/metrics`, `/jobs`, dan `/history`
-- jika `OTONOMASSIST_ADMIN_TOKEN` diisi, admin API memerlukan header `X-Cadiax-Token` atau `Authorization: Bearer ...`
+- jika `CADIAX_ADMIN_TOKEN` diisi, admin API memerlukan header `X-Cadiax-Token` atau `Authorization: Bearer ...`
 
 Fondasi runtime Phase 2 juga mulai aktif:
 
 - planner task sekarang bisa membawa `priority`, `depends_on`, `retry_count`, dan `blocked_reason`
 - `planner next` sekarang memilih task `ready` berdasarkan dependency dan priority
-- runtime job queue lokal disimpan di `.otonomassist/job_queue.json`
+- runtime job queue lokal disimpan di `.cadiax/job_queue.json`
 - command `jobs` dan `worker` memberi lapisan eksplisit antara planner dan executor
 - worker sekarang bisa berjalan `until-idle` dan mencatat `last_worker_run_at` / `last_worker_status`
 - context orchestration sekarang mulai memanfaatkan retrieval memori relevan berbasis token overlap, bukan recency-only
-- scheduler runtime sekarang tersedia untuk menjalankan cycle worker berkala dan mencatat state terakhir ke `.otonomassist/scheduler_state.json`
+- scheduler runtime sekarang tersedia untuk menjalankan cycle worker berkala dan mencatat state terakhir ke `.cadiax/scheduler_state.json`
 
 Perubahan ini membuat fondasi saat ini lebih layak dipakai sebagai sistem semi-otonom yang konsisten, bukan hanya eksperimen skill per skill.
 

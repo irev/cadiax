@@ -24,7 +24,7 @@ Date:
 | Python version matches target | [ ] Pass / [ ] Fail | |
 | Node.js available if dashboard enabled | [ ] Pass / [ ] Fail | |
 | npm available if dashboard enabled | [ ] Pass / [ ] Fail | |
-| `.otonomassist/` writable | [ ] Pass / [ ] Fail | |
+| `.cadiax/` writable | [ ] Pass / [ ] Fail | |
 | workspace root writable as intended | [ ] Pass / [ ] Fail | |
 | port `8787` available | [ ] Pass / [ ] Fail | |
 | port `8788` available | [ ] Pass / [ ] Fail | |

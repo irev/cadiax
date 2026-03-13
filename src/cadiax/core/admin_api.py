@@ -1,0 +1,170 @@
+"""Read-only admin API surface for local operations."""
+
+from __future__ import annotations
+
+import json
+import os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+from cadiax.core.config_doctor import get_config_status_data
+from cadiax.core.event_bus import get_event_bus_snapshot
+from cadiax.core.execution_history import append_execution_event, export_execution_events, new_trace_id
+from cadiax.core.execution_metrics import get_execution_metrics_snapshot
+from cadiax.core.job_runtime import get_job_queue_snapshot, get_job_queue_summary
+from cadiax.core.workspace_bootstrap import get_workspace_bootstrap_status
+from cadiax.core.agent_context import load_job_queue_state
+from cadiax.core.scheduler_runtime import get_scheduler_summary
+from cadiax.services.personality.startup_document_service import StartupDocumentService
+
+
+def build_admin_snapshot(path: str, headers: dict[str, str] | None = None) -> tuple[int, dict[str, object]]:
+    """Build a read-only JSON payload for one admin API path."""
+    parsed = urlparse(path)
+    route = parsed.path.rstrip("/") or "/"
+    query = parse_qs(parsed.query)
+    agent_scope = (query.get("agent_scope") or [""])[0].strip().lower()
+    role_query = ",".join(query.get("role") or query.get("roles") or [])
+    roles = tuple(
+        item_text
+        for item_text in (item.strip().lower() for item in role_query.split(","))
+        if item_text
+    )
+    if not _is_authorized(headers or {}):
+        append_execution_event(
+            "admin_snapshot_requested",
+            trace_id=new_trace_id(),
+            status="unauthorized",
+            source="admin-api",
+            command=f"GET {route}",
+            data={"route": route, "agent_scope": agent_scope, "roles": list(roles)},
+        )
+        return 401, {"error": "unauthorized"}
+    append_execution_event(
+        "admin_snapshot_requested",
+        trace_id=new_trace_id(),
+        status="ok",
+        source="admin-api",
+        command=f"GET {route}",
+        data={"route": route, "agent_scope": agent_scope, "roles": list(roles)},
+    )
+    if route == "/health":
+        status = get_config_status_data(agent_scope=agent_scope or None, roles=roles)
+        return 200, {"status": "ok", "overall": status["overall"]["status"]}
+    if route == "/status":
+        return 200, get_config_status_data(agent_scope=agent_scope or None, roles=roles)
+    if route == "/metrics":
+        return 200, get_execution_metrics_snapshot()
+    if route == "/jobs":
+        if agent_scope:
+            return 200, get_job_queue_snapshot(agent_scope=agent_scope, roles=roles)
+        return 200, {"summary": get_job_queue_summary(), "queue": load_job_queue_state()}
+    if route == "/scheduler":
+        return 200, {"scheduler": get_scheduler_summary()}
+    if route == "/history":
+        limit = _int_query(query, "limit", 20, minimum=1, maximum=200)
+        return 200, {"events": export_execution_events(limit=limit, agent_scope=agent_scope or None, roles=roles)}
+    if route == "/events":
+        limit = _int_query(query, "limit", 20, minimum=1, maximum=200)
+        return 200, get_event_bus_snapshot(limit=limit, agent_scope=agent_scope or None, roles=roles)
+    if route == "/bootstrap":
+        return 200, {"bootstrap": get_workspace_bootstrap_status()}
+    if route == "/startup":
+        session_mode = (query.get("session_mode") or ["main"])[0]
+        return 200, {
+            "startup": StartupDocumentService().get_snapshot(
+                session_mode=session_mode,
+                agent_scope=agent_scope or "default",
+                roles=roles,
+            )
+        }
+    if route == "/privacy":
+        from cadiax.services.privacy.privacy_control_service import PrivacyControlService
+
+        return 200, {
+            "privacy_controls": PrivacyControlService().get_diagnostics(
+                agent_scope=agent_scope or None,
+                roles=roles,
+            )
+        }
+    if route == "/proactive":
+        from cadiax.services.personality.proactive_assistance_service import ProactiveAssistanceService
+
+        return 200, {
+            "proactive": ProactiveAssistanceService().load_or_refresh(
+                agent_scope=agent_scope or None,
+                roles=roles,
+            )
+        }
+    if route == "/email":
+        from cadiax.interfaces.email import EmailInterfaceService
+
+        return 200, {"email": EmailInterfaceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)}
+    if route == "/whatsapp":
+        from cadiax.interfaces.whatsapp import WhatsAppInterfaceService
+
+        return 200, {"whatsapp": WhatsAppInterfaceService().get_snapshot(agent_scope=agent_scope or None, roles=roles)}
+    if route == "/identity":
+        from cadiax.services.interactions.identity_service import IdentitySessionService
+
+        return 200, {"identity": IdentitySessionService().get_snapshot(agent_scope=agent_scope or None, roles=roles)}
+    return 404, {"error": "not_found", "path": route}
+
+
+def run_admin_api(host: str = "127.0.0.1", port: int = 8787) -> None:
+    """Run the local read-only admin API."""
+    handler_cls = _build_handler()
+    server = ThreadingHTTPServer((host, port), handler_cls)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+def _build_handler():
+    class AdminHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            headers = {key: value for key, value in self.headers.items()}
+            status, payload = build_admin_snapshot(self.path, headers=headers)
+            body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args) -> None:  # noqa: A003
+            return
+
+    return AdminHandler
+
+
+def _is_authorized(headers: dict[str, str]) -> bool:
+    expected = os.getenv("OTONOMASSIST_ADMIN_TOKEN", "").strip()
+    if not expected:
+        return True
+    supplied = (
+        headers.get("X-Cadiax-Token")
+        or headers.get("X-Autonomiq-Token")
+        or headers.get("X-OtonomAssist-Token")
+        or headers.get("Authorization", "").removeprefix("Bearer ").strip()
+    )
+    return supplied == expected
+
+
+def _int_query(
+    query: dict[str, list[str]],
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    raw = (query.get(name) or [str(default)])[0]
+    try:
+        value = int(raw)
+    except ValueError:
+        value = default
+    return max(minimum, min(maximum, value))

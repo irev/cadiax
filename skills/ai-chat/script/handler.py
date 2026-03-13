@@ -3,10 +3,10 @@
 import asyncio
 from typing import Any
 
-from otonomassist.ai.factory import AIProviderFactory
-from otonomassist.core.agent_context import ensure_agent_storage
-from otonomassist.services.personality import PersonalityService
-from otonomassist.services.runtime import ContextBudgeter
+from cadiax.ai.factory import AIProviderFactory
+from cadiax.core.agent_context import ensure_agent_storage
+from cadiax.services.personality import PersonalityService
+from cadiax.services.runtime import ContextBudgeter
 
 
 async def handle(args: str) -> str:

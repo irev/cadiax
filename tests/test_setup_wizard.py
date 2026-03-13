@@ -80,6 +80,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "JOB_QUEUE_FILE", data_dir / "job_queue.json")
     monkeypatch.setattr(agent_context, "SCHEDULER_STATE_FILE", data_dir / "scheduler_state.json")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", data_dir)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
     agent_context.ensure_agent_storage()
 
@@ -138,6 +139,7 @@ def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypat
 
     assert result.exit_code == 0
     assert "Setup selesai." in result.output
+    assert "workspace_docs_written:" in result.output
 
     env_text = env_file.read_text(encoding="utf-8")
     assert "AI_PROVIDER=openai" in env_text
@@ -152,6 +154,14 @@ def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypat
     secrets_state = json.loads(agent_context.SECRETS_FILE.read_text(encoding="utf-8"))
     assert secrets_state["secrets"]["openai_api_key"]["encrypted_value"] == "enc:sk-test-openai"
     assert secrets_state["secrets"]["telegram_bot_token"]["encrypted_value"] == "enc:tg-test-token"
+    assert (tmp_path / "AGENTS.md").exists()
+    assert (tmp_path / "SOUL.md").exists()
+    assert (tmp_path / "USER.md").exists()
+    assert (tmp_path / "IDENTITY.md").exists()
+    assert (tmp_path / "TOOLS.md").exists()
+    assert (tmp_path / "HEARTBEAT.md").exists()
+    assert not (tmp_path / "BOOTSTRAP.md").exists()
+    assert not (tmp_path / "AGENTS.dev.md").exists()
 
 
 def test_cli_conversation_api_command_starts_separate_service(tmp_path, monkeypatch):
@@ -1902,7 +1912,25 @@ def test_cli_bootstrap_foundation_seeds_workspace_templates(tmp_path, monkeypatc
     assert "Foundation bootstrap written=" in result.output
     assert (workspace_guard.WORKSPACE_ROOT / "AGENTS.md").exists()
     assert (workspace_guard.WORKSPACE_ROOT / "IDENTITY.md").exists()
-    assert payload["workspace_seeded_count"] >= 4
+    assert (workspace_guard.WORKSPACE_ROOT / "BOOTSTRAP.md").exists() is False
+    assert payload["workspace_seeded_count"] == 6
+    assert payload["active_runtime_template_count"] == 6
+
+
+def test_cli_bootstrap_foundation_include_optional_seeds_full_template_set(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path / "workspace-clean")
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", tmp_path / ".otonomassist")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["bootstrap", "foundation", "--include-optional"])
+    status_result = runner.invoke(main, ["bootstrap", "status", "--json"])
+
+    payload = json.loads(status_result.output)
+    assert result.exit_code == 0
+    assert (workspace_guard.WORKSPACE_ROOT / "BOOTSTRAP.md").exists()
+    assert (workspace_guard.WORKSPACE_ROOT / "AGENTS.dev.md").exists()
+    assert payload["workspace_seeded_count"] == 13
 
 
 def test_cli_doctor_reports_bootstrap_status(tmp_path, monkeypatch):

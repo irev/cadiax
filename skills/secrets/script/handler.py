@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import os
 
-from otonomassist.core.agent_context import canonicalize_secret_name, load_secrets_state, save_secrets_state
-from otonomassist.core.secure_storage import decrypt_secret, encrypt_secret
+from cadiax.core.agent_context import canonicalize_secret_name, load_secrets_state, save_secrets_state
+from cadiax.core.secure_storage import decrypt_secret, encrypt_secret
 
 
 ENV_SECRET_MAP = {

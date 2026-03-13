@@ -5,15 +5,14 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from otonomassist.core.result_builder import build_result
-from otonomassist.core.workspace_guard import (
-    get_workspace_root,
-    resolve_workspace_path,
-    should_skip_path,
-)
-
-PROJECT_ROOT = get_workspace_root()
+from cadiax.core.result_builder import build_result
+from cadiax.core.workspace_guard import get_workspace_root, resolve_workspace_path, should_skip_path
 MAX_LINES = 80
+
+
+def _project_root() -> Path:
+    """Return the effective workspace root at call time."""
+    return get_workspace_root()
 
 
 def handle(args: str) -> str:
@@ -61,10 +60,11 @@ def _resolve_path(path_text: str) -> Path:
 def _tree(path_text: str) -> str:
     path_text = _normalize_tree_target(path_text)
     path = _resolve_path(path_text)
+    project_root = _project_root()
     if not path.exists():
         return f"Path tidak ditemukan: {path_text}"
 
-    root_label = str(path.relative_to(PROJECT_ROOT))
+    root_label = str(path.relative_to(project_root))
     entries: list[dict[str, str | int]] = []
     if path.is_file():
         entries.append({"name": path.name, "relative_path": root_label, "depth": 0, "kind": "file"})
@@ -114,11 +114,12 @@ def _read_file(path_text: str) -> str:
     path_text = _normalize_read_target(path_text)
 
     path = _resolve_path(path_text)
+    project_root = _project_root()
     if not path.exists() or not path.is_file():
         return f"File tidak ditemukan: {path_text}"
 
     content = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    relative = str(path.relative_to(PROJECT_ROOT))
+    relative = str(path.relative_to(project_root))
     lines = []
     for index, line in enumerate(content[:MAX_LINES], start=1):
         lines.append({"line": str(index), "text": line})
@@ -140,12 +141,13 @@ def _find_text(query: str) -> str:
     if not query:
         return "Workspace find membutuhkan query."
 
+    project_root = _project_root()
     matches: list[dict[str, str]] = []
     pattern = re.compile(re.escape(query), re.IGNORECASE)
-    for file_path in PROJECT_ROOT.rglob("*"):
+    for file_path in project_root.rglob("*"):
         if not file_path.is_file():
             continue
-        if should_skip_path(file_path, PROJECT_ROOT):
+        if should_skip_path(file_path, project_root):
             continue
         try:
             for line_no, line in enumerate(
@@ -155,7 +157,7 @@ def _find_text(query: str) -> str:
                 if pattern.search(line):
                     matches.append(
                         {
-                            "path": str(file_path.relative_to(PROJECT_ROOT)),
+                            "path": str(file_path.relative_to(project_root)),
                             "line": str(line_no),
                             "text": line.strip(),
                         }
@@ -191,11 +193,12 @@ def _find_text(query: str) -> str:
 
 
 def _list_files(glob_text: str) -> str:
+    project_root = _project_root()
     matches: list[dict[str, str]] = []
-    for file_path in PROJECT_ROOT.rglob(glob_text):
-        if should_skip_path(file_path, PROJECT_ROOT):
+    for file_path in project_root.rglob(glob_text):
+        if should_skip_path(file_path, project_root):
             continue
-        matches.append({"path": str(file_path.relative_to(PROJECT_ROOT))})
+        matches.append({"path": str(file_path.relative_to(project_root))})
         if len(matches) >= MAX_LINES:
             break
 
@@ -217,11 +220,12 @@ def _list_files(glob_text: str) -> str:
 def _summary(path_text: str) -> str:
     path_text = _normalize_tree_target(path_text)
     path = _resolve_path(path_text)
+    project_root = _project_root()
     if not path.exists():
         return f"Path tidak ditemukan: {path_text}"
 
     if path.is_file():
-        relative = str(path.relative_to(PROJECT_ROOT))
+        relative = str(path.relative_to(project_root))
         return _wrap_result(
             result_type="workspace_summary",
             data={
@@ -244,7 +248,7 @@ def _summary(path_text: str) -> str:
         else:
             file_count += 1
 
-    relative = str(path.relative_to(PROJECT_ROOT) if path != PROJECT_ROOT else ".")
+    relative = str(path.relative_to(project_root) if path != project_root else ".")
     return _wrap_result(
         result_type="workspace_summary",
         data={

@@ -57,7 +57,7 @@ Mapping saat ini:
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │                              CLI Layer                               │
-│                     src/otonomassist/cli.py                          │
+│                     src/cadiax/cli.py                          │
 │  - setup / status / doctor / chat / run / worker / scheduler        │
 │  - metrics / api / telegram                                         │
 │  - compatibility alias: --setup / --doctor / -i / raw message       │
@@ -73,17 +73,17 @@ Mapping saat ini:
                                 ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    Setup + Config Audit Layer                        │
-│  src/otonomassist/core/setup_wizard.py                               │
-│  src/otonomassist/core/config_doctor.py                              │
+│  src/cadiax/core/setup_wizard.py                               │
+│  src/cadiax/core/config_doctor.py                              │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │
                                 ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                          Assistant Layer                             │
-│                 src/otonomassist/core/assistant.py                   │
+│                 src/cadiax/core/assistant.py                   │
 │  - load .env                                                         │
 │  - fallback ke local secrets untuk credential runtime                │
-│  - ensure .otonomassist storage                                      │
+│  - ensure .cadiax storage                                      │
 │  - ensure default workspace root exists                              │
 │  - load skills                                                       │
 │  - inject persistent context into prompts                            │
@@ -110,8 +110,8 @@ Mapping saat ini:
                 ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                    Result Builder + Formatter                        │
-│  src/otonomassist/core/result_builder.py                             │
-│  src/otonomassist/core/result_formatter.py                           │
+│  src/cadiax/core/result_builder.py                             │
+│  src/cadiax/core/result_formatter.py                           │
 └───────────────┬──────────────────────────────────────────────────────┘
                 │
                 ▼
@@ -123,17 +123,17 @@ Mapping saat ini:
                 ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        Persistent Agent Storage                       │
-│  .otonomassist/profile.md                                            │
-│  .otonomassist/lessons.md                                            │
-│  .otonomassist/planner.json                                          │
-│  .otonomassist/memory.jsonl                                          │
-│  .otonomassist/secrets.json                                          │
-│  .otonomassist/telegram_auth.json                                    │
-│  .otonomassist/job_queue.json                                        │
-│  .otonomassist/execution_history.jsonl                               │
-│  .otonomassist/execution_metrics.json                                │
-│  .otonomassist/scheduler_state.json                                  │
-│  .otonomassist/external_assets.json                                  │
+│  .cadiax/profile.md                                            │
+│  .cadiax/lessons.md                                            │
+│  .cadiax/planner.json                                          │
+│  .cadiax/memory.jsonl                                          │
+│  .cadiax/secrets.json                                          │
+│  .cadiax/telegram_auth.json                                    │
+│  .cadiax/job_queue.json                                        │
+│  .cadiax/execution_history.jsonl                               │
+│  .cadiax/execution_metrics.json                                │
+│  .cadiax/scheduler_state.json                                  │
+│  .cadiax/external_assets.json                                  │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -261,9 +261,9 @@ Pemilihan view bisa terjadi lewat:
 
 Bagian ini dikerjakan oleh:
 
-- [result_builder.py](/d:/PROJECT/otonomAssist/src/otonomassist/core/result_builder.py)
-- [result_formatter.py](/d:/PROJECT/otonomAssist/src/otonomassist/core/result_formatter.py)
-- [assistant.py](/d:/PROJECT/otonomAssist/src/otonomassist/core/assistant.py)
+- [result_builder.py](/d:/PROJECT/otonomAssist/src/cadiax/core/result_builder.py)
+- [result_formatter.py](/d:/PROJECT/otonomAssist/src/cadiax/core/result_formatter.py)
+- [assistant.py](/d:/PROJECT/otonomAssist/src/cadiax/core/assistant.py)
 
 Skill inti yang sudah mengikuti pola ini:
 
@@ -275,7 +275,7 @@ Skill inti yang sudah mengikuti pola ini:
 
 ## Persistent Context
 
-Modul [agent_context.py](/d:/PROJECT/otonomAssist/src/otonomassist/core/agent_context.py) adalah inti persistence.
+Modul [agent_context.py](/d:/PROJECT/otonomAssist/src/cadiax/core/agent_context.py) adalah inti persistence.
 
 Ia menangani:
 
@@ -306,22 +306,22 @@ Secret di `secrets.json` sekarang disimpan terenkripsi lokal di Windows memakai 
 
 Untuk operasi file, arsitektur sekarang memakai boundary workspace terpusat:
 
-- root workspace berasal dari `OTONOMASSIST_WORKSPACE_ROOT` atau default ke `workspace/` di root project
+- root workspace berasal dari `CADIAX_WORKSPACE_ROOT` atau default ke `workspace/` di root project
 - path absolut dan relatif di-resolve lalu divalidasi agar tetap berada di bawah workspace root
 - traversal ke luar workspace ditolak
 - symlink yang mengarah ke luar workspace diabaikan saat enumerasi
-- mode akses kebijakan disiapkan lewat `OTONOMASSIST_WORKSPACE_ACCESS`, default `ro`
+- mode akses kebijakan disiapkan lewat `CADIAX_WORKSPACE_ACCESS`, default `ro`
 
 Ini penting agar inspeksi file oleh AI tetap terbatas pada workspace lokal yang diizinkan.
 
-Pilihan ini juga menjaga agar skill/asset eksternal tambahan yang dipasang user dapat terkonsentrasi di area kerja yang jelas, terpisah dari state internal `.otonomassist`.
+Pilihan ini juga menjaga agar skill/asset eksternal tambahan yang dipasang user dapat terkonsentrasi di area kerja yang jelas, terpisah dari state internal `.cadiax`.
 
 ## Penyimpanan Kredensial
 
 Kredensial user sebaiknya disimpan di:
 
 ```text
-.otonomassist/secrets.json
+.cadiax/secrets.json
 ```
 
 dan dikelola lewat skill `secrets`.
@@ -379,9 +379,9 @@ Entry point CLI resmi:
 
 Fondasi lintas-OS sekarang mulai dipisahkan ke layer platform:
 
-- `src/otonomassist/platform/process_manager.py`
-- `src/otonomassist/platform/service_runtime.py`
-- `src/otonomassist/platform/toolchain.py`
+- `src/cadiax/platform/process_manager.py`
+- `src/cadiax/platform/service_runtime.py`
+- `src/cadiax/platform/toolchain.py`
 
 Perannya:
 
@@ -427,7 +427,7 @@ Transport Telegram sekarang memakai policy fail-closed yang cocok untuk private 
 State authorization Telegram disimpan terpisah di:
 
 ```text
-.otonomassist/telegram_auth.json
+.cadiax/telegram_auth.json
 ```
 
 File ini bukan bagian dari memory pembelajaran. Tujuannya murni untuk kontrol akses transport.

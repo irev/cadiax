@@ -78,6 +78,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", data_dir / "memory_summaries.json")
     monkeypatch.setattr(agent_context, "EPISODES_FILE", data_dir / "episodes.json")
     monkeypatch.setattr(agent_context, "PROACTIVE_INSIGHTS_FILE", data_dir / "proactive_insights.json")
+    monkeypatch.setattr(agent_context, "HEARTBEAT_STATE_FILE", data_dir / "heartbeat.json")
     monkeypatch.setattr(agent_context, "IDENTITIES_FILE", data_dir / "identities.json")
     monkeypatch.setattr(agent_context, "SESSIONS_FILE", data_dir / "sessions.json")
     monkeypatch.setattr(agent_context, "NOTIFICATIONS_FILE", data_dir / "notifications.json")
@@ -90,6 +91,7 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_context, "JOB_QUEUE_FILE", data_dir / "job_queue.json")
     monkeypatch.setattr(agent_context, "SCHEDULER_STATE_FILE", data_dir / "scheduler_state.json")
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(workspace_guard, "INTERNAL_STATE_ROOT", data_dir)
     monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
     agent_context.ensure_agent_storage()
 
@@ -198,13 +200,9 @@ class _NamedProvider:
 
 
 def test_append_lesson_deduplicates_recent_entry(tmp_path, monkeypatch):
-    lessons_file = tmp_path / "lessons.md"
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    lessons_file = agent_context.LESSONS_FILE
     lessons_file.write_text("# Learned Lessons\n", encoding="utf-8")
-
-    monkeypatch.setattr(agent_context, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(agent_context, "LESSONS_FILE", lessons_file)
-    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
-    monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
 
     agent_context.append_lesson("lesson yang sama")
     agent_context.append_lesson("lesson yang sama")
@@ -1368,7 +1366,8 @@ def test_heartbeat_service_runs_periodic_memory_maintenance(tmp_path, monkeypatc
 
 
 def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypatch):
-    secrets_file = tmp_path / "secrets.json"
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    secrets_file = agent_context.SECRETS_FILE
     secrets_file.write_text(
         json.dumps(
             {
@@ -1382,11 +1381,6 @@ def test_get_secret_value_supports_uppercase_env_style_alias(tmp_path, monkeypat
         ),
         encoding="utf-8",
     )
-
-    monkeypatch.setattr(agent_context, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(agent_context, "SECRETS_FILE", secrets_file)
-    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
-    monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
 
     assert agent_context.get_secret_value("openai_api_key") == "sk-upper-alias-1234567890"
 
@@ -1402,8 +1396,9 @@ def test_executor_blocks_mutating_autonomous_commands():
 
 def test_self_review_skips_duplicate_follow_up_tasks(tmp_path, monkeypatch):
     module = _load_module(ROOT / "skills" / "self-review" / "script" / "handler.py", "self_review_handler_test")
+    _configure_temp_agent_state(tmp_path, monkeypatch)
 
-    planner_file = tmp_path / "planner.json"
+    planner_file = agent_context.PLANNER_FILE
     planner_file.write_text(
         json.dumps(
             {
@@ -1429,29 +1424,15 @@ def test_self_review_skips_duplicate_follow_up_tasks(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-
-    monkeypatch.setattr(agent_context, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(agent_context, "PLANNER_FILE", planner_file)
-    monkeypatch.setattr(agent_context, "MEMORY_FILE", tmp_path / "memory.jsonl")
-    monkeypatch.setattr(agent_context, "LESSONS_FILE", tmp_path / "lessons.md")
-    monkeypatch.setattr(agent_context, "PROFILE_FILE", tmp_path / "profile.md")
-    monkeypatch.setattr(agent_context, "HABITS_FILE", tmp_path / "habits.json")
-    monkeypatch.setattr(agent_context, "MEMORY_SUMMARIES_FILE", tmp_path / "memory_summaries.json")
-    monkeypatch.setattr(agent_context, "IDENTITIES_FILE", tmp_path / "identities.json")
-    monkeypatch.setattr(agent_context, "SESSIONS_FILE", tmp_path / "sessions.json")
-    monkeypatch.setattr(agent_context, "SECRETS_FILE", tmp_path / "secrets.json")
-    monkeypatch.setattr(workspace_guard, "WORKSPACE_ROOT", tmp_path)
-    monkeypatch.setattr(workspace_guard, "WORKSPACE_ACCESS", "rw")
-
-    (tmp_path / "memory.jsonl").write_text("", encoding="utf-8")
-    (tmp_path / "lessons.md").write_text("# Learned Lessons\n", encoding="utf-8")
-    (tmp_path / "profile.md").write_text("# Agent Profile\n", encoding="utf-8")
-    (tmp_path / "habits.json").write_text(json.dumps({"habits": [], "updated_at": "", "signals_analyzed": 0}, indent=2), encoding="utf-8")
-    (tmp_path / "memory_summaries.json").write_text(json.dumps({"summaries": [], "updated_at": "", "prune_candidates": 0}, indent=2), encoding="utf-8")
-    (tmp_path / "identities.json").write_text(json.dumps({"identities": [], "updated_at": ""}, indent=2), encoding="utf-8")
-    (tmp_path / "sessions.json").write_text(json.dumps({"sessions": [], "updated_at": ""}, indent=2), encoding="utf-8")
-    (tmp_path / "notifications.json").write_text(json.dumps({"notifications": [], "updated_at": ""}, indent=2), encoding="utf-8")
-    (tmp_path / "secrets.json").write_text(json.dumps({"secrets": {}}, indent=2), encoding="utf-8")
+    agent_context.MEMORY_FILE.write_text("", encoding="utf-8")
+    agent_context.LESSONS_FILE.write_text("# Learned Lessons\n", encoding="utf-8")
+    agent_context.PROFILE_FILE.write_text("# Agent Profile\n", encoding="utf-8")
+    agent_context.HABITS_FILE.write_text(json.dumps({"habits": [], "updated_at": "", "signals_analyzed": 0}, indent=2), encoding="utf-8")
+    agent_context.MEMORY_SUMMARIES_FILE.write_text(json.dumps({"summaries": [], "updated_at": "", "prune_candidates": 0}, indent=2), encoding="utf-8")
+    agent_context.IDENTITIES_FILE.write_text(json.dumps({"identities": [], "updated_at": ""}, indent=2), encoding="utf-8")
+    agent_context.SESSIONS_FILE.write_text(json.dumps({"sessions": [], "updated_at": ""}, indent=2), encoding="utf-8")
+    agent_context.NOTIFICATIONS_FILE.write_text(json.dumps({"notifications": [], "updated_at": ""}, indent=2), encoding="utf-8")
+    agent_context.SECRETS_FILE.write_text(json.dumps({"secrets": {}}, indent=2), encoding="utf-8")
 
     result = module.handle("text TODO dan api_key")
 

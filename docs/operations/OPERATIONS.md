@@ -193,7 +193,7 @@ Lihat jejak eksekusi terbaru:
 cadiax history
 ```
 
-Command ini membaca event dari `.otonomassist/execution_history.jsonl` dan menampilkan ringkasan eksekusi terbaru beserta `trace_id`.
+Command ini membaca event dari `.cadiax/execution_history.jsonl` dan menampilkan ringkasan eksekusi terbaru beserta `trace_id`.
 
 Lihat metrik agregat runtime:
 
@@ -202,13 +202,13 @@ cadiax metrics
 cadiax metrics --json
 ```
 
-Command ini membaca agregat dari `.otonomassist/execution_metrics.json` untuk melihat volume command/skill, timeout, error, dan timing rata-rata.
-State runtime durable sekarang juga disimpan di `.otonomassist/state.db`, sementara file JSON/JSONL lama tetap dipertahankan sebagai mirror kompatibilitas.
+Command ini membaca agregat dari `.cadiax/execution_metrics.json` untuk melihat volume command/skill, timeout, error, dan timing rata-rata.
+State runtime durable sekarang juga disimpan di `.cadiax/state.db`, sementara file JSON/JSONL lama tetap dipertahankan sebagai mirror kompatibilitas.
 
 Timeout skill global bisa diatur lewat:
 
 ```bash
-OTONOMASSIST_SKILL_TIMEOUT_SECONDS=60
+CADIAX_SKILL_TIMEOUT_SECONDS=60
 ```
 
 Jika sebuah skill melewati batas ini, assistant akan mengembalikan error timeout dan event history akan ditandai `status=timeout`.
@@ -228,7 +228,7 @@ Endpoint yang tersedia:
 - `/scheduler`
 - `/history?limit=20`
 
-Jika `OTONOMASSIST_ADMIN_TOKEN` diisi, sertakan salah satu:
+Jika `CADIAX_ADMIN_TOKEN` diisi, sertakan salah satu:
 
 - header `X-Cadiax-Token: <token>`
 - header `Authorization: Bearer <token>`
@@ -245,7 +245,7 @@ Endpoint yang tersedia:
 - `POST /messages`
 - `POST /v1/messages`
 
-Jika `OTONOMASSIST_CONVERSATION_TOKEN` diisi, sertakan salah satu:
+Jika `CADIAX_CONVERSATION_TOKEN` diisi, sertakan salah satu:
 
 - header `X-Cadiax-Conversation-Token: <token>`
 - header `Authorization: Bearer <token>`
@@ -275,7 +275,7 @@ cadiax service write worker --runtime posix
 Default output ada di:
 
 ```text
-.otonomassist/service-wrappers/
+.cadiax/service-wrappers/
 ```
 
 Untuk menjalankan target sebagai foreground process yang siap disupervise:
@@ -349,13 +349,13 @@ Secara default, skill eksternal memakai policy `approval-required`:
 Untuk mode yang lebih longgar:
 
 ```bash
-OTONOMASSIST_EXTERNAL_SKILL_POLICY=allow-all
+CADIAX_EXTERNAL_SKILL_POLICY=allow-all
 ```
 
 Capability yang diizinkan default hanya `workspace_read`. Jika asset membutuhkan capability lain, buka eksplisit melalui:
 
 ```bash
-OTONOMASSIST_EXTERNAL_CAPABILITY_ALLOW=workspace_read,network
+CADIAX_EXTERNAL_CAPABILITY_ALLOW=workspace_read,network
 ```
 
 ## Operasi Semi-Otonom
@@ -469,7 +469,7 @@ Operasi pairing:
 State lokal utama:
 
 ```text
-.otonomassist/
+.cadiax/
 ├── memory.jsonl
 ├── planner.json
 ├── job_queue.json
@@ -499,7 +499,7 @@ Konfigurasi non-secret:
 `status` menunjukkan workspace root tidak ada
 
 - jalankan `cadiax setup`
-- perbaiki `OTONOMASSIST_WORKSPACE_ROOT`
+- perbaiki `CADIAX_WORKSPACE_ROOT`
 
 Telegram tidak merespons
 

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from otonomassist.core.config_doctor import get_config_status_data
-from otonomassist.core.event_bus import get_event_bus_snapshot
-from otonomassist.core.execution_history import export_execution_events
-from otonomassist.core.execution_metrics import get_execution_metrics_snapshot
-from otonomassist.core.job_runtime import get_job_queue_snapshot, get_job_queue_summary
-from otonomassist.core.result_builder import build_result
-from otonomassist.core.runtime_interaction import get_current_interaction_context
-from otonomassist.core.scheduler_runtime import get_scheduler_summary
+from cadiax.core.config_doctor import get_config_status_data
+from cadiax.core.event_bus import get_event_bus_snapshot
+from cadiax.core.execution_history import export_execution_events
+from cadiax.core.execution_metrics import get_execution_metrics_snapshot
+from cadiax.core.job_runtime import get_job_queue_snapshot, get_job_queue_summary
+from cadiax.core.result_builder import build_result
+from cadiax.core.runtime_interaction import get_current_interaction_context
+from cadiax.core.scheduler_runtime import get_scheduler_summary
 
 
 def handle(args: str) -> dict[str, object] | str:

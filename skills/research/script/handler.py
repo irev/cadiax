@@ -7,8 +7,8 @@ import re
 from datetime import datetime
 from typing import Any
 
-from otonomassist.ai.factory import AIProviderFactory
-from otonomassist.core.result_builder import build_result
+from cadiax.ai.factory import AIProviderFactory
+from cadiax.core.result_builder import build_result
 
 USAGE = (
     "Usage: research <pertanyaan>\n"

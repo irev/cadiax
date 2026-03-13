@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from otonomassist.core.agent_context import get_next_planner_task, list_ready_planner_tasks
-from otonomassist.core.config_doctor import get_config_status_data
-from otonomassist.core.result_builder import build_result
-from otonomassist.core.runtime_interaction import get_current_interaction_context
+from cadiax.core.agent_context import get_next_planner_task, list_ready_planner_tasks
+from cadiax.core.config_doctor import get_config_status_data
+from cadiax.core.result_builder import build_result
+from cadiax.core.runtime_interaction import get_current_interaction_context
 
 
 KNOWN_PREFIXES = {

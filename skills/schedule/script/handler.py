@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from otonomassist.core.assistant import Assistant
-from otonomassist.core.job_runtime import enqueue_ready_planner_task
-from otonomassist.core.result_builder import build_result
-from otonomassist.core.scheduler_runtime import get_scheduler_summary, run_scheduler
-from otonomassist.services.privacy.privacy_control_service import PrivacyControlService
+from cadiax.core.assistant import Assistant
+from cadiax.core.job_runtime import enqueue_ready_planner_task
+from cadiax.core.result_builder import build_result
+from cadiax.core.scheduler_runtime import get_scheduler_summary, run_scheduler
+from cadiax.services.privacy.privacy_control_service import PrivacyControlService
 
 
 def handle(args: str) -> dict[str, object] | str:

@@ -66,7 +66,7 @@ Gunakan skill ini ketika user ingin:
 - merangkum isi direktori
 
 Contoh:
-- "baca file assistant.py" -> `workspace read src/otonomassist/core/assistant.py`
+- "baca file assistant.py" -> `workspace read src/cadiax/core/assistant.py`
 - "cari string OPENAI_MODEL" -> `workspace find OPENAI_MODEL`
 - "lihat struktur src" -> `workspace tree src`
 - "lihat struktur file yang ada di workspace" -> `workspace tree .`
