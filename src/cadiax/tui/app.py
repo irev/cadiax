@@ -10,6 +10,7 @@ from textual.widgets import Footer, Header, OptionList, Static
 
 from cadiax.core.config_doctor import get_config_status_data
 from cadiax.core.path_layout import get_runtime_layout_snapshot
+from cadiax.platform import get_service_runtime_info
 
 
 SCREEN_OPTIONS: list[tuple[str, str]] = [
@@ -17,6 +18,8 @@ SCREEN_OPTIONS: list[tuple[str, str]] = [
     ("paths", "Paths"),
     ("doctor", "Doctor"),
     ("channels", "Channels"),
+    ("services", "Services"),
+    ("setup", "Setup"),
 ]
 
 
@@ -56,6 +59,8 @@ class CadiaxTuiApp(App[None]):
         ("2", "go_paths", "Paths"),
         ("3", "go_doctor", "Doctor"),
         ("4", "go_channels", "Channels"),
+        ("5", "go_services", "Services"),
+        ("6", "go_setup", "Setup"),
         ("r", "refresh_data", "Refresh"),
     ]
 
@@ -95,6 +100,12 @@ class CadiaxTuiApp(App[None]):
     def action_go_channels(self) -> None:
         self._select_screen("channels")
 
+    def action_go_services(self) -> None:
+        self._select_screen("services")
+
+    def action_go_setup(self) -> None:
+        self._select_screen("setup")
+
     def action_refresh_data(self) -> None:
         self._reload()
         self._render_screen(self.current_screen_name)
@@ -118,6 +129,12 @@ class CadiaxTuiApp(App[None]):
             return
         if screen_name == "channels":
             content.update(build_channels_view(self.status_data))
+            return
+        if screen_name == "services":
+            content.update(build_services_view(self.status_data))
+            return
+        if screen_name == "setup":
+            content.update(build_setup_view(self.status_data))
             return
         content.update(build_doctor_view(self.status_data))
 
@@ -156,6 +173,7 @@ def build_home_view(data: dict[str, Any]) -> str:
         "",
         "[Hints]",
         "- Tekan 1/2/3/4 untuk pindah layar",
+        "- Tekan 5/6 untuk layanan dan setup coverage",
         "- Tekan r untuk refresh snapshot",
         "- Tekan q untuk keluar",
     ]
@@ -251,6 +269,80 @@ def build_channels_view(data: dict[str, Any]) -> str:
         "",
         "[Preference]",
         f"preferred_channels: {', '.join(preferred_channels) if preferred_channels else '-'}",
+    ]
+    return "\n".join(lines)
+
+
+def build_services_view(data: dict[str, Any]) -> str:
+    service_info = get_service_runtime_info()
+    runtime = data.get("runtime", {})
+    scheduler = data.get("scheduler", {})
+    dashboard = data.get("dashboard", {})
+    lines = [
+        "Services",
+        "",
+        "[Runtime]",
+        f"backend          : {service_info.get('backend', '-')}",
+        f"status           : {service_info.get('status', '-')}",
+        f"supervisor_ready : {'yes' if service_info.get('supervisor_ready') else 'no'}",
+        f"recommended_mode : {service_info.get('recommended_mode', '-')}",
+        f"runtime_status   : {runtime.get('status', '-')}",
+        f"scheduler_status : {scheduler.get('status', '-')}",
+        "",
+        "[Targets]",
+    ]
+    for item in service_info.get("supported_targets", []):
+        if not isinstance(item, dict):
+            continue
+        extra = ""
+        if item.get("default_port") is not None:
+            extra = f" port={item['default_port']}"
+        elif item.get("default_interval_seconds"):
+            extra = f" interval={item['default_interval_seconds']:.0f}s"
+        lines.append(f"- {item.get('name', '-')}: {item.get('description', '-')}{extra}")
+    lines.extend(
+        [
+            "",
+            "[Integrated Channels]",
+            f"- telegram_in_main_service: {'yes' if data.get('telegram', {}).get('enabled') else 'no'}",
+            f"- dashboard_enabled       : {'yes' if dashboard.get('enabled') else 'no'}",
+            "- note                    : Telegram ikut service `cadiax`; bukan service utama terpisah",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_setup_view(data: dict[str, Any]) -> str:
+    ai = data.get("ai", {})
+    workspace = data.get("workspace", {})
+    telegram = data.get("telegram", {})
+    dashboard = data.get("dashboard", {})
+    personality = data.get("personality", {})
+    preference_profile = personality.get("preference_profile", {}) if isinstance(personality, dict) else {}
+    preferred_channels = preference_profile.get("preferred_channels", []) if isinstance(preference_profile, dict) else []
+    lines = [
+        "Setup Coverage",
+        "",
+        "[Global Setup Available]",
+        f"- provider/model          : {ai.get('provider', '-')}",
+        f"- workspace_root          : {workspace.get('root', '-')}",
+        f"- workspace_access        : {workspace.get('access', '-')}",
+        f"- telegram_enabled        : {'yes' if telegram.get('enabled') else 'no'}",
+        f"- dashboard_enabled       : {'yes' if dashboard.get('enabled') else 'no'}",
+        f"- dashboard_host          : {dashboard.get('host', '-')}",
+        f"- dashboard_port          : {dashboard.get('port', '-')}",
+        f"- dashboard_admin_api_url : {dashboard.get('admin_api_url', '-')}",
+        "",
+        "[Preference Layer]",
+        f"- preferred_channels      : {', '.join(preferred_channels) if preferred_channels else '-'}",
+        "",
+        "[Per-Dispatch Interfaces]",
+        "- email                   : no global credential form; configured per API/dispatch target",
+        "- whatsapp                : no global credential form; configured per API/dispatch target",
+        "",
+        "[Current Gap]",
+        "- TUI shell sudah ada, tetapi wizard bertahap belum menggantikan `cadiax setup`",
+        "- layar ini mendokumentasikan boundary setup saat ini agar operator tidak mengira ada form global yang hilang",
     ]
     return "\n".join(lines)
 

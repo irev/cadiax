@@ -261,7 +261,7 @@ Jika helper yang ada terlalu CLI-oriented, refactor sebaiknya memindahkan logika
 - tambah dependency TUI
 - tambah command `cadiax tui`
 - buat app shell dengan sidebar dan routing layar
-- tampilkan `Home`, `Paths`, `Doctor`
+- tampilkan `Home`, `Paths`, `Doctor`, `Channels`, `Services`, dan `Setup Coverage`
 
 ### Phase T2: Configuration
 

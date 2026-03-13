@@ -3,7 +3,14 @@ from __future__ import annotations
 from click.testing import CliRunner
 
 from cadiax.cli import main
-from cadiax.tui.app import build_channels_view, build_doctor_view, build_home_view, build_paths_view
+from cadiax.tui.app import (
+    build_channels_view,
+    build_doctor_view,
+    build_home_view,
+    build_paths_view,
+    build_services_view,
+    build_setup_view,
+)
 
 
 def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
@@ -11,6 +18,7 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
         "overall": {"status": "warning"},
         "ai": {"provider": "openai", "status": "warning"},
         "runtime": {"status": "healthy"},
+        "scheduler": {"status": "healthy"},
         "telegram": {"enabled": True, "status": "warning", "dm_policy": "pairing", "group_policy": "allowlist"},
         "dashboard": {"enabled": True, "host": "127.0.0.1", "port": 8795, "admin_api_url": "http://127.0.0.1:8787"},
         "storage": {
@@ -41,6 +49,9 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "command_on_path" in build_paths_view(payload)
     assert "missing api key" in build_doctor_view(payload)
     assert "path_mode" in build_home_view(payload)
+    assert "telegram_in_main_service" in build_services_view(payload)
+    assert "Per-Dispatch Interfaces" in build_setup_view(payload)
+    assert "email                   : no global credential form" in build_setup_view(payload)
 
 
 def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
@@ -51,7 +62,7 @@ def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
 
     monkeypatch.setattr("cadiax.cli.run_tui", fake_run_tui)
     runner = CliRunner()
-    result = runner.invoke(main, ["tui", "--screen", "channels"])
+    result = runner.invoke(main, ["tui", "--screen", "services"])
 
     assert result.exit_code == 0
-    assert called["screen"] == "channels"
+    assert called["screen"] == "services"
