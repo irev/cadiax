@@ -35,6 +35,7 @@
 - [Release Notes v1.1.2](/d:/PROJECT/otonomAssist/docs/release/RELEASE_NOTES_v1.1.2.md)
 - [Release Notes v1.1.3](/d:/PROJECT/otonomAssist/docs/release/RELEASE_NOTES_v1.1.3.md)
 - [Release Notes v1.1.4](/d:/PROJECT/otonomAssist/docs/release/RELEASE_NOTES_v1.1.4.md)
+- [Release Notes v1.1.5](/d:/PROJECT/otonomAssist/docs/release/RELEASE_NOTES_v1.1.5.md)
 - [Deployment Checklist](/d:/PROJECT/otonomAssist/docs/release/DEPLOYMENT_CHECKLIST.md)
 - [Validation Matrix](/d:/PROJECT/otonomAssist/docs/release/VALIDATION_MATRIX.md)
 - [Merge Strategy Summary](/d:/PROJECT/otonomAssist/docs/release/MERGE_STRATEGY_SUMMARY.md)

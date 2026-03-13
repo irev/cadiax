@@ -4,6 +4,21 @@ Dokumen ini merangkum perubahan penting yang sudah mendarat di OtonomAssist.
 
 ## Unreleased
 
+## v1.1.5
+
+### Changed
+
+- added installer preflight dependency checks at the start of install on Windows and Linux
+- installer now verifies Python version compatibility before runtime install begins
+- installer now verifies `venv/ensurepip` support before creating the real application venv
+- Linux installer now fails clearly when non-interactive sudo is required for missing dependencies
+
+### Validation
+
+- Windows native install smoke passed with preflight checks
+- Linux native install smoke passed in WSL with preflight checks
+- `pytest -q tests/test_setup_wizard.py tests/test_public_package.py` -> `82 passed`
+
 ## v1.1.4
 
 ### Changed

@@ -44,6 +44,78 @@ function Ensure-WingetPackage {
     }
 }
 
+function Test-PythonMinimumVersion {
+    Param([string]$Command)
+
+    try {
+        $VersionText = & $Command -c "import sys; print('.'.join(map(str, sys.version_info[:3])))" 2>$null
+    } catch {
+        return $false
+    }
+    if (-not $VersionText) {
+        return $false
+    }
+    try {
+        $Version = [Version]$VersionText.Trim()
+    } catch {
+        return $false
+    }
+    return $Version -ge [Version]"3.10.0"
+}
+
+function Test-PythonVenvSupport {
+    Param([string]$Command)
+
+    $ProbeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("cadiax-venv-" + [guid]::NewGuid().ToString("N"))
+    try {
+        & $Command -m venv $ProbeDir *> $null
+        return ($LASTEXITCODE -eq 0) -and (Test-Path (Join-Path $ProbeDir "Scripts\\python.exe"))
+    } catch {
+        return $false
+    } finally {
+        if (Test-Path $ProbeDir) {
+            Remove-Item -Recurse -Force $ProbeDir -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Ensure-PythonReady {
+    Param([string]$Command)
+
+    if (-not (Test-Command $Command)) {
+        Ensure-WingetPackage -Id "Python.Python.3.12" -Label "Python"
+        if (-not (Test-Command $Command)) {
+            throw "Python berhasil diinstall tetapi command '$Command' belum tersedia di shell ini. Buka shell baru atau gunakan -PythonCommand dengan path interpreter yang benar."
+        }
+    }
+
+    if (-not (Test-PythonMinimumVersion $Command)) {
+        throw "Cadiax membutuhkan Python >= 3.10. Command '$Command' pada sistem ini tidak memenuhi syarat. Gunakan interpreter yang lebih baru atau jalankan installer ulang setelah update Python."
+    }
+
+    if (-not (Test-PythonVenvSupport $Command)) {
+        throw "Python tersedia tetapi modul venv/ensurepip tidak siap. Perbaiki instalasi Python atau pasang distribusi Python yang menyertakan virtual environment support."
+    }
+}
+
+function Show-PreflightSummary {
+    Param(
+        [string]$PythonCommand,
+        [bool]$InstallNodeRequested
+    )
+
+    Write-Step "Preflight dependency check"
+    Write-Host "- python command: $PythonCommand"
+    Write-Host "- python ready: yes"
+    Write-Host "- git ready: $(if (Test-Command 'git') { 'yes' } else { 'no' })"
+    if ($InstallNodeRequested) {
+        Write-Host "- node requested: yes"
+        Write-Host "- node ready: $(if (Test-Command 'node') { 'yes' } else { 'no' })"
+    } else {
+        Write-Host "- node requested: no"
+    }
+}
+
 function Invoke-CheckedCommand {
     Param(
         [string]$Label,
@@ -155,9 +227,7 @@ function Sync-AppAssets {
     }
 }
 
-if (-not (Test-Command $PythonCommand)) {
-    Ensure-WingetPackage -Id "Python.Python.3.12" -Label "Python"
-}
+Ensure-PythonReady -Command $PythonCommand
 
 if (-not (Test-Command "git")) {
     Ensure-WingetPackage -Id "Git.Git" -Label "Git"
@@ -166,6 +236,8 @@ if (-not (Test-Command "git")) {
 if ($InstallNode -and -not (Test-Command "node")) {
     Ensure-WingetPackage -Id "OpenJS.NodeJS.LTS" -Label "Node.js LTS"
 }
+
+Show-PreflightSummary -PythonCommand $PythonCommand -InstallNodeRequested $InstallNode
 
 if (-not $AppRoot) {
     $AppRoot = Get-DefaultAppRoot

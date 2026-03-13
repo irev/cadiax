@@ -5,7 +5,7 @@ Modular assistant system with skill-based architecture.
 
 from cadiax.core.path_layout import apply_env_aliases
 
-__version__ = "1.1.4"
+__version__ = "1.1.5"
 __author__ = "Cadiax Team"
 apply_env_aliases()
 

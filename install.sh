@@ -50,6 +50,34 @@ step() {
   echo "[Cadiax] $1"
 }
 
+python_is_usable() {
+  "$PYTHON_BIN" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+}
+
+show_preflight_summary() {
+  step "Preflight dependency check"
+  echo "- python command: $PYTHON_BIN"
+  echo "- python ready: yes"
+  if need_cmd git; then
+    echo "- git ready: yes"
+  else
+    echo "- git ready: no"
+  fi
+  if [[ "$INSTALL_NODE" -eq 1 ]]; then
+    echo "- node requested: yes"
+    if need_cmd node; then
+      echo "- node ready: yes"
+    else
+      echo "- node ready: no"
+    fi
+  else
+    echo "- node requested: no"
+  fi
+}
+
 default_app_root() {
   if [[ -n "${XDG_DATA_HOME:-}" ]]; then
     printf '%s\n' "${XDG_DATA_HOME}/cadiax/app"
@@ -213,6 +241,11 @@ if ! need_cmd "$PYTHON_BIN"; then
   install_pkg "Python" python3 python3-venv python3-pip
 fi
 
+if ! python_is_usable; then
+  echo "Cadiax membutuhkan Python >= 3.10. Command '$PYTHON_BIN' pada sistem ini tidak memenuhi syarat." >&2
+  exit 1
+fi
+
 ensure_python_venv_support
 
 if ! need_cmd git; then
@@ -228,6 +261,8 @@ if [[ "$INSTALL_NODE" -eq 1 ]] && ! need_cmd node; then
     install_pkg "Node.js and npm" nodejs npm
   fi
 fi
+
+show_preflight_summary
 
 if [[ -z "$APP_ROOT" ]]; then
   APP_ROOT="$(default_app_root)"

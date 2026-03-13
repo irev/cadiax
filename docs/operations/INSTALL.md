@@ -76,7 +76,10 @@ atau:
 
 ## Yang Dilakukan Installer
 
+- menjalankan preflight dependency check di awal sebelum runtime install dimulai
 - memastikan `Python` tersedia
+- memastikan versi `Python >= 3.10`
+- memastikan `venv/ensurepip` benar-benar tersedia, bukan hanya command `python` yang ada
 - memastikan `Git` tersedia
 - opsional memastikan `Node.js` dan `npm` tersedia untuk dashboard
 - membuat runtime aplikasi di direktori install native OS:
@@ -115,6 +118,8 @@ Dokumen bootstrap aktif selalu disalin ke `workspace root`, bukan ke `.cadiax/`.
 Setelah setup selesai, dokumen inilah yang benar-benar dibaca Cadiax untuk startup context, identity, soul, scope, dan heartbeat behavior.
 
 Sesudah install selesai, folder source/git yang dipakai untuk install tidak lagi menjadi dependency runtime utama Cadiax.
+
+Di Linux, jika installer dijalankan dari shell non-interaktif dan butuh `sudo` untuk memasang dependency seperti `python3-venv`, installer sekarang akan berhenti dengan pesan yang jelas, bukan hang di tengah proses.
 
 Pada `project mode` untuk contributor, default path tetap repo-relative:
 

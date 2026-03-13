@@ -99,6 +99,7 @@ Setelah install selesai, executable Cadiax tidak lagi bergantung pada folder git
 - Release notes `v1.1.2`: `docs/release/RELEASE_NOTES_v1.1.2.md`
 - Release notes `v1.1.3`: `docs/release/RELEASE_NOTES_v1.1.3.md`
 - Release notes `v1.1.4`: `docs/release/RELEASE_NOTES_v1.1.4.md`
+- Release notes `v1.1.5`: `docs/release/RELEASE_NOTES_v1.1.5.md`
 - Deployment checklist: `docs/release/DEPLOYMENT_CHECKLIST.md`
 - Security policy: `SECURITY.md`
 - Code of conduct: `CODE_OF_CONDUCT.md`
@@ -128,7 +129,7 @@ Dokumen pendukung:
 - `docs/architecture/ARCHITECTURE.md`: snapshot arsitektur implementasi saat ini
 - `docs/README.md`: indeks dokumentasi repo
 
-Target resmi repo sekarang bergerak pada baseline rilis `v1.1.4`: fondasi inti stabil dengan namespace `Cadiax`, installer native per-OS, bootstrap workspace aktif, dashboard monitoring opsional di app root native, dan service wrapper yang lebih lengkap.
+Target resmi repo sekarang bergerak pada baseline rilis `v1.1.5`: fondasi inti stabil dengan namespace `Cadiax`, installer native per-OS, preflight dependency checks lintas OS, bootstrap workspace aktif, dashboard monitoring opsional di app root native, dan service wrapper yang lebih lengkap.
 
 ## Fondasi yang Sudah Jadi
 
@@ -351,7 +352,7 @@ Installer ini:
 Cadiax memang memakai dokumen hasil seed itu setelah setup selesai. User boleh mengeditnya manual, dan runtime akan membaca hasil edit tersebut pada startup berikutnya.
 
 Catatan:
-`pip` memang menampilkan format standar seperti `Successfully installed cadiax-1.1.4`.
+`pip` memang menampilkan format standar seperti `Successfully installed cadiax-1.1.5`.
 Itu perilaku normal `pip`. Installer Cadiax menutup proses dengan pesan publik yang lebih bersih: `Cadiax installed`.
 
 ## Menjalankan Aplikasi
