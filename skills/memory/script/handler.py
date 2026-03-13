@@ -8,8 +8,8 @@ from pathlib import Path
 import re
 from typing import Any
 
+from otonomassist.core import agent_context
 from otonomassist.core.agent_context import (
-    LESSONS_FILE,
     append_lesson,
     append_curated_memory,
     append_daily_memory_note,
@@ -25,10 +25,22 @@ from otonomassist.core.agent_context import (
 from otonomassist.memory import MemoryConsolidationService
 from otonomassist.core.result_builder import build_result
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = PROJECT_ROOT / ".otonomassist"
-MEMORY_FILE = DATA_DIR / "memory.jsonl"
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]{4,}")
+
+
+def _project_root() -> Path:
+    """Return the current state root parent for relative path rendering."""
+    return agent_context.DATA_DIR.parent
+
+
+def _memory_file() -> Path:
+    """Return the effective memory journal file at call time."""
+    return agent_context.MEMORY_FILE
+
+
+def _lessons_file() -> Path:
+    """Return the effective lessons file at call time."""
+    return agent_context.LESSONS_FILE
 
 
 def handle(args: str) -> str:
@@ -82,8 +94,9 @@ def _ensure_storage() -> None:
 
 def _load_memories() -> list[dict[str, Any]]:
     _ensure_storage()
+    memory_file = _memory_file()
     entries: list[dict[str, Any]] = []
-    for line in MEMORY_FILE.read_text(encoding="utf-8").splitlines():
+    for line in memory_file.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
@@ -96,7 +109,7 @@ def _load_memories() -> list[dict[str, Any]]:
 
 def _append_memory(entry: dict[str, Any]) -> None:
     _ensure_storage()
-    with MEMORY_FILE.open("a", encoding="utf-8") as handle:
+    with _memory_file().open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=True) + "\n")
 
 
@@ -262,14 +275,17 @@ def _consolidate_memories(topic: str) -> str:
 
 
 def _memory_context() -> str:
+    project_root = _project_root()
+    memory_file = _memory_file()
+    lessons_file = _lessons_file()
     return _wrap_result(
         result_type="memory_context",
         data={
             "files": [
-                {"name": "jsonl", "path": str(MEMORY_FILE.relative_to(PROJECT_ROOT))},
-                {"name": "lessons", "path": str(LESSONS_FILE.relative_to(PROJECT_ROOT))},
-                {"name": "daily_journal_dir", "path": str(get_daily_memory_dir().relative_to(PROJECT_ROOT))},
-                {"name": "today_journal", "path": str(get_daily_memory_journal_path().relative_to(PROJECT_ROOT))},
+                {"name": "jsonl", "path": _relative_or_absolute(memory_file, project_root)},
+                {"name": "lessons", "path": _relative_or_absolute(lessons_file, project_root)},
+                {"name": "daily_journal_dir", "path": _relative_or_absolute(get_daily_memory_dir(), project_root)},
+                {"name": "today_journal", "path": _relative_or_absolute(get_daily_memory_journal_path(), project_root)},
             ],
             "summary_state": load_memory_summary_state(),
             "summary": "Lokasi file memory agent.",
@@ -309,6 +325,14 @@ def _memory_row(entry: dict[str, Any]) -> dict[str, object]:
         "source": entry.get("source", "-"),
         "text": entry.get("text", ""),
     }
+
+
+def _relative_or_absolute(path: Path, project_root: Path) -> str:
+    """Render a stable path label even when tests move the state root."""
+    try:
+        return str(path.relative_to(project_root))
+    except ValueError:
+        return str(path)
 
 
 def _wrap_result(result_type: str, data: dict[str, object], default_view: str) -> dict[str, object]:
