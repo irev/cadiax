@@ -50,8 +50,13 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "missing api key" in build_doctor_view(payload)
     assert "path_mode" in build_home_view(payload)
     assert "telegram_in_main_service" in build_services_view(payload)
-    assert "Per-Dispatch Interfaces" in build_setup_view(payload)
-    assert "email                   : no global credential form" in build_setup_view(payload)
+    provider_step = build_setup_view(payload, step_index=0)
+    interfaces_step = build_setup_view(payload, step_index=4)
+    summary_step = build_setup_view(payload, step_index=5)
+    assert "[Step] 1/6 - Provider" in provider_step
+    assert "Per-Dispatch Interfaces" in interfaces_step
+    assert "email                  : no global credential form" in interfaces_step
+    assert "Current Boundary" in summary_step
 
 
 def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:

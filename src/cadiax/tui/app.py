@@ -22,6 +22,15 @@ SCREEN_OPTIONS: list[tuple[str, str]] = [
     ("setup", "Setup"),
 ]
 
+SETUP_STEPS: list[tuple[str, str]] = [
+    ("provider", "Provider"),
+    ("workspace", "Workspace"),
+    ("telegram", "Telegram"),
+    ("dashboard", "Dashboard"),
+    ("interfaces", "Interfaces"),
+    ("summary", "Summary"),
+]
+
 
 class CadiaxTuiApp(App[None]):
     """Minimal TUI shell for local operator control."""
@@ -61,6 +70,8 @@ class CadiaxTuiApp(App[None]):
         ("4", "go_channels", "Channels"),
         ("5", "go_services", "Services"),
         ("6", "go_setup", "Setup"),
+        ("n", "next_setup_step", "Next setup step"),
+        ("p", "prev_setup_step", "Previous setup step"),
         ("r", "refresh_data", "Refresh"),
     ]
 
@@ -69,6 +80,7 @@ class CadiaxTuiApp(App[None]):
         self.initial_screen = initial_screen if initial_screen in dict(SCREEN_OPTIONS) else "home"
         self.status_data: dict[str, Any] = {}
         self.current_screen_name = self.initial_screen
+        self.current_setup_step = 0
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -110,6 +122,18 @@ class CadiaxTuiApp(App[None]):
         self._reload()
         self._render_screen(self.current_screen_name)
 
+    def action_next_setup_step(self) -> None:
+        if self.current_screen_name != "setup":
+            return
+        self.current_setup_step = min(self.current_setup_step + 1, len(SETUP_STEPS) - 1)
+        self._render_screen("setup")
+
+    def action_prev_setup_step(self) -> None:
+        if self.current_screen_name != "setup":
+            return
+        self.current_setup_step = max(self.current_setup_step - 1, 0)
+        self._render_screen("setup")
+
     def _reload(self) -> None:
         self.status_data = get_config_status_data()
 
@@ -134,7 +158,7 @@ class CadiaxTuiApp(App[None]):
             content.update(build_services_view(self.status_data))
             return
         if screen_name == "setup":
-            content.update(build_setup_view(self.status_data))
+            content.update(build_setup_view(self.status_data, step_index=self.current_setup_step))
             return
         content.update(build_doctor_view(self.status_data))
 
@@ -174,6 +198,7 @@ def build_home_view(data: dict[str, Any]) -> str:
         "[Hints]",
         "- Tekan 1/2/3/4 untuk pindah layar",
         "- Tekan 5/6 untuk layanan dan setup coverage",
+        "- Saat di Setup, tekan n/p untuk pindah step",
         "- Tekan r untuk refresh snapshot",
         "- Tekan q untuk keluar",
     ]
@@ -312,7 +337,7 @@ def build_services_view(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_setup_view(data: dict[str, Any]) -> str:
+def build_setup_view(data: dict[str, Any], *, step_index: int = 0) -> str:
     ai = data.get("ai", {})
     workspace = data.get("workspace", {})
     telegram = data.get("telegram", {})
@@ -320,30 +345,92 @@ def build_setup_view(data: dict[str, Any]) -> str:
     personality = data.get("personality", {})
     preference_profile = personality.get("preference_profile", {}) if isinstance(personality, dict) else {}
     preferred_channels = preference_profile.get("preferred_channels", []) if isinstance(preference_profile, dict) else []
+    step_index = max(0, min(step_index, len(SETUP_STEPS) - 1))
+    step_key, step_label = SETUP_STEPS[step_index]
     lines = [
-        "Setup Coverage",
+        "Setup Wizard",
         "",
-        "[Global Setup Available]",
-        f"- provider/model          : {ai.get('provider', '-')}",
-        f"- workspace_root          : {workspace.get('root', '-')}",
-        f"- workspace_access        : {workspace.get('access', '-')}",
-        f"- telegram_enabled        : {'yes' if telegram.get('enabled') else 'no'}",
-        f"- dashboard_enabled       : {'yes' if dashboard.get('enabled') else 'no'}",
-        f"- dashboard_host          : {dashboard.get('host', '-')}",
-        f"- dashboard_port          : {dashboard.get('port', '-')}",
-        f"- dashboard_admin_api_url : {dashboard.get('admin_api_url', '-')}",
+        f"[Step] {step_index + 1}/{len(SETUP_STEPS)} - {step_label}",
         "",
-        "[Preference Layer]",
-        f"- preferred_channels      : {', '.join(preferred_channels) if preferred_channels else '-'}",
-        "",
-        "[Per-Dispatch Interfaces]",
-        "- email                   : no global credential form; configured per API/dispatch target",
-        "- whatsapp                : no global credential form; configured per API/dispatch target",
-        "",
-        "[Current Gap]",
-        "- TUI shell sudah ada, tetapi wizard bertahap belum menggantikan `cadiax setup`",
-        "- layar ini mendokumentasikan boundary setup saat ini agar operator tidak mengira ada form global yang hilang",
+        "Steps:",
     ]
+    for index, (_, label) in enumerate(SETUP_STEPS, start=1):
+        marker = ">" if index - 1 == step_index else "-"
+        lines.append(f"{marker} {index}. {label}")
+    lines.append("")
+    if step_key == "provider":
+        lines.extend(
+            [
+                "[Provider]",
+                f"- provider               : {ai.get('provider', '-')}",
+                f"- status                 : {ai.get('status', '-')}",
+                "- setup global           : yes",
+                "- mutable via wizard     : provider, model, base URL, secret preference",
+                "- note                   : provider secret tetap dimask di doctor/TUI",
+            ]
+        )
+    elif step_key == "workspace":
+        lines.extend(
+            [
+                "[Workspace]",
+                f"- workspace_root         : {workspace.get('root', '-')}",
+                f"- workspace_access       : {workspace.get('access', '-')}",
+                f"- root_exists            : {'yes' if workspace.get('root_exists') else 'no'}",
+                "- setup global           : yes",
+                "- mutable via wizard     : root, access mode, runtime docs bootstrap",
+            ]
+        )
+    elif step_key == "telegram":
+        lines.extend(
+            [
+                "[Telegram]",
+                f"- enabled                : {'yes' if telegram.get('enabled') else 'no'}",
+                f"- dm_policy              : {telegram.get('dm_policy', '-')}",
+                f"- group_policy           : {telegram.get('group_policy', '-')}",
+                "- setup global           : yes",
+                "- mutable via wizard     : token, owner IDs, DM/group policy, mention requirement",
+                "- service integration    : ikut service `cadiax`, bukan target utama terpisah",
+            ]
+        )
+    elif step_key == "dashboard":
+        lines.extend(
+            [
+                "[Dashboard]",
+                f"- enabled                : {'yes' if dashboard.get('enabled') else 'no'}",
+                f"- host                   : {dashboard.get('host', '-')}",
+                f"- port                   : {dashboard.get('port', '-')}",
+                f"- admin_api_url          : {dashboard.get('admin_api_url', '-')}",
+                "- setup global           : yes",
+                "- mutable via wizard     : enable/disable, access mode, port, admin API URL",
+            ]
+        )
+    elif step_key == "interfaces":
+        lines.extend(
+            [
+                "[Per-Dispatch Interfaces]",
+                "- email                  : no global credential form; configured per API/dispatch target",
+                "- whatsapp               : no global credential form; configured per API/dispatch target",
+                f"- preferred_channels     : {', '.join(preferred_channels) if preferred_channels else '-'}",
+                "- setup global           : no",
+                "- reason                 : current runtime stores messages/snapshots, not channel account credentials",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "[Summary]",
+                f"- provider/model         : {ai.get('provider', '-')}",
+                f"- workspace_root         : {workspace.get('root', '-')}",
+                f"- telegram_enabled       : {'yes' if telegram.get('enabled') else 'no'}",
+                f"- dashboard_enabled      : {'yes' if dashboard.get('enabled') else 'no'}",
+                f"- preferred_channels     : {', '.join(preferred_channels) if preferred_channels else '-'}",
+                "",
+                "[Current Boundary]",
+                "- TUI sudah punya wizard step-by-step view",
+                "- mutasi konfigurasi utama masih dilakukan oleh `cadiax setup` sampai phase T2",
+                "- phase berikutnya: pindahkan write flow setup ke kontrol TUI yang memakai helper yang sama",
+            ]
+        )
     return "\n".join(lines)
 
 
