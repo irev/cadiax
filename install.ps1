@@ -243,6 +243,39 @@ function Confirm-ImplicitReinstall {
     return $false
 }
 
+function Get-ResolvedCadiaxCommandInfo {
+    $resolved = Get-Command "cadiax" -ErrorAction SilentlyContinue
+    if (-not $resolved) {
+        return @{
+            found = $false
+            command_type = ""
+            path = ""
+            detail = ""
+            is_cadiax_ready = $false
+        }
+    }
+
+    $commandType = [string]$resolved.CommandType
+    $path = ""
+    if ($resolved.Path) {
+        $path = [System.IO.Path]::GetFullPath($resolved.Path)
+    }
+    $detail = ""
+    if ($resolved.Definition) {
+        $detail = [string]$resolved.Definition
+    } elseif ($resolved.Source) {
+        $detail = [string]$resolved.Source
+    }
+
+    return @{
+        found = $true
+        command_type = $commandType
+        path = $path
+        detail = $detail
+        is_cadiax_ready = $false
+    }
+}
+
 function Show-NextSteps {
     Param(
         [string]$VenvPath,
@@ -253,7 +286,7 @@ function Show-NextSteps {
     )
 
     $VenvCadiax = Join-Path $VenvPath "Scripts\\cadiax.exe"
-    $ResolvedCadiax = Get-Command "cadiax" -ErrorAction SilentlyContinue
+    $ResolvedCadiax = Get-ResolvedCadiaxCommandInfo
     $LayoutInfo = & $VenvPython -c "from cadiax.core.path_layout import get_config_env_file, get_state_dir, get_workspace_root, get_dashboard_root; print(get_config_env_file()); print(get_state_dir()); print(get_workspace_root()); print(get_dashboard_root())"
     $ConfigPath = ""
     $StatePath = ""
@@ -288,11 +321,30 @@ function Show-NextSteps {
     if ($ShimInfo) {
         $AcceptedPaths += @($ShimInfo.cadiax_cmds | ForEach-Object { [System.IO.Path]::GetFullPath($_) })
     }
-    $ResolvedCadiaxPath = if ($ResolvedCadiax) { [System.IO.Path]::GetFullPath($ResolvedCadiax.Path) } else { "" }
+    $ResolvedCadiaxPath = $ResolvedCadiax.path
+    $ResolvedCadiaxType = ""
+    if ($ResolvedCadiax.command_type) {
+        $ResolvedCadiaxType = ([string]$ResolvedCadiax.command_type).ToLowerInvariant()
+    }
+    $ResolvedCadiaxDetail = $ResolvedCadiax.detail
+    $ResolvedCadiaxReady = $false
+    if ($ResolvedCadiax.found) {
+        if ($ResolvedCadiaxPath -and ($AcceptedPaths -contains $ResolvedCadiaxPath)) {
+            $ResolvedCadiaxReady = $true
+        } elseif ($ResolvedCadiaxType -eq "function" -and $ShimInfo -and $ResolvedCadiaxDetail) {
+            foreach ($ShimPath in $ShimInfo.cadiax_cmds) {
+                if ($ResolvedCadiaxDetail -like "*$ShimPath*") {
+                    $ResolvedCadiaxReady = $true
+                    break
+                }
+            }
+        }
+    }
 
-    if ($ResolvedCadiax -and ($AcceptedPaths -notcontains $ResolvedCadiaxPath)) {
+    if ($ResolvedCadiax.found -and -not $ResolvedCadiaxReady) {
         Write-Host ""
-        Write-Warning "Command `cadiax` pada shell ini masih mengarah ke: $($ResolvedCadiax.Path)"
+        $DisplayTarget = if ($ResolvedCadiaxPath) { $ResolvedCadiaxPath } else { $ResolvedCadiaxDetail }
+        Write-Warning "Command `cadiax` pada shell ini masih mengarah ke: $DisplayTarget"
         if ($ResolvedCadiaxPath -like "*\\.pyenv\\*") {
             Write-Host "Konflik ini berasal dari pyenv/global Python lama. Command `cadiax` bawaan Cadiax tidak akan menang jika pyenv berada lebih dulu di PATH sistem."
             Write-Host "Remedi terbaik:"
@@ -303,6 +355,15 @@ function Show-NextSteps {
             Write-Host "   pyenv rehash"
         } else {
             Write-Host "Aktifkan virtual environment, gunakan shim Cadiax, atau buka shell baru setelah install."
+        }
+    } elseif ($ResolvedCadiaxReady) {
+        Write-Host ""
+        Write-Host "Current shell command `cadiax` sudah siap digunakan."
+        Write-Host "- command_type: $ResolvedCadiaxType"
+        if ($ResolvedCadiaxPath) {
+            Write-Host "- resolved_path: $ResolvedCadiaxPath"
+        } elseif ($ResolvedCadiaxDetail) {
+            Write-Host "- resolved_detail: $ResolvedCadiaxDetail"
         }
     }
 

@@ -20,6 +20,7 @@ from otonomassist.cli import main  # noqa: E402
 import otonomassist.cli as cli_module  # noqa: E402
 from otonomassist.core import agent_context, workspace_guard  # noqa: E402
 from otonomassist.core.admin_api import build_admin_snapshot  # noqa: E402
+import otonomassist.core.config_doctor as config_doctor  # noqa: E402
 from otonomassist.core.execution_history import load_execution_events  # noqa: E402
 from otonomassist.core import path_layout  # noqa: E402
 from otonomassist.core.runtime_interaction import bind_interaction_context  # noqa: E402
@@ -350,6 +351,37 @@ def test_cli_privacy_export_defaults_to_active_state_dir(tmp_path, monkeypatch):
     assert export_path.exists()
     payload = json.loads(export_path.read_text(encoding="utf-8"))
     assert payload["memory_entries"][0]["text"] == "catatan export default"
+
+
+def test_doctor_resolves_windows_function_shim(monkeypatch):
+    class DummyResult:
+        returncode = 0
+        stdout = '{"CommandType":"Function","Source":"","Path":"","Definition":"function global:cadiax { & \'C:\\\\Users\\\\User\\\\.cadiax\\\\bin\\\\cadiax.cmd\' @args }"}'
+
+    monkeypatch.setattr(config_doctor.os, "name", "nt")
+    monkeypatch.setattr(config_doctor.shutil, "which", lambda _name: "")
+    monkeypatch.setattr(config_doctor.subprocess, "run", lambda *args, **kwargs: DummyResult())
+
+    payload = config_doctor._resolve_cadiax_command()
+
+    assert payload["kind"] == "function"
+    assert payload["path"] == ""
+    assert "cadiax.cmd" in payload["detail"]
+
+
+def test_doctor_json_handles_corrupt_local_secret(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1-mini")
+    monkeypatch.setattr(agent_context, "get_secret_value", lambda name: (_ for _ in ()).throw(ValueError("bad secret")) if name == "openai_api_key" else "")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["doctor", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert any("openai_api_key" in issue for issue in payload["issues"])
 
 
 def test_cli_conversation_api_command_starts_separate_service(tmp_path, monkeypatch):

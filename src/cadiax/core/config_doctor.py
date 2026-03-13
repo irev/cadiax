@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 
 from dotenv import dotenv_values
@@ -67,6 +68,7 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
     scheduler = get_scheduler_summary()
     state_storage = agent_context.get_state_storage_info()
     layout = path_layout.get_runtime_layout_snapshot()
+    command_info = _resolve_cadiax_command()
     scope_state = agent_context.get_scope_state_summary()
     scope_filter = _build_scope_filter_snapshot(agent_scope=agent_scope, roles=roles)
     personality = PersonalityService()
@@ -163,7 +165,9 @@ def get_config_status_data(*, agent_scope: str | None = None, roles: tuple[str, 
             "config_dir": layout["config_dir"],
             "python_executable": layout["python_executable"],
             "invoked_as": str(Path(sys.argv[0]).resolve()),
-            "command_on_path": shutil.which("cadiax") or "",
+            "command_on_path": command_info["path"],
+            "command_kind": command_info["kind"],
+            "command_detail": command_info["detail"],
             "preference_count": len(personality.list_preferences()),
             "habit_count": len(habits.get("habits", [])),
             "identity_count": identity_snapshot["total_identity_count"],
@@ -412,7 +416,9 @@ def get_config_status_report() -> str:
             f"- workspace_root: {data['workspace']['root']}",
             f"- python_executable: {data['storage']['python_executable']}",
             f"- invoked_as: {data['storage']['invoked_as']}",
+            f"- command_kind: {data['storage']['command_kind'] or '-'}",
             f"- command_on_path: {data['storage']['command_on_path'] or '-'}",
+            f"- command_detail: {data['storage']['command_detail'] or '-'}",
         ]
     )
 
@@ -723,7 +729,7 @@ def _build_provider_info(env_values: dict[str, str]) -> dict[str, object]:
     }
 
     if provider == "openai":
-        api_key = agent_context.get_secret_value("openai_api_key") or env_values.get("OPENAI_API_KEY", "")
+        api_key = _safe_secret_value("openai_api_key", info) or env_values.get("OPENAI_API_KEY", "")
         base_url = env_values.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
         model = env_values.get("OPENAI_MODEL") or "gpt-4o-mini"
         fallback_model = env_values.get("OPENAI_FALLBACK_MODEL", "")
@@ -739,7 +745,7 @@ def _build_provider_info(env_values: dict[str, str]) -> dict[str, object]:
         return info
 
     if provider == "claude":
-        api_key = agent_context.get_secret_value("anthropic_api_key") or env_values.get("ANTHROPIC_API_KEY", "")
+        api_key = _safe_secret_value("anthropic_api_key", info) or env_values.get("ANTHROPIC_API_KEY", "")
         base_url = env_values.get("CLAUDE_BASE_URL") or "https://api.anthropic.com"
         model = env_values.get("CLAUDE_MODEL") or "claude-3-haiku-20240307"
         info["config"] = {"base_url": base_url, "model": model}
@@ -769,9 +775,9 @@ def _build_provider_info(env_values: dict[str, str]) -> dict[str, object]:
 
 def _provider_has_credential(provider: str, env_values: dict[str, str]) -> bool:
     if provider == "openai":
-        return bool(agent_context.get_secret_value("openai_api_key") or env_values.get("OPENAI_API_KEY"))
+        return bool(_safe_secret_value("openai_api_key") or env_values.get("OPENAI_API_KEY"))
     if provider == "claude":
-        return bool(agent_context.get_secret_value("anthropic_api_key") or env_values.get("ANTHROPIC_API_KEY"))
+        return bool(_safe_secret_value("anthropic_api_key") or env_values.get("ANTHROPIC_API_KEY"))
     return True
 
 
@@ -782,7 +788,7 @@ def _get_telegram_status(
     auth_state = auth_service.get_diagnostics()
     owner_ids = _parse_csv(env_values.get("TELEGRAM_OWNER_IDS", ""))
     token_configured = bool(
-        agent_context.get_secret_value("telegram_bot_token") or env_values.get("TELEGRAM_BOT_TOKEN")
+        _safe_secret_value("telegram_bot_token") or env_values.get("TELEGRAM_BOT_TOKEN")
     )
     enabled = _parse_bool(env_values.get("TELEGRAM_ENABLED", "true" if token_configured else "false"))
     return {
@@ -924,6 +930,17 @@ def _parse_bool(raw: str) -> bool:
     return str(raw or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _safe_secret_value(name: str, info: dict[str, object] | None = None) -> str:
+    try:
+        return agent_context.get_secret_value(name)
+    except Exception:
+        if info is not None:
+            issues = list(info.get("issues", []))
+            issues.append(f"Secret lokal `{name}` tidak bisa dibaca; periksa atau simpan ulang via setup.")
+            info["issues"] = issues
+        return ""
+
+
 def _mask_value(value: str) -> str:
     if not value:
         return "(kosong)"
@@ -963,6 +980,47 @@ def _ratio_text(part: int, total: int) -> str:
     if total <= 0:
         return "0%"
     return f"{round((part / total) * 100)}%"
+
+
+def _resolve_cadiax_command() -> dict[str, str]:
+    fallback = shutil.which("cadiax") or ""
+    if os.name != "nt":
+        return {"kind": "path", "path": fallback, "detail": ""}
+
+    try:
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-Command cadiax -ErrorAction SilentlyContinue | Select-Object -First 1 @{n='CommandType';e={$_.CommandType.ToString()}},Source,Path,Definition | ConvertTo-Json -Compress",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return {"kind": "path", "path": fallback, "detail": ""}
+
+    if result.returncode != 0 or not result.stdout.strip():
+        return {"kind": "path", "path": fallback, "detail": ""}
+
+    try:
+        import json as _json
+
+        payload = _json.loads(result.stdout.strip())
+    except Exception:
+        return {"kind": "path", "path": fallback, "detail": ""}
+
+    command_type = str(payload.get("CommandType", "") or "").strip().lower()
+    command_path = str(payload.get("Path", "") or "").strip()
+    definition = str(payload.get("Definition", "") or "").strip()
+    source = str(payload.get("Source", "") or "").strip()
+    return {
+        "kind": command_type or "path",
+        "path": command_path or fallback,
+        "detail": definition or source,
+    }
 
 
 def _build_scope_filter_snapshot(*, agent_scope: str | None, roles: tuple[str, ...]) -> dict[str, object]:
