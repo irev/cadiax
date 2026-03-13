@@ -127,13 +127,16 @@ def test_path_layout_user_mode_uses_native_os_dirs(tmp_path, monkeypatch):
         assert path_layout.get_config_env_file() == (tmp_path / "AppData" / "Roaming" / "Cadiax" / "config.env").resolve()
         assert path_layout.get_state_dir() == (tmp_path / "AppData" / "Local" / "Cadiax" / "state").resolve()
         assert path_layout.get_workspace_root() == (home / "Cadiax" / "workspace").resolve()
+        assert path_layout.get_app_install_root() == (tmp_path / "AppData" / "Local" / "Cadiax" / "app").resolve()
         return
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / ".state"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / ".data"))
     assert path_layout.get_config_env_file() == (tmp_path / ".config" / "cadiax" / "config.env").resolve()
     assert path_layout.get_state_dir() == (tmp_path / ".state" / "cadiax").resolve()
     assert path_layout.get_workspace_root() == (home / "cadiax" / "workspace").resolve()
+    assert path_layout.get_app_install_root() == (tmp_path / ".data" / "cadiax" / "app").resolve()
 
 
 def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypatch):

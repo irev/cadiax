@@ -4,6 +4,9 @@ Cadiax menyediakan installer awal untuk Windows dan Linux agar user tidak perlu 
 
 ## Jalur Resmi
 
+Installer Cadiax sekarang melakukan **user install**. Artinya runtime aplikasi tidak hidup di folder git/source yang didownload user.
+Source checkout hanya dipakai sebagai bahan install, lalu executable Cadiax berjalan dari direktori aplikasi native OS.
+
 ### Windows
 
 ```powershell
@@ -76,8 +79,14 @@ atau:
 - memastikan `Python` tersedia
 - memastikan `Git` tersedia
 - opsional memastikan `Node.js` dan `npm` tersedia untuk dashboard
-- membuat virtual environment `.venv`
-- menjalankan `pip install .`
+- membuat runtime aplikasi di direktori install native OS:
+  - Windows: `%LOCALAPPDATA%\Cadiax\app\`
+  - Linux: `~/.local/share/cadiax/app/`
+- membuat virtual environment di dalam direktori aplikasi itu:
+  - Windows: `%LOCALAPPDATA%\Cadiax\app\venv\`
+  - Linux: `~/.local/share/cadiax/app/venv/`
+- menjalankan install package Cadiax ke virtual environment aplikasi
+- menyalin asset dashboard opsional ke direktori aplikasi bila tersedia
 - menyiapkan layout native per-OS untuk user install:
   - Windows:
     - config: `%APPDATA%\Cadiax\config.env`
@@ -99,6 +108,8 @@ atau:
 
 Dokumen bootstrap aktif selalu disalin ke `workspace root`, bukan ke `.cadiax/`.
 Setelah setup selesai, dokumen inilah yang benar-benar dibaca Cadiax untuk startup context, identity, soul, scope, dan heartbeat behavior.
+
+Sesudah install selesai, folder source/git yang dipakai untuk install tidak lagi menjadi dependency runtime utama Cadiax.
 
 Pada `project mode` untuk contributor, default path tetap repo-relative:
 
@@ -126,26 +137,26 @@ Jalur yang benar setelah install:
 ### Windows
 
 ```powershell
-.venv\Scripts\cadiax.exe
+$env:LOCALAPPDATA\Cadiax\app\venv\Scripts\cadiax.exe
 ```
 
 Atau aktifkan dulu:
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
+& "$env:LOCALAPPDATA\Cadiax\app\venv\Scripts\Activate.ps1"
 cadiax
 ```
 
 ### Linux
 
 ```bash
-.venv/bin/cadiax
+~/.local/share/cadiax/app/venv/bin/cadiax
 ```
 
 Atau aktifkan dulu:
 
 ```bash
-source .venv/bin/activate
+source ~/.local/share/cadiax/app/venv/bin/activate
 cadiax
 ```
 

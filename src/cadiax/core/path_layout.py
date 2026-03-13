@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import sys
 
 from dotenv import load_dotenv
 
@@ -93,6 +94,34 @@ def get_workspace_root() -> Path:
     if os.name == "nt":
         return (_get_user_home() / "Cadiax" / "workspace").resolve()
     return (_get_user_home() / "cadiax" / "workspace").resolve()
+
+
+def get_app_install_root() -> Path:
+    """Return the OS-native application install root for user installs."""
+    override = _get_env("CADIAX_APP_DIR", "OTONOMASSIST_APP_DIR").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    if get_path_mode() == "project":
+        return get_project_root().resolve()
+    executable = Path(sys.executable).resolve()
+    if executable.parent.name.lower() in {"scripts", "bin"} and executable.parents[1].name.lower() == "venv":
+        return executable.parents[2].resolve()
+    if os.name == "nt":
+        root = _expand_native_base(
+            _get_env("LOCALAPPDATA"),
+            _get_user_home() / "AppData" / "Local",
+        )
+        return (root / "Cadiax" / "app").resolve()
+    root = _expand_native_base(
+        _get_env("XDG_DATA_HOME"),
+        _get_user_home() / ".local" / "share",
+    )
+    return (root / "cadiax" / "app").resolve()
+
+
+def get_dashboard_root() -> Path:
+    """Return the effective dashboard project root."""
+    return (get_app_install_root() / "monitoring-dashboard").resolve()
 
 
 def load_runtime_env(*, override: bool = True) -> Path:

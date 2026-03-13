@@ -2,7 +2,8 @@ Param(
     [switch]$InstallNode,
     [switch]$SkipSetup,
     [string]$PythonCommand = "python",
-    [string]$VenvPath = ".venv",
+    [string]$AppRoot = "",
+    [string]$VenvPath = "",
     [switch]$ReuseVenv,
     [switch]$SkipUserShim
 )
@@ -12,6 +13,13 @@ $ErrorActionPreference = "Stop"
 function Write-Step {
     Param([string]$Message)
     Write-Host "[Cadiax] $Message"
+}
+
+function Get-DefaultAppRoot {
+    if ($env:LOCALAPPDATA) {
+        return Join-Path $env:LOCALAPPDATA "Cadiax\\app"
+    }
+    return Join-Path $HOME "AppData\\Local\\Cadiax\\app"
 }
 
 function Test-Command {
@@ -52,10 +60,11 @@ function Show-NextSteps {
     Param(
         [string]$VenvPath,
         [string]$VenvPython,
+        [string]$AppRoot,
         [hashtable]$ShimInfo = $null
     )
 
-    $VenvCadiax = Join-Path $PWD "$VenvPath\\Scripts\\cadiax.exe"
+    $VenvCadiax = Join-Path $VenvPath "Scripts\\cadiax.exe"
     $ResolvedCadiax = Get-Command "cadiax" -ErrorAction SilentlyContinue
     $LayoutInfo = & $VenvPython -c "from cadiax.core.path_layout import get_config_env_file, get_state_dir, get_workspace_root; print(get_config_env_file()); print(get_state_dir()); print(get_workspace_root())"
     $ConfigPath = ""
@@ -69,8 +78,9 @@ function Show-NextSteps {
 
     Write-Host ""
     Write-Host "Cadiax installed"
-    Write-Host "CLI: $VenvPath\\Scripts\\cadiax.exe"
-    Write-Host "Telegram CLI: $VenvPath\\Scripts\\cadiax-telegram.exe"
+    Write-Host "App root: $AppRoot"
+    Write-Host "CLI: $(Join-Path $VenvPath 'Scripts\\cadiax.exe')"
+    Write-Host "Telegram CLI: $(Join-Path $VenvPath 'Scripts\\cadiax-telegram.exe')"
     if ($ConfigPath) {
         Write-Host "Config: $ConfigPath"
         Write-Host "State: $StatePath"
@@ -78,9 +88,9 @@ function Show-NextSteps {
     }
     Write-Host ""
     Write-Host "Gunakan salah satu cara berikut:"
-    Write-Host "1. Langsung jalankan: $VenvPath\\Scripts\\cadiax.exe"
+    Write-Host "1. Langsung jalankan: $(Join-Path $VenvPath 'Scripts\\cadiax.exe')"
     Write-Host "2. Aktifkan virtual environment terlebih dulu:"
-    Write-Host "   .\\$VenvPath\\Scripts\\Activate.ps1"
+    Write-Host "   $(Join-Path $VenvPath 'Scripts\\Activate.ps1')"
     Write-Host "   cadiax"
 
     $AcceptedPaths = @($VenvCadiax)
@@ -97,15 +107,14 @@ function Show-NextSteps {
 
 function Register-UserCommandShims {
     Param(
-        [string]$ProjectRoot,
         [string]$VenvPath
     )
 
     $ShimDir = Join-Path $HOME ".cadiax\\bin"
     New-Item -ItemType Directory -Force -Path $ShimDir | Out-Null
 
-    $CadiaxExe = Join-Path $ProjectRoot "$VenvPath\\Scripts\\cadiax.exe"
-    $TelegramExe = Join-Path $ProjectRoot "$VenvPath\\Scripts\\cadiax-telegram.exe"
+    $CadiaxExe = Join-Path $VenvPath "Scripts\\cadiax.exe"
+    $TelegramExe = Join-Path $VenvPath "Scripts\\cadiax-telegram.exe"
     $CadiaxCmd = "@echo off`r`n""$CadiaxExe"" %*`r`n"
     $TelegramCmd = "@echo off`r`n""$TelegramExe"" %*`r`n"
 
@@ -127,6 +136,22 @@ function Register-UserCommandShims {
     }
 }
 
+function Sync-AppAssets {
+    Param(
+        [string]$SourceRoot,
+        [string]$AppRoot
+    )
+
+    $SourceDashboard = Join-Path $SourceRoot "monitoring-dashboard"
+    if (Test-Path $SourceDashboard) {
+        $TargetDashboard = Join-Path $AppRoot "monitoring-dashboard"
+        if (Test-Path $TargetDashboard) {
+            Remove-Item -Recurse -Force $TargetDashboard
+        }
+        Copy-Item -Recurse -Force $SourceDashboard $TargetDashboard
+    }
+}
+
 if (-not (Test-Command $PythonCommand)) {
     Ensure-WingetPackage -Id "Python.Python.3.12" -Label "Python"
 }
@@ -139,6 +164,19 @@ if ($InstallNode -and -not (Test-Command "node")) {
     Ensure-WingetPackage -Id "OpenJS.NodeJS.LTS" -Label "Node.js LTS"
 }
 
+if (-not $AppRoot) {
+    $AppRoot = Get-DefaultAppRoot
+}
+$AppRoot = [System.IO.Path]::GetFullPath($AppRoot)
+if (-not $VenvPath) {
+    $VenvPath = Join-Path $AppRoot "venv"
+}
+$VenvPath = [System.IO.Path]::GetFullPath($VenvPath)
+$SourceRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+New-Item -ItemType Directory -Force -Path $AppRoot | Out-Null
+Sync-AppAssets -SourceRoot $SourceRoot -AppRoot $AppRoot
+
 if ((Test-Path $VenvPath) -and (-not $ReuseVenv)) {
     Write-Step "Menghapus virtual environment lama di $VenvPath"
     Remove-Item -Recurse -Force $VenvPath
@@ -147,7 +185,7 @@ if ((Test-Path $VenvPath) -and (-not $ReuseVenv)) {
 Write-Step "Menyiapkan virtual environment $VenvPath"
 Invoke-CheckedCommand -Label "python -m venv" -Command @($PythonCommand, "-m", "venv", $VenvPath)
 
-$VenvPython = Join-Path $PWD "$VenvPath\\Scripts\\python.exe"
+$VenvPython = Join-Path $VenvPath "Scripts\\python.exe"
 if (-not (Test-Path $VenvPython)) {
     throw "Virtual environment gagal dibuat."
 }
@@ -159,7 +197,7 @@ Write-Step "Mengupgrade pip"
 Invoke-CheckedCommand -Label "pip install --upgrade pip" -Command @($VenvPython, "-m", "pip", "install", "--upgrade", "pip")
 
 Write-Step "Menginstall Cadiax"
-Invoke-CheckedCommand -Label "pip install ." -Command @($VenvPython, "-m", "pip", "install", ".")
+Invoke-CheckedCommand -Label "pip install source package" -Command @($VenvPython, "-m", "pip", "install", $SourceRoot)
 
 Write-Step "Menyiapkan dokumen workspace aktif"
 Invoke-CheckedCommand -Label "cadiax bootstrap foundation" -Command @($VenvPython, "-m", "cadiax.cli", "bootstrap", "foundation")
@@ -167,7 +205,7 @@ Invoke-CheckedCommand -Label "cadiax bootstrap foundation" -Command @($VenvPytho
 $ShimInfo = $null
 if (-not $SkipUserShim) {
     Write-Step "Mendaftarkan command Cadiax ke user PATH"
-    $ShimInfo = Register-UserCommandShims -ProjectRoot $PWD -VenvPath $VenvPath
+    $ShimInfo = Register-UserCommandShims -VenvPath $VenvPath
 }
 
 if ($InstallNode) {
@@ -180,7 +218,7 @@ if (-not $SkipSetup) {
     Invoke-CheckedCommand -Label "cadiax setup" -Command @($VenvPython, "-m", "cadiax.cli", "setup")
 }
 
-Show-NextSteps -VenvPath $VenvPath -VenvPython $VenvPython -ShimInfo $ShimInfo
+Show-NextSteps -VenvPath $VenvPath -VenvPython $VenvPython -AppRoot $AppRoot -ShimInfo $ShimInfo
 if ($ShimInfo) {
     Write-Host ""
     Write-Host "User command shims:"

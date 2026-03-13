@@ -53,14 +53,17 @@ cadiax
 
 Installer Cadiax akan:
 
-- membuat virtual environment
-- menginstall paket `cadiax`
+- membuat runtime aplikasi di direktori install native OS
+- membuat virtual environment aplikasi di dalam direktori itu
+- menginstall paket `cadiax` ke runtime aplikasi, bukan ke folder source checkout
 - menyiapkan layout native per-OS untuk user install:
   - Windows:
+    - app: `%LOCALAPPDATA%\Cadiax\app\`
     - config: `%APPDATA%\Cadiax\config.env`
     - state: `%LOCALAPPDATA%\Cadiax\state\`
     - workspace: `%USERPROFILE%\Cadiax\workspace\`
   - Linux:
+    - app: `~/.local/share/cadiax/app/`
     - config: `~/.config/cadiax/config.env`
     - state: `~/.local/state/cadiax/`
     - workspace: `~/cadiax/workspace/`
@@ -83,6 +86,8 @@ Installer Cadiax akan:
 - dashboard monitoring TypeScript opsional
 - multi-channel runtime dan service wrappers
 - target service utama `cadiax` untuk Windows/Linux, dengan Telegram polling terintegrasi bila diaktifkan user
+
+Setelah install selesai, executable Cadiax tidak lagi bergantung pada folder git/source yang dipakai saat install.
 
 ## Repository
 

@@ -6,7 +6,8 @@ SKIP_SETUP=0
 REUSE_VENV=0
 SKIP_USER_SHIM=0
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-VENV_PATH="${VENV_PATH:-.venv}"
+APP_ROOT="${APP_ROOT:-}"
+VENV_PATH="${VENV_PATH:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -20,6 +21,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --python)
       PYTHON_BIN="$2"
+      shift 2
+      ;;
+    --app-root)
+      APP_ROOT="$2"
       shift 2
       ;;
     --venv-path)
@@ -45,9 +50,18 @@ step() {
   echo "[Cadiax] $1"
 }
 
+default_app_root() {
+  if [[ -n "${XDG_DATA_HOME:-}" ]]; then
+    printf '%s\n' "${XDG_DATA_HOME}/cadiax/app"
+    return
+  fi
+  printf '%s\n' "${HOME}/.local/share/cadiax/app"
+}
+
 show_next_steps() {
   local venv_path="$1"
-  local shim_dir="${2:-}"
+  local app_root="$2"
+  local shim_dir="${3:-}"
   local resolved=""
   local config_path=""
   local state_path=""
@@ -64,6 +78,7 @@ show_next_steps() {
 
   echo
   echo "Cadiax installed"
+  echo "App root: $app_root"
   echo "CLI: $venv_path/bin/cadiax"
   echo "Telegram CLI: $venv_path/bin/cadiax-telegram"
   if [[ -n "$config_path" ]]; then
@@ -90,18 +105,17 @@ show_next_steps() {
 }
 
 register_user_shims() {
-  local project_root="$1"
-  local venv_path="$2"
+  local venv_path="$1"
   local shim_dir="${HOME}/.local/bin"
   mkdir -p "$shim_dir"
 
   cat > "$shim_dir/cadiax" <<EOF
 #!/usr/bin/env bash
-"$project_root/$venv_path/bin/cadiax" "\$@"
+"$venv_path/bin/cadiax" "\$@"
 EOF
   cat > "$shim_dir/cadiax-telegram" <<EOF
 #!/usr/bin/env bash
-"$project_root/$venv_path/bin/cadiax-telegram" "\$@"
+"$venv_path/bin/cadiax-telegram" "\$@"
 EOF
   chmod +x "$shim_dir/cadiax" "$shim_dir/cadiax-telegram"
 
@@ -113,6 +127,16 @@ EOF
 
   export PATH="$shim_dir:$PATH"
   echo "$shim_dir"
+}
+
+sync_app_assets() {
+  local source_root="$1"
+  local app_root="$2"
+  if [[ -d "$source_root/monitoring-dashboard" ]]; then
+    rm -rf "$app_root/monitoring-dashboard"
+    mkdir -p "$app_root"
+    cp -R "$source_root/monitoring-dashboard" "$app_root/monitoring-dashboard"
+  fi
 }
 
 need_cmd() {
@@ -157,6 +181,28 @@ if [[ "$INSTALL_NODE" -eq 1 ]] && ! need_cmd node; then
   fi
 fi
 
+if [[ -z "$APP_ROOT" ]]; then
+  APP_ROOT="$(default_app_root)"
+fi
+APP_ROOT="$("$PYTHON_BIN" - <<'PY' "$APP_ROOT"
+from pathlib import Path
+import sys
+print(Path(sys.argv[1]).expanduser().resolve())
+PY
+)"
+if [[ -z "$VENV_PATH" ]]; then
+  VENV_PATH="$APP_ROOT/venv"
+fi
+VENV_PATH="$("$PYTHON_BIN" - <<'PY' "$VENV_PATH"
+from pathlib import Path
+import sys
+print(Path(sys.argv[1]).expanduser().resolve())
+PY
+)"
+SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$APP_ROOT"
+sync_app_assets "$SOURCE_ROOT" "$APP_ROOT"
+
 if [[ -d "$VENV_PATH" && "$REUSE_VENV" -eq 0 ]]; then
   step "Menghapus virtual environment lama di $VENV_PATH"
   rm -rf "$VENV_PATH"
@@ -178,7 +224,7 @@ step "Mengupgrade pip"
 "$VENV_PY" -m pip install --upgrade pip
 
 step "Menginstall Cadiax"
-"$VENV_PY" -m pip install .
+"$VENV_PY" -m pip install "$SOURCE_ROOT"
 
 step "Menyiapkan dokumen workspace aktif"
 "$VENV_PY" -m cadiax.cli bootstrap foundation
@@ -186,7 +232,7 @@ step "Menyiapkan dokumen workspace aktif"
 SHIM_DIR=""
 if [[ "$SKIP_USER_SHIM" -eq 0 ]]; then
   step "Mendaftarkan command Cadiax ke user PATH"
-  SHIM_DIR="$(register_user_shims "$(pwd)" "$VENV_PATH")"
+  SHIM_DIR="$(register_user_shims "$VENV_PATH")"
 fi
 
 if [[ "$INSTALL_NODE" -eq 1 ]]; then
@@ -199,4 +245,4 @@ if [[ "$SKIP_SETUP" -eq 0 ]]; then
   "$VENV_PY" -m cadiax.cli setup
 fi
 
-show_next_steps "$VENV_PATH" "$SHIM_DIR"
+show_next_steps "$VENV_PATH" "$APP_ROOT" "$SHIM_DIR"

@@ -17,12 +17,13 @@ from dotenv import dotenv_values
 from cadiax.core.execution_history import append_execution_event, new_trace_id
 from cadiax.core.execution_metrics import record_execution_metric
 from cadiax.core.job_runtime import process_job_queue
-from cadiax.core.path_layout import get_config_env_file, get_project_root, get_state_dir
+from cadiax.core.path_layout import get_app_install_root, get_config_env_file, get_project_root, get_state_dir
 from cadiax.core.scheduler_runtime import run_scheduler
 from cadiax.platform.dashboard_runtime import DEFAULT_DASHBOARD_HOST, DEFAULT_DASHBOARD_PORT, run_dashboard_service
 
 
 PROJECT_ROOT = get_project_root()
+APP_ROOT = get_app_install_root()
 STATE_ROOT = get_state_dir()
 SERVICE_WRAPPER_DIR = (STATE_ROOT / "service-wrappers").resolve()
 ServiceRuntimeName = Literal["windows", "posix"]
@@ -741,7 +742,7 @@ def _build_posix_artifacts(spec: ServiceTargetSpec, args: list[str]) -> list[Ser
         [
             "#!/usr/bin/env sh",
             "set -eu",
-            f'cd "{PROJECT_ROOT}"',
+            f'cd "{APP_ROOT}"',
             f"exec {command}",
             "",
         ]
@@ -754,7 +755,7 @@ def _build_posix_artifacts(spec: ServiceTargetSpec, args: list[str]) -> list[Ser
             "",
             "[Service]",
             "Type=simple",
-            f"WorkingDirectory={PROJECT_ROOT}",
+            f"WorkingDirectory={APP_ROOT}",
             f"ExecStart={command}",
             "Restart=always",
             "RestartSec=5",
@@ -777,7 +778,7 @@ def _build_windows_artifacts(spec: ServiceTargetSpec, args: list[str]) -> list[S
     cmd = "\r\n".join(
         [
             "@echo off",
-            f'cd /d "{PROJECT_ROOT}"',
+            f'cd /d "{APP_ROOT}"',
             command,
             "",
         ]
@@ -786,7 +787,7 @@ def _build_windows_artifacts(spec: ServiceTargetSpec, args: list[str]) -> list[S
     install = "\n".join(
         [
             f"$TaskName = 'Cadiax-{spec.name}'",
-            f"$LauncherCommand = 'cd /d \"{_powershell_quote(str(PROJECT_ROOT), quoted=False)}\" && {ps_args[1:-1]}'",
+            f"$LauncherCommand = 'cd /d \"{_powershell_quote(str(APP_ROOT), quoted=False)}\" && {ps_args[1:-1]}'",
             "$Action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument \"/c $LauncherCommand\"",
             "$Trigger = New-ScheduledTaskTrigger -AtStartup",
             "$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -RestartCount 999 "

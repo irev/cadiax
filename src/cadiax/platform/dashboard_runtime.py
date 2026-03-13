@@ -11,10 +11,10 @@ import subprocess
 from typing import Any
 
 from cadiax.core import agent_context
+from cadiax.core.path_layout import get_dashboard_root
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DASHBOARD_ROOT = PROJECT_ROOT / "monitoring-dashboard"
+DASHBOARD_ROOT = get_dashboard_root()
 DEFAULT_DASHBOARD_PORT = 8795
 DEFAULT_DASHBOARD_HOST = "127.0.0.1"
 DEFAULT_ADMIN_API_URL = "http://127.0.0.1:8787"
