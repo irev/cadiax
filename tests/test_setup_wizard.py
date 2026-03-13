@@ -146,6 +146,7 @@ def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypat
     env_file = tmp_path / ".env"
     monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
     monkeypatch.setattr(setup_wizard, "encrypt_secret", lambda value: f"enc:{value}")
+    monkeypatch.setattr(setup_wizard.agent_context, "get_secret_value", lambda *_args, **_kwargs: "")
 
     prompt_answers = iter(
         [
@@ -175,6 +176,7 @@ def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypat
             True,
             True,
             True,
+            False,
             True,
         ]
     )
@@ -231,6 +233,7 @@ def test_cli_setup_wizard_defaults_to_native_config_file(tmp_path, monkeypatch):
     monkeypatch.setattr(setup_wizard.path_layout, "get_config_env_file", lambda: env_file)
     monkeypatch.setattr(setup_wizard.path_layout, "get_workspace_root", lambda: workspace_root)
     monkeypatch.setattr(setup_wizard, "encrypt_secret", lambda value: f"enc:{value}")
+    monkeypatch.setattr(setup_wizard.agent_context, "get_secret_value", lambda *_args, **_kwargs: "")
 
     prompt_answers = iter(
         [
@@ -244,7 +247,7 @@ def test_cli_setup_wizard_defaults_to_native_config_file(tmp_path, monkeypatch):
             "",
         ]
     )
-    confirm_answers = iter([False, False, True])
+    confirm_answers = iter([False, False, False, True])
     monkeypatch.setattr(setup_wizard.click, "prompt", lambda *args, **kwargs: next(prompt_answers))
     monkeypatch.setattr(setup_wizard.click, "confirm", lambda *args, **kwargs: next(confirm_answers))
 
@@ -263,6 +266,7 @@ def test_cli_setup_wizard_marks_telegram_disabled_when_skipped(tmp_path, monkeyp
     env_file = tmp_path / ".env"
     monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
     monkeypatch.setattr(setup_wizard, "encrypt_secret", lambda value: f"enc:{value}")
+    monkeypatch.setattr(setup_wizard.agent_context, "get_secret_value", lambda *_args, **_kwargs: "")
 
     prompt_answers = iter(
         [
@@ -273,7 +277,7 @@ def test_cli_setup_wizard_marks_telegram_disabled_when_skipped(tmp_path, monkeyp
             "llama3.2",
         ]
     )
-    confirm_answers = iter([False, True])
+    confirm_answers = iter([False, False, True])
     monkeypatch.setattr(setup_wizard.click, "prompt", lambda *args, **kwargs: next(prompt_answers))
     monkeypatch.setattr(setup_wizard.click, "confirm", lambda *args, **kwargs: next(confirm_answers))
 
@@ -282,6 +286,41 @@ def test_cli_setup_wizard_marks_telegram_disabled_when_skipped(tmp_path, monkeyp
 
     assert result.exit_code == 0
     assert "TELEGRAM_ENABLED=false" in env_file.read_text(encoding="utf-8")
+
+
+def test_cli_setup_wizard_persists_dashboard_settings(tmp_path, monkeypatch):
+    _configure_temp_agent_state(tmp_path, monkeypatch)
+    env_file = tmp_path / ".env"
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+
+    prompt_answers = iter(
+        [
+            "ollama",
+            str(tmp_path),
+            "ro",
+            "http://localhost:11434",
+            "llama3.2",
+            "public",
+            "8877",
+            "http://127.0.0.1:8787",
+        ]
+    )
+    confirm_answers = iter([False, True, True])
+    monkeypatch.setattr(setup_wizard.click, "prompt", lambda *args, **kwargs: next(prompt_answers))
+    monkeypatch.setattr(setup_wizard.click, "confirm", lambda *args, **kwargs: next(confirm_answers))
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["setup"])
+
+    assert result.exit_code == 0
+    assert "- dashboard_enabled: true" in result.output
+    assert "- dashboard_port: 8877" in result.output
+
+    dashboard_state = json.loads((agent_context.DATA_DIR / "dashboard_state.json").read_text(encoding="utf-8"))
+    assert dashboard_state["enabled"] is True
+    assert dashboard_state["host"] == "0.0.0.0"
+    assert dashboard_state["port"] == 8877
+    assert dashboard_state["admin_api_url"] == "http://127.0.0.1:8787"
 
 
 def test_cli_conversation_api_command_starts_separate_service(tmp_path, monkeypatch):

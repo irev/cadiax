@@ -1,6 +1,19 @@
 # Install
 
-Cadiax menyediakan installer awal untuk Windows dan Linux agar user tidak perlu menebak dependency dasar saat first install.
+Cadiax menyediakan lifecycle installer yang tegas untuk Windows dan Linux agar user tidak perlu menebak dependency dasar maupun konsekuensi install ulang.
+
+## Mode Installer
+
+- `install`
+  - untuk first install
+  - gagal jika runtime Cadiax sudah ada
+- `reinstall`
+  - untuk memperbarui atau membangun ulang runtime aplikasi
+  - default tetap mempertahankan config, state, dan workspace user
+- `uninstall`
+  - menghapus runtime aplikasi dan command shim
+  - default tetap mempertahankan config, state, dan workspace user
+  - gunakan purge jika ingin menghapus semuanya
 
 ## Jalur Resmi
 
@@ -10,13 +23,13 @@ Source checkout hanya dipakai sebagai bahan install, lalu executable Cadiax berj
 ### Windows
 
 ```powershell
-./install.ps1
+./install.ps1 -Mode install
 ```
 
 Atau dari `cmd` / double-click:
 
 ```bat
-install.bat
+install.bat -Mode install
 ```
 
 Dengan dashboard dependency opsional:
@@ -35,7 +48,7 @@ install.bat -InstallNode
 
 ```bash
 chmod +x ./install.sh
-./install.sh
+./install.sh --mode install
 ```
 
 Dengan dashboard dependency opsional:
@@ -45,7 +58,19 @@ chmod +x ./install.sh
 ./install.sh --install-node
 ```
 
-Secara default installer akan merecreate virtual environment target jika foldernya sudah ada. Jika Anda memang ingin memakai virtual environment yang sama tanpa dihapus, gunakan:
+Untuk install ulang:
+
+```powershell
+./install.ps1 -Mode reinstall
+```
+
+atau:
+
+```bash
+./install.sh --mode reinstall
+```
+
+Jika Anda memang ingin memakai virtual environment yang sama tanpa dihapus saat reinstall, gunakan:
 
 ```powershell
 ./install.ps1 -ReuseVenv
@@ -57,10 +82,36 @@ atau:
 ./install.sh --reuse-venv
 ```
 
+Untuk uninstall runtime aplikasi:
+
+```powershell
+./install.ps1 -Mode uninstall
+```
+
+atau:
+
+```bash
+./install.sh --mode uninstall
+```
+
+Jika ingin sekaligus menghapus config, state, dan workspace:
+
+```powershell
+./install.ps1 -Mode uninstall -PurgeData
+```
+
+atau:
+
+```bash
+./install.sh --mode uninstall --purge-data
+```
+
 Secara default installer juga akan mendaftarkan command user-level:
 
 - Windows: `%USERPROFILE%\.cadiax\bin\cadiax.cmd`
 - Linux: `~/.local/bin/cadiax`
+
+Di Windows installer juga akan menulis shim PowerShell ke profile user agar command `cadiax` di PowerShell tidak kalah oleh command global lama seperti `pyenv`.
 
 Jika Anda tidak menginginkan itu:
 
@@ -72,6 +123,12 @@ atau:
 
 ```bash
 ./install.sh --skip-user-shim
+```
+
+Untuk Windows PowerShell, Anda juga bisa menonaktifkan profile shim:
+
+```powershell
+./install.ps1 -SkipPowerShellProfileShim
 ```
 
 ## Yang Dilakukan Installer
@@ -113,6 +170,12 @@ atau:
   - `HEARTBEAT.md`
 - opsional menjalankan `cadiax dashboard install`
 - menjalankan `cadiax setup` kecuali diminta skip
+
+Saat `cadiax setup` dijalankan dari installer, wizard awal juga akan menawarkan konfigurasi monitoring dashboard:
+- aktif atau tidak
+- access mode `local` atau `public`
+- port dashboard
+- `admin API URL` yang dipakai dashboard
 
 Dokumen bootstrap aktif selalu disalin ke `workspace root`, bukan ke `.cadiax/`.
 Setelah setup selesai, dokumen inilah yang benar-benar dibaca Cadiax untuk startup context, identity, soul, scope, dan heartbeat behavior.
@@ -173,6 +236,14 @@ cadiax
 Cadiax installer sekarang juga membuat shim user-level agar command `cadiax` lebih mudah dipakai tanpa harus selalu mengetik path `.venv`.
 
 Jika shell yang sedang terbuka masih memakai instalasi global lama, tutup lalu buka shell baru setelah install selesai.
+
+Di Windows, jika konflik berasal dari `pyenv` atau Python global lama, remedi terbaik adalah:
+
+```powershell
+pyenv which python
+<python> -m pip uninstall -y cadiax autonomiq otonomassist
+pyenv rehash
+```
 
 ## Catatan Tentang Output `pip`
 

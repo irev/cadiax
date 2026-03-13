@@ -5,6 +5,8 @@ INSTALL_NODE=0
 SKIP_SETUP=0
 REUSE_VENV=0
 SKIP_USER_SHIM=0
+MODE="${MODE:-install}"
+PURGE_DATA=0
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 APP_ROOT="${APP_ROOT:-}"
 VENV_PATH="${VENV_PATH:-}"
@@ -39,12 +41,25 @@ while [[ $# -gt 0 ]]; do
       SKIP_USER_SHIM=1
       shift
       ;;
+    --mode)
+      MODE="$2"
+      shift 2
+      ;;
+    --purge-data)
+      PURGE_DATA=1
+      shift
+      ;;
     *)
       echo "Unknown option: $1" >&2
       exit 1
       ;;
   esac
 done
+
+if [[ "$MODE" != "install" && "$MODE" != "reinstall" && "$MODE" != "uninstall" ]]; then
+  echo "Invalid mode: $MODE (expected install, reinstall, or uninstall)" >&2
+  exit 1
+fi
 
 step() {
   echo "[Cadiax] $1"
@@ -160,6 +175,41 @@ EOF
   echo "$shim_dir"
 }
 
+remove_user_shims() {
+  local shim_dir="${HOME}/.local/bin"
+  rm -f "$shim_dir/cadiax" "$shim_dir/cadiax-telegram"
+  echo "$shim_dir"
+}
+
+uninstall_cadiax() {
+  local app_root="$1"
+  local config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/cadiax"
+  local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/cadiax"
+  local workspace_dir="$HOME/cadiax/workspace"
+
+  step "Menjalankan uninstall Cadiax"
+  if [[ -d "$app_root" ]]; then
+    rm -rf "$app_root"
+    echo "- app removed: $app_root"
+  else
+    echo "- app removed: already-absent"
+  fi
+  local shim_dir
+  shim_dir="$(remove_user_shims)"
+  echo "- user shims removed: $shim_dir"
+
+  if [[ "$PURGE_DATA" -eq 1 ]]; then
+    rm -rf "$config_dir" "$state_dir" "$workspace_dir"
+    echo "- config/state/workspace purged: yes"
+  else
+    echo "- config kept: $config_dir/config.env"
+    echo "- state kept: $state_dir"
+    echo "- workspace kept: $workspace_dir"
+  fi
+  echo
+  echo "Cadiax uninstalled"
+}
+
 sync_app_assets() {
   local source_root="$1"
   local app_root="$2"
@@ -237,6 +287,15 @@ ensure_python_venv_support() {
   rm -rf "$probe_dir"
 }
 
+if [[ -z "$APP_ROOT" ]]; then
+  APP_ROOT="$(default_app_root)"
+fi
+
+if [[ "$MODE" == "uninstall" ]]; then
+  uninstall_cadiax "$APP_ROOT"
+  exit 0
+fi
+
 if ! need_cmd "$PYTHON_BIN"; then
   install_pkg "Python" python3 python3-venv python3-pip
 fi
@@ -264,9 +323,6 @@ fi
 
 show_preflight_summary
 
-if [[ -z "$APP_ROOT" ]]; then
-  APP_ROOT="$(default_app_root)"
-fi
 APP_ROOT="$("$PYTHON_BIN" - <<'PY' "$APP_ROOT"
 from pathlib import Path
 import sys
@@ -286,13 +342,22 @@ SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$APP_ROOT"
 sync_app_assets "$SOURCE_ROOT" "$APP_ROOT"
 
-if [[ -d "$VENV_PATH" && "$REUSE_VENV" -eq 0 ]]; then
+if [[ "$MODE" == "install" && -d "$VENV_PATH" ]]; then
+  echo "Cadiax sudah terinstall di $APP_ROOT. Gunakan --mode reinstall untuk memperbarui instalasi, atau --mode uninstall untuk menghapusnya." >&2
+  exit 1
+fi
+
+if [[ "$MODE" == "reinstall" && -d "$VENV_PATH" && "$REUSE_VENV" -eq 0 ]]; then
   step "Menghapus virtual environment lama di $VENV_PATH"
   rm -rf "$VENV_PATH"
 fi
 
-step "Menyiapkan virtual environment $VENV_PATH"
-"$PYTHON_BIN" -m venv "$VENV_PATH"
+if [[ -d "$VENV_PATH" && "$REUSE_VENV" -eq 1 ]]; then
+  step "Menggunakan virtual environment yang sudah ada di $VENV_PATH"
+else
+  step "Menyiapkan virtual environment $VENV_PATH"
+  "$PYTHON_BIN" -m venv "$VENV_PATH"
+fi
 
 VENV_PY="$VENV_PATH/bin/python"
 if [[ ! -x "$VENV_PY" ]]; then
@@ -306,7 +371,11 @@ step "Menyiapkan pip"
 step "Mengupgrade pip"
 "$VENV_PY" -m pip install --upgrade pip
 
-step "Menginstall Cadiax"
+if [[ "$MODE" == "reinstall" ]]; then
+  step "Memperbarui Cadiax"
+else
+  step "Menginstall Cadiax"
+fi
 "$VENV_PY" -m pip install "$SOURCE_ROOT"
 
 step "Menyiapkan dokumen workspace aktif"

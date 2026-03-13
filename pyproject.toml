@@ -44,10 +44,6 @@ dev = [
 [project.scripts]
 cadiax = "cadiax.cli:main"
 cadiax-telegram = "cadiax.telegram_cli:main"
-autonomiq = "cadiax.cli:main"
-autonomiq-telegram = "cadiax.telegram_cli:main"
-otonomassist = "cadiax.cli:main"
-otonomassist-telegram = "cadiax.telegram_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

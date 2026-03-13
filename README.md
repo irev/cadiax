@@ -20,21 +20,26 @@ Cadiax is a public autonomous AI agent framework with durable state, planning, m
 ### Windows
 
 ```powershell
-./install.ps1
+./install.ps1 -Mode install
 ```
 
 Atau:
 
 ```bat
-install.bat
+install.bat -Mode install
 ```
 
 ### Linux
 
 ```bash
 chmod +x ./install.sh
-./install.sh
+./install.sh --mode install
 ```
+
+Lifecycle installer yang sekarang didukung:
+- `install`: first install, gagal jika runtime sudah ada
+- `reinstall`: rebuild/update runtime tanpa menghapus data user
+- `uninstall`: hapus runtime dan shim, data user tetap aman kecuali dipurge
 
 Setelah install:
 
@@ -349,7 +354,7 @@ Installer ini:
 - opsional menyiapkan dashboard dependency
 - menjalankan `cadiax setup`
 
-Cadiax memang memakai dokumen hasil seed itu setelah setup selesai. User boleh mengeditnya manual, dan runtime akan membaca hasil edit tersebut pada startup berikutnya.
+Cadiax memang memakai dokumen hasil seed itu setelah setup selesai. User boleh mengeditnya manual, dan runtime akan membaca hasil edit tersebut pada startup berikutnya. Pada alur install awal, wizard setup juga dapat langsung mengonfigurasi monitoring dashboard: aktif/nonaktif, access mode, port, dan admin API URL.
 
 Catatan:
 `pip` memang menampilkan format standar seperti `Successfully installed cadiax-1.1.5`.

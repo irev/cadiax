@@ -11,6 +11,13 @@ from dotenv import dotenv_values
 
 import cadiax.core.agent_context as agent_context
 from cadiax.core import path_layout
+from cadiax.platform.dashboard_runtime import (
+    DEFAULT_ADMIN_API_URL,
+    DEFAULT_DASHBOARD_HOST,
+    DEFAULT_DASHBOARD_PORT,
+    load_dashboard_state,
+    save_dashboard_state,
+)
 from cadiax.core.secure_storage import encrypt_secret, get_secret_storage_info, refresh_secure_storage_paths
 from cadiax.core.workspace_guard import refresh_workspace_settings
 from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
@@ -88,8 +95,17 @@ def run_setup_wizard() -> str:
     env_updates["TELEGRAM_ENABLED"] = "true" if telegram_enabled else "false"
     if telegram_enabled:
         _collect_telegram_settings(env_values, env_updates, secret_updates)
+    dashboard_state = _collect_dashboard_settings()
 
     summary_lines = _build_summary(env_updates, secret_updates)
+    summary_lines.extend(
+        [
+            f"DASHBOARD_ENABLED={'true' if dashboard_state['enabled'] else 'false'}",
+            f"DASHBOARD_HOST={dashboard_state['host']}",
+            f"DASHBOARD_PORT={dashboard_state['port']}",
+            f"DASHBOARD_ADMIN_API_URL={dashboard_state['admin_api_url']}",
+        ]
+    )
     click.echo("")
     click.echo("Ringkasan konfigurasi:")
     for line in summary_lines:
@@ -106,6 +122,7 @@ def run_setup_wizard() -> str:
     refresh_workspace_settings()
     agent_context.refresh_runtime_paths()
     refresh_secure_storage_paths()
+    dashboard_state = save_dashboard_state(dashboard_state)
     workspace_bootstrap = ensure_workspace_skeleton(
         only_if_workspace_empty=False,
         runtime_docs_only=True,
@@ -120,6 +137,9 @@ def run_setup_wizard() -> str:
         f"- workspace_root: {Path(workspace_root).expanduser().resolve()}\n"
         f"- provider: {provider}\n"
         f"- workspace_access: {workspace_access}\n"
+        f"- dashboard_enabled: {'true' if dashboard_state['enabled'] else 'false'}\n"
+        f"- dashboard_host: {dashboard_state['host']}\n"
+        f"- dashboard_port: {dashboard_state['port']}\n"
         f"- secret tersimpan: {len(secret_updates)}\n"
         f"- workspace_docs_written: {workspace_bootstrap['written_count']}\n"
         f"- workspace_docs_existing: {workspace_bootstrap['existing_count']}"
@@ -256,6 +276,47 @@ def _collect_telegram_settings(
         "Wajib mention/reply bot di group?",
         default=(env_values.get("TELEGRAM_REQUIRE_MENTION") or "true").strip().lower() == "true",
     ) else "false"
+
+
+def _collect_dashboard_settings() -> dict[str, str | int | bool]:
+    state = load_dashboard_state()
+    enabled = click.confirm(
+        "Aktifkan monitoring dashboard?",
+        default=bool(state.get("enabled")),
+    )
+    if not enabled:
+        return {
+            "enabled": False,
+            "host": str(state.get("host") or DEFAULT_DASHBOARD_HOST),
+            "port": int(state.get("port", DEFAULT_DASHBOARD_PORT) or DEFAULT_DASHBOARD_PORT),
+            "admin_api_url": str(state.get("admin_api_url") or DEFAULT_ADMIN_API_URL),
+            "last_action": "disabled",
+        }
+
+    access_mode = _prompt_choice(
+        "Dashboard access mode",
+        ["local", "public"],
+        default=("public" if str(state.get("host") or DEFAULT_DASHBOARD_HOST) == "0.0.0.0" else "local"),
+    )
+    host = "0.0.0.0" if access_mode == "public" else "127.0.0.1"
+    port = click.prompt(
+        "Dashboard port",
+        type=int,
+        default=int(state.get("port", DEFAULT_DASHBOARD_PORT) or DEFAULT_DASHBOARD_PORT),
+        show_default=True,
+    )
+    admin_api_url = click.prompt(
+        "Dashboard admin API URL",
+        default=str(state.get("admin_api_url") or DEFAULT_ADMIN_API_URL),
+        show_default=True,
+    ).strip()
+    return {
+        "enabled": True,
+        "host": host,
+        "port": int(port),
+        "admin_api_url": admin_api_url,
+        "last_action": "configured",
+    }
 
 
 def _collect_secret_preference(
