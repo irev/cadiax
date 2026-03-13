@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a defect or regression in Cadiax
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for defects, regressions, broken commands, runtime issues, or incorrect behavior.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken?
+      placeholder: Describe the bug clearly and concretely.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include commands, inputs, or API requests.
+      placeholder: |
+        1. Run ...
+        2. Send ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Python version, install mode, enabled channels, and relevant config.
+      placeholder: Windows 11, Python 3.10.11, local install, dashboard enabled, Telegram disabled
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or trace snippets
+      description: Paste only the relevant part. Remove secrets before sharing.

@@ -1,11 +1,24 @@
 # Cadiax
 
+[![Release](https://img.shields.io/github/v/release/irev/cadiax?display_name=tag)](https://github.com/irev/cadiax/releases)
+[![License](https://img.shields.io/github/license/irev/cadiax)](https://github.com/irev/cadiax/blob/main/LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![Dashboard](https://img.shields.io/badge/dashboard-optional-0f766e)](https://github.com/irev/cadiax/tree/main/monitoring-dashboard)
+
 Cadiax is an autonomous AI agent framework designed to think, plan, and act.
 
 The name "Cadiax" is derived from the Minangkabau word "Cadiak",
 meaning intelligent or wise.
 
 Pronunciation: cha-di-aks (`/tʃa.di.aks/`)
+
+## Repository
+
+- Docs index: `docs/README.md`
+- Release notes: `docs/release/RELEASE_NOTES.md`
+- Deployment checklist: `docs/release/DEPLOYMENT_CHECKLIST.md`
+- Security policy: `SECURITY.md`
+- Contributing guide: `CONTRIBUTING.md`
 
 Private AI CLI dengan fondasi otonom yang sekarang sudah mencakup:
 
