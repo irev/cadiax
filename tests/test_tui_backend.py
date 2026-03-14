@@ -15,6 +15,8 @@ from cadiax.tui.app import (
     build_channels_view,
     build_doctor_view,
     build_events_view,
+    build_external_view,
+    build_heartbeat_view,
     build_history_view,
     build_home_view,
     build_jobs_view,
@@ -22,6 +24,8 @@ from cadiax.tui.app import (
     build_notify_view,
     build_paths_view,
     build_privacy_view,
+    build_proactive_view,
+    build_skills_view,
     build_startup_view,
     build_scheduler_view,
     build_services_view,
@@ -177,6 +181,30 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
                 "existing": ["USER.md"],
             },
         },
+        "external_assets": {
+            "asset_count": 3,
+            "event_count": 2,
+            "incompatible_count": 0,
+            "unapproved_count": 1,
+            "undeclared_capability_count": 0,
+            "blocked_capability_count": 1,
+            "isolated_skill_count": 1,
+            "approval_by_state": {"approved": 1, "rejected": 1, "pending": 1},
+            "approval_event_count": 2,
+            "latest_approval_event": {
+                "asset_name": "finance-pack",
+                "state": "approved",
+                "actor": "ops",
+                "timestamp": "2026-03-14T00:00:00+00:00",
+            },
+            "trust_policy": "explicit-approval",
+            "allowed_capabilities": ["python", "http"],
+            "layout": {
+                "skills_dir": "C:/Users/test/Cadiax/workspace/skills-external",
+                "tools_dir": "C:/Users/test/Cadiax/workspace/tools-external",
+                "packages_dir": "C:/Users/test/Cadiax/workspace/packages-external",
+            },
+        },
         "agent_scopes": {
             "scope_count": 2,
             "document_path": "C:/Users/test/Cadiax/workspace/AGENTS.md",
@@ -202,25 +230,114 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
             },
         },
         "issues": ["missing api key"],
-        "email": {"message_count": 1, "latest_message": {"to_address": "ops@example.com"}},
-        "whatsapp": {"message_count": 2, "latest_message": {"phone_number": "+628123456789"}},
-        "personality": {"preference_profile": {"preferred_channels": ["telegram", "email"]}},
+        "email": {
+            "message_count": 1,
+            "inbound_count": 0,
+            "outbound_count": 1,
+            "latest_message": {
+                "to_address": "ops@example.com",
+                "direction": "outbound",
+                "status": "queued",
+                "agent_scope": "finance-agent",
+            },
+            "by_scope": {"finance-agent": 1},
+        },
+        "whatsapp": {
+            "message_count": 2,
+            "inbound_count": 1,
+            "outbound_count": 1,
+            "latest_message": {
+                "phone_number": "+628123456789",
+                "display_name": "Budi",
+                "direction": "inbound",
+                "status": "ok",
+                "agent_scope": "default",
+            },
+            "by_scope": {"default": 2},
+        },
+        "personality": {
+            "preference_profile": {"preferred_channels": ["telegram", "email"]},
+            "heartbeat_guide_preview": "Pulse menjaga konteks operasi.",
+            "heartbeat": {
+                "last_mode": "steady",
+                "last_summary": "Runtime idle; heartbeat menjaga konteks dan kesiapan.",
+                "last_pulse_at": "2026-03-14T00:00:00+00:00",
+                "last_trigger": "scheduler",
+                "last_trace_id": "hb-1",
+                "proactive_insight_count": 2,
+            },
+            "proactive_insight_count": 2,
+            "proactive_insights_generated": 3,
+            "proactive_insights": [
+                {
+                    "confidence": "high",
+                    "agent_scope": "finance-agent",
+                    "summary": "Review outstanding notification backlog.",
+                }
+            ],
+        },
+        "skills_audit": {
+            "skills_dir": "C:/Users/test/Cadiax/workspace/skills",
+            "category_count": 2,
+            "skill_count": 3,
+            "categories": {
+                "analysis": [
+                    {
+                        "name": "observe",
+                        "risk_level": "low",
+                        "idempotency": "idempotent",
+                        "timeout_behavior": "fail",
+                        "retry_policy": "none",
+                        "requires": ["python"],
+                        "side_effects": [],
+                    }
+                ],
+                "ops": [
+                    {
+                        "name": "notify",
+                        "risk_level": "medium",
+                        "idempotency": "best-effort",
+                        "timeout_behavior": "fail",
+                        "retry_policy": "retry-once",
+                        "requires": ["http"],
+                        "side_effects": ["network"],
+                    }
+                ],
+            },
+        },
     }
 
     assert "preferred_channels: telegram, email" in build_channels_view(payload)
+    assert "ctrl+e" in build_channels_view(payload)
     assert "global_setup     : none" in build_channels_view(payload)
+    assert "latest_direction : outbound" in build_channels_view(payload)
+    assert "email:finance-agent -> 1" in build_channels_view(payload)
     assert "command_on_path" in build_paths_view(payload)
     assert "missing api key" in build_doctor_view(payload)
     assert "quiet_hours_enabled" in build_privacy_view(payload)
     assert "finance-agent" in build_privacy_view(payload)
+    assert "last_mode" in build_heartbeat_view(payload)
+    assert "Pulse menjaga konteks operasi." in build_heartbeat_view(payload)
+    assert "insights_generated" in build_proactive_view(payload)
+    assert "Review outstanding notification backlog." in build_proactive_view(payload)
     assert "path_mode" in build_home_view(payload)
     assert "workspace_seeded_count" in build_bootstrap_view(payload)
     assert "seed active runtime docs" in build_bootstrap_view(payload)
+    assert "seed full template set" in build_bootstrap_view(payload)
+    assert "force overwrite active runtime docs" in build_bootstrap_view(payload)
+    assert "trust_policy" in build_external_view(payload)
+    assert "finance-pack" in build_external_view(payload)
     assert "scope_count" in build_agents_view(payload)
     assert "finance-agent" in build_agents_view(payload)
+    assert "category_count" in build_skills_view(payload)
+    assert "notify [risk=medium" in build_skills_view(payload)
     assert "delivery_batch_count" in build_notify_view(payload)
     assert "Build Alert" in build_notify_view(payload)
-    assert "telegram_in_main_service" in build_services_view(payload)
+    assert "telegram_in_main_service" in build_services_view(payload, selected_target="conversation-api")
+    assert "show_command            : cadiax service show conversation-api" in build_services_view(
+        payload, selected_target="conversation-api"
+    )
+    assert "preview service wrapper artifacts" in build_services_view(payload, selected_target="conversation-api")
     assert "last_worker_run_at" in build_worker_view(payload)
     assert "last_heartbeat_mode" in build_scheduler_view(payload)
     assert "session_mode" in build_startup_view(payload)
@@ -251,10 +368,10 @@ def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
 
     monkeypatch.setattr("cadiax.cli.run_tui", fake_run_tui)
     runner = CliRunner()
-    result = runner.invoke(main, ["tui", "--screen", "agents"])
+    result = runner.invoke(main, ["tui", "--screen", "skills"])
 
     assert result.exit_code == 0
-    assert called["screen"] == "agents"
+    assert called["screen"] == "skills"
 
 
 def test_cli_setup_command_dispatches_setup_tui(monkeypatch) -> None:
@@ -305,20 +422,138 @@ def test_tui_toggle_actions_update_dashboard_and_telegram(tmp_path, monkeypatch)
     assert any("Dashboard enabled" in item for item in notifications)
 
 
-def test_tui_service_action_writes_wrappers(monkeypatch) -> None:
-    app = CadiaxTuiApp(initial_screen="services")
-    app.status_data = {"dashboard": {"enabled": False}, "telegram": {"enabled": False}}
-    app.current_screen_name = "services"
+def test_tui_channel_actions_dispatch_test_email_and_whatsapp(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="channels")
+    app.status_data = {
+        "email": {
+            "latest_message": {"to_address": "ops@example.com"},
+        },
+        "whatsapp": {
+            "latest_message": {"phone_number": "+628123456789", "display_name": "Budi"},
+        },
+    }
+    app.current_screen_name = "channels"
     notifications: list[str] = []
     monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
     monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
     monkeypatch.setattr(app, "_reload", lambda: None)
-    monkeypatch.setattr("cadiax.tui.app.write_service_wrapper_artifacts", lambda target="cadiax": [Path("cadiax-cadiax.service")])
+
+    class FakeEmailService:
+        def send(self, **kwargs):
+            return {"to_address": kwargs["to_address"]}
+
+    class FakeWhatsAppService:
+        def send(self, **kwargs):
+            return {"phone_number": kwargs["phone_number"]}
+
+    monkeypatch.setattr("cadiax.tui.app.EmailInterfaceService", FakeEmailService)
+    monkeypatch.setattr("cadiax.tui.app.WhatsAppInterfaceService", FakeWhatsAppService)
+
+    app.action_send_test_email()
+    app.action_send_test_whatsapp()
+
+    assert any("Email test queued to ops@example.com" in item for item in notifications)
+    assert any("WhatsApp test queued to +628123456789" in item for item in notifications)
+
+
+def test_tui_channel_target_override_updates_view_and_dispatch(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="channels")
+    app.status_data = {
+        "email": {
+            "latest_message": {"to_address": "ops@example.com"},
+        },
+        "whatsapp": {
+            "latest_message": {"phone_number": "+628123456789", "display_name": "Budi"},
+        },
+        "personality": {"preference_profile": {"preferred_channels": ["email", "whatsapp"]}},
+    }
+    app.current_screen_name = "channels"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    rendered: list[str] = []
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: rendered.append(screen_name))
+
+    class FakeEmailService:
+        def send(self, **kwargs):
+            return {"to_address": kwargs["to_address"]}
+
+    class FakeWhatsAppService:
+        def send(self, **kwargs):
+            return {"phone_number": kwargs["phone_number"]}
+
+    monkeypatch.setattr("cadiax.tui.app.EmailInterfaceService", FakeEmailService)
+    monkeypatch.setattr("cadiax.tui.app.WhatsAppInterfaceService", FakeWhatsAppService)
+
+    app._handle_setup_input(("email_test_target", "custom@example.com"))
+    app._handle_setup_input(("whatsapp_test_target", "+620000000000"))
+
+    assert app.channel_draft["email_test_target"] == "custom@example.com"
+    assert app.channel_draft["whatsapp_test_target"] == "+620000000000"
+    assert "email_target     : custom@example.com" in build_channels_view(app.status_data, draft_targets=app.channel_draft)
+    assert "whatsapp_target  : +620000000000" in build_channels_view(app.status_data, draft_targets=app.channel_draft)
+
+    app.action_send_test_email()
+    app.action_send_test_whatsapp()
+
+    assert any("Email test queued to custom@example.com" in item for item in notifications)
+    assert any("WhatsApp test queued to +620000000000" in item for item in notifications)
+
+
+def test_tui_service_action_writes_wrappers(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="services")
+    app.status_data = {"dashboard": {"enabled": False}, "telegram": {"enabled": False}}
+    app.current_screen_name = "services"
+    app.current_service_target = "scheduler"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+    called: dict[str, str] = {}
+
+    def fake_write_service_wrapper_artifacts(target="cadiax"):
+        called["target"] = target
+        return [Path("cadiax-scheduler.service")]
+
+    monkeypatch.setattr("cadiax.tui.app.write_service_wrapper_artifacts", fake_write_service_wrapper_artifacts)
     monkeypatch.setattr("cadiax.tui.app.get_service_wrapper_output_dir", lambda: Path("C:/Cadiax/state/service-wrappers"))
 
     app.action_write_service_wrappers()
 
-    assert any("Service wrappers written: 1 files" in item for item in notifications)
+    assert called["target"] == "scheduler"
+    assert any("Service wrappers written: 1 files for scheduler" in item for item in notifications)
+
+
+def test_tui_service_target_selection_cycles(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="services")
+    app.current_screen_name = "services"
+    app.current_service_target = "cadiax"
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+
+    app.action_next_service_target()
+    assert app.current_service_target == "worker"
+
+    app.action_prev_service_target()
+    assert app.current_service_target == "cadiax"
+
+
+def test_tui_service_preview_action_loads_selected_target(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="services")
+    app.current_screen_name = "services"
+    app.current_service_target = "admin-api"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(
+        "cadiax.tui.app.render_service_wrapper_artifacts",
+        lambda target: f"Service Wrapper Artifacts: {target}\n\n[admin-api.service]\nexec ...",
+    )
+
+    app.action_show_service_preview()
+
+    assert app.current_service_preview.startswith("Service Wrapper Artifacts: admin-api")
+    assert any("Service preview loaded for admin-api" in item for item in notifications)
 
 
 def test_tui_worker_and_scheduler_actions_run_one_shot(monkeypatch) -> None:
@@ -346,6 +581,74 @@ def test_tui_worker_and_scheduler_actions_run_one_shot(monkeypatch) -> None:
     assert any("Scheduler run complete: processed=1 status=idle" in item for item in notifications)
 
 
+def test_tui_service_probe_actions_report_admin_and_conversation(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="services")
+    app.status_data = {"dashboard": {"enabled": False}, "telegram": {"enabled": False}}
+    app.current_screen_name = "services"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+    monkeypatch.setattr(
+        "cadiax.tui.app.probe_admin_api_for_tui",
+        lambda: {"ok": True, "status_code": 200, "status": "ok"},
+    )
+    monkeypatch.setattr(
+        "cadiax.tui.app.probe_conversation_api_for_tui",
+        lambda: {"ok": False, "status_code": 401, "status": "http_error"},
+    )
+
+    app.action_probe_admin_api()
+    app.action_probe_conversation_api()
+
+    assert any("Admin API probe: 200 ok" in item for item in notifications)
+    assert any("Conversation API probe: 401 http_error" in item for item in notifications)
+
+
+def test_tui_privacy_actions_update_controls(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="privacy")
+    app.status_data = {
+        "privacy_controls": {
+            "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00"},
+            "proactive_assistance_enabled": True,
+            "consent_required_for_proactive": True,
+            "memory_retention_days": 365,
+        }
+    }
+    app.current_screen_name = "privacy"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class FakePrivacyControlService:
+        def set_quiet_hours(self, **kwargs):
+            calls.append(("quiet_hours", kwargs))
+            return {}
+
+        def set_proactive_controls(self, **kwargs):
+            calls.append(("proactive", kwargs))
+            return {}
+
+    monkeypatch.setattr("cadiax.tui.app.PrivacyControlService", FakePrivacyControlService)
+
+    app.action_toggle_quiet_hours()
+    app.action_cycle_retention_days()
+    app.action_toggle_proactive_delivery()
+    app.action_toggle_proactive_consent()
+
+    assert ("quiet_hours", {"start": "22:00", "end": "07:00", "enabled": True}) in calls
+    assert ("proactive", {"memory_retention_days": 30}) in calls
+    assert ("proactive", {"proactive_enabled": False}) in calls
+    assert ("proactive", {"consent_required": False}) in calls
+    assert any("Quiet hours enabled" in item for item in notifications)
+    assert any("Memory retention set to 30 day(s)" in item for item in notifications)
+    assert any("Proactive delivery disabled" in item for item in notifications)
+    assert any("Proactive consent optional" in item for item in notifications)
+
+
 def test_tui_bootstrap_action_seeds_runtime_docs(monkeypatch) -> None:
     app = CadiaxTuiApp(initial_screen="bootstrap")
     app.status_data = {"bootstrap": {"workspace_seeded_count": 0}}
@@ -362,6 +665,32 @@ def test_tui_bootstrap_action_seeds_runtime_docs(monkeypatch) -> None:
     app.action_run_bootstrap_foundation()
 
     assert any("Foundation bootstrap written=6 existing=0" in item for item in notifications)
+
+
+def test_tui_bootstrap_advanced_actions_seed_optional_and_force(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="bootstrap")
+    app.status_data = {"bootstrap": {"workspace_seeded_count": 0}}
+    app.current_screen_name = "bootstrap"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    calls: list[dict[str, object]] = []
+
+    def fake_ensure_workspace_skeleton(**kwargs):
+        calls.append(kwargs)
+        return {"written_count": 13 if not kwargs.get("runtime_docs_only", True) else 6, "existing_count": 0}
+
+    monkeypatch.setattr("cadiax.tui.app.ensure_workspace_skeleton", fake_ensure_workspace_skeleton)
+
+    app.action_run_bootstrap_optional()
+    app.action_run_bootstrap_force()
+
+    assert {"force": False, "only_if_workspace_empty": False, "runtime_docs_only": False} in calls
+    assert {"force": True, "only_if_workspace_empty": False, "runtime_docs_only": True} in calls
+    assert any("Foundation optional bootstrap written=13 existing=0" in item for item in notifications)
+    assert any("Foundation force bootstrap written=6 existing=0" in item for item in notifications)
 
 
 def test_tui_setup_actions_edit_and_save_provider_and_workspace(tmp_path, monkeypatch) -> None:

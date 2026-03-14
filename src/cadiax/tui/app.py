@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from typing import Any
 
 from textual.app import App, ComposeResult
@@ -19,9 +22,17 @@ from cadiax.core.path_layout import get_project_root
 from cadiax.core.path_layout import get_runtime_layout_snapshot
 from cadiax.core.setup_wizard import persist_env_updates
 from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
-from cadiax.platform import get_service_runtime_info, get_service_wrapper_output_dir, write_service_wrapper_artifacts
+from cadiax.interfaces.email import EmailInterfaceService
+from cadiax.interfaces.whatsapp import WhatsAppInterfaceService
+from cadiax.platform import (
+    get_service_runtime_info,
+    get_service_wrapper_output_dir,
+    render_service_wrapper_artifacts,
+    write_service_wrapper_artifacts,
+)
 from cadiax.platform.dashboard_runtime import disable_dashboard, enable_dashboard
 from cadiax.services.personality.startup_document_service import StartupDocumentService
+from cadiax.services.privacy.privacy_control_service import PrivacyControlService
 
 
 SCREEN_OPTIONS: list[tuple[str, str]] = [
@@ -29,7 +40,11 @@ SCREEN_OPTIONS: list[tuple[str, str]] = [
     ("paths", "Paths"),
     ("doctor", "Doctor"),
     ("privacy", "Privacy"),
+    ("heartbeat", "Heartbeat"),
+    ("proactive", "Proactive"),
     ("bootstrap", "Bootstrap"),
+    ("external", "External"),
+    ("skills", "Skills"),
     ("agents", "Agents"),
     ("notify", "Notify"),
     ("channels", "Channels"),
@@ -93,11 +108,28 @@ class CadiaxTuiApp(App[None]):
         ("2", "go_paths", "Paths"),
         ("3", "go_doctor", "Doctor"),
         ("v", "go_privacy", "Privacy"),
+        ("shift+h", "go_heartbeat", "Heartbeat"),
+        ("shift+p", "go_proactive", "Proactive"),
+        ("j", "toggle_quiet_hours", "Toggle Quiet Hours"),
+        ("l", "cycle_retention_days", "Cycle Retention"),
+        ("f", "toggle_proactive_delivery", "Toggle Proactive"),
+        ("ctrl+q", "toggle_proactive_consent", "Toggle Consent"),
         ("k", "go_bootstrap", "Bootstrap"),
+        ("ctrl+k", "go_external", "External"),
+        ("ctrl+s", "go_skills", "Skills"),
         ("g", "go_agents", "Agents"),
         ("m", "go_notify", "Notify"),
         ("4", "go_channels", "Channels"),
+        ("ctrl+e", "send_test_email", "Send Test Email"),
+        ("ctrl+w", "send_test_whatsapp", "Send Test WhatsApp"),
+        ("shift+e", "input_email_target", "Edit Email Target"),
+        ("shift+w", "input_whatsapp_target", "Edit WhatsApp Target"),
         ("5", "go_services", "Services"),
+        ("period", "next_service_target", "Next Service Target"),
+        ("comma", "prev_service_target", "Prev Service Target"),
+        ("shift+s", "show_service_preview", "Show Service Preview"),
+        ("h", "probe_admin_api", "Probe Admin API"),
+        ("c", "probe_conversation_api", "Probe Conversation API"),
         ("u", "go_worker", "Worker"),
         ("y", "go_scheduler", "Scheduler"),
         ("x", "run_worker_once", "Run Worker Once"),
@@ -117,6 +149,8 @@ class CadiaxTuiApp(App[None]):
         ("i", "input_setup_field", "Input Setup Field"),
         ("s", "save_setup_step", "Save Setup Step"),
         ("b", "run_bootstrap_foundation", "Bootstrap Foundation"),
+        ("ctrl+b", "run_bootstrap_optional", "Bootstrap Optional"),
+        ("shift+b", "run_bootstrap_force", "Bootstrap Force"),
         ("w", "write_service_wrappers", "Write Service Wrappers"),
         ("r", "refresh_data", "Refresh"),
     ]
@@ -128,6 +162,9 @@ class CadiaxTuiApp(App[None]):
         self.current_screen_name = self.initial_screen
         self.current_setup_step = 0
         self.setup_draft: dict[str, Any] = {}
+        self.channel_draft: dict[str, Any] = {}
+        self.current_service_target = "cadiax"
+        self.current_service_preview = ""
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -159,6 +196,73 @@ class CadiaxTuiApp(App[None]):
     def action_go_privacy(self) -> None:
         self._select_screen("privacy")
 
+    def action_go_heartbeat(self) -> None:
+        self._select_screen("heartbeat")
+
+    def action_go_proactive(self) -> None:
+        self._select_screen("proactive")
+
+    def action_go_external(self) -> None:
+        self._select_screen("external")
+
+    def action_go_skills(self) -> None:
+        self._select_screen("skills")
+
+    def action_toggle_quiet_hours(self) -> None:
+        if self.current_screen_name != "privacy":
+            return
+        controls = self.status_data.get("privacy_controls", {})
+        quiet = controls.get("quiet_hours") or {}
+        enabled = not bool(quiet.get("enabled"))
+        start = str(quiet.get("start") or "22:00")
+        end = str(quiet.get("end") or "07:00")
+        PrivacyControlService().set_quiet_hours(start=start, end=end, enabled=enabled)
+        self.notify(f"Quiet hours {'enabled' if enabled else 'disabled'}", severity="information")
+        self._reload()
+        self._render_screen("privacy")
+
+    def action_cycle_retention_days(self) -> None:
+        if self.current_screen_name != "privacy":
+            return
+        controls = self.status_data.get("privacy_controls", {})
+        current = int(controls.get("memory_retention_days", 365) or 365)
+        options = [30, 90, 180, 365]
+        try:
+            index = options.index(current)
+        except ValueError:
+            index = len(options) - 1
+        new_value = options[(index + 1) % len(options)]
+        PrivacyControlService().set_proactive_controls(memory_retention_days=new_value)
+        self.notify(f"Memory retention set to {new_value} day(s)", severity="information")
+        self._reload()
+        self._render_screen("privacy")
+
+    def action_toggle_proactive_delivery(self) -> None:
+        if self.current_screen_name != "privacy":
+            return
+        controls = self.status_data.get("privacy_controls", {})
+        enabled = not bool(controls.get("proactive_assistance_enabled", True))
+        PrivacyControlService().set_proactive_controls(proactive_enabled=enabled)
+        self.notify(
+            f"Proactive delivery {'enabled' if enabled else 'disabled'}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("privacy")
+
+    def action_toggle_proactive_consent(self) -> None:
+        if self.current_screen_name != "privacy":
+            return
+        controls = self.status_data.get("privacy_controls", {})
+        required = not bool(controls.get("consent_required_for_proactive", True))
+        PrivacyControlService().set_proactive_controls(consent_required=required)
+        self.notify(
+            f"Proactive consent {'required' if required else 'optional'}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("privacy")
+
     def action_go_bootstrap(self) -> None:
         self._select_screen("bootstrap")
 
@@ -171,8 +275,88 @@ class CadiaxTuiApp(App[None]):
     def action_go_channels(self) -> None:
         self._select_screen("channels")
 
+    def action_send_test_email(self) -> None:
+        if self.current_screen_name != "channels":
+            return
+        target = self._resolve_email_target()
+        if not target:
+            self.notify("Belum ada target email terakhir untuk test dispatch", severity="warning")
+            return
+        payload = EmailInterfaceService().send(
+            to_address=target,
+            subject="Cadiax TUI Test",
+            body="Test dispatch from Cadiax TUI",
+            metadata={"source": "tui", "test_dispatch": True},
+        )
+        self.notify(f"Email test queued to {payload.get('to_address', '-')}", severity="information")
+        self._reload()
+        self._render_screen("channels")
+
+    def action_send_test_whatsapp(self) -> None:
+        if self.current_screen_name != "channels":
+            return
+        latest = self.status_data.get("whatsapp", {}).get("latest_message", {})
+        target = self._resolve_whatsapp_target()
+        display_name = str(latest.get("display_name") or "").strip() if isinstance(latest, dict) else ""
+        if not target:
+            self.notify("Belum ada target WhatsApp terakhir untuk test dispatch", severity="warning")
+            return
+        payload = WhatsAppInterfaceService().send(
+            phone_number=target,
+            display_name=display_name,
+            body="Test dispatch from Cadiax TUI",
+            metadata={"source": "tui", "test_dispatch": True},
+        )
+        self.notify(f"WhatsApp test queued to {payload.get('phone_number', '-')}", severity="information")
+        self._reload()
+        self._render_screen("channels")
+
+    def action_input_email_target(self) -> None:
+        if self.current_screen_name != "channels":
+            return
+        self.push_screen(
+            SetupInputScreen(
+                title="Email dispatch target",
+                field_name="email_test_target",
+                value=self._resolve_email_target(),
+            ),
+            self._handle_setup_input,
+        )
+
+    def action_input_whatsapp_target(self) -> None:
+        if self.current_screen_name != "channels":
+            return
+        self.push_screen(
+            SetupInputScreen(
+                title="WhatsApp dispatch target",
+                field_name="whatsapp_test_target",
+                value=self._resolve_whatsapp_target(),
+            ),
+            self._handle_setup_input,
+        )
+
     def action_go_services(self) -> None:
         self._select_screen("services")
+
+    def action_next_service_target(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        self.current_service_target = _next_service_target(self.current_service_target)
+        self._render_screen("services")
+
+    def action_prev_service_target(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        self.current_service_target = _prev_service_target(self.current_service_target)
+        self.current_service_preview = ""
+        self._render_screen("services")
+
+    def action_show_service_preview(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        self.current_service_preview = render_service_wrapper_artifacts(self.current_service_target)
+        self.notify(f"Service preview loaded for {self.current_service_target}", severity="information")
+        self._render_screen("services")
 
     def action_go_worker(self) -> None:
         self._select_screen("worker")
@@ -258,14 +442,36 @@ class CadiaxTuiApp(App[None]):
     def action_write_service_wrappers(self) -> None:
         if self.current_screen_name != "services":
             return
-        written = write_service_wrapper_artifacts(target="cadiax")
+        written = write_service_wrapper_artifacts(target=self.current_service_target)
         output_dir = get_service_wrapper_output_dir()
         self.notify(
-            f"Service wrappers written: {len(written)} files -> {output_dir}",
+            f"Service wrappers written: {len(written)} files for {self.current_service_target} -> {output_dir}",
             severity="information",
         )
         self._reload()
         self._render_screen(self.current_screen_name)
+
+    def action_probe_admin_api(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        result = probe_admin_api_for_tui()
+        self.notify(
+            f"Admin API probe: {result.get('status_code', 'error')} {result.get('status', '-')}",
+            severity="information" if result.get("ok") else "warning",
+        )
+        self._reload()
+        self._render_screen("services")
+
+    def action_probe_conversation_api(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        result = probe_conversation_api_for_tui()
+        self.notify(
+            f"Conversation API probe: {result.get('status_code', 'error')} {result.get('status', '-')}",
+            severity="information" if result.get("ok") else "warning",
+        )
+        self._reload()
+        self._render_screen("services")
 
     def action_run_worker_once(self) -> None:
         if self.current_screen_name != "worker":
@@ -299,6 +505,38 @@ class CadiaxTuiApp(App[None]):
         )
         self.notify(
             "Foundation bootstrap written="
+            f"{result.get('written_count', 0)} existing={result.get('existing_count', 0)}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("bootstrap")
+
+    def action_run_bootstrap_optional(self) -> None:
+        if self.current_screen_name != "bootstrap":
+            return
+        result = ensure_workspace_skeleton(
+            force=False,
+            only_if_workspace_empty=False,
+            runtime_docs_only=False,
+        )
+        self.notify(
+            "Foundation optional bootstrap written="
+            f"{result.get('written_count', 0)} existing={result.get('existing_count', 0)}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("bootstrap")
+
+    def action_run_bootstrap_force(self) -> None:
+        if self.current_screen_name != "bootstrap":
+            return
+        result = ensure_workspace_skeleton(
+            force=True,
+            only_if_workspace_empty=False,
+            runtime_docs_only=True,
+        )
+        self.notify(
+            "Foundation force bootstrap written="
             f"{result.get('written_count', 0)} existing={result.get('existing_count', 0)}",
             severity="information",
         )
@@ -461,6 +699,14 @@ class CadiaxTuiApp(App[None]):
             return
         field_name, value = result
         cleaned = value.strip()
+        if field_name in {"email_test_target", "whatsapp_test_target"}:
+            if not cleaned:
+                self.notify(f"{field_name} tidak boleh kosong", severity="warning")
+                return
+            self.channel_draft[field_name] = cleaned
+            self.notify(f"{field_name} updated", severity="information")
+            self._render_screen(self.current_screen_name)
+            return
         if field_name == "dashboard_admin_api_url" and not cleaned:
             self.notify("Dashboard admin API URL tidak boleh kosong", severity="warning")
             return
@@ -475,7 +721,22 @@ class CadiaxTuiApp(App[None]):
         self.status_data["history"] = load_execution_events(limit=15)
         self.status_data["events"] = get_event_bus_snapshot(limit=20)
         self.status_data["startup"] = StartupDocumentService().get_snapshot(session_mode="main")
+        self.status_data["skills_audit"] = get_skill_audit_snapshot_for_tui()
         self._sync_setup_draft()
+
+    def _resolve_email_target(self) -> str:
+        draft = str(self.channel_draft.get("email_test_target") or "").strip()
+        if draft:
+            return draft
+        latest = self.status_data.get("email", {}).get("latest_message", {})
+        return str((latest.get("to_address") if isinstance(latest, dict) else "") or "").strip()
+
+    def _resolve_whatsapp_target(self) -> str:
+        draft = str(self.channel_draft.get("whatsapp_test_target") or "").strip()
+        if draft:
+            return draft
+        latest = self.status_data.get("whatsapp", {}).get("latest_message", {})
+        return str((latest.get("phone_number") if isinstance(latest, dict) else "") or "").strip()
 
     def _select_screen(self, screen_name: str) -> None:
         nav = self.query_one("#nav", OptionList)
@@ -494,8 +755,20 @@ class CadiaxTuiApp(App[None]):
         if screen_name == "privacy":
             content.update(build_privacy_view(self.status_data))
             return
+        if screen_name == "heartbeat":
+            content.update(build_heartbeat_view(self.status_data))
+            return
+        if screen_name == "proactive":
+            content.update(build_proactive_view(self.status_data))
+            return
         if screen_name == "bootstrap":
             content.update(build_bootstrap_view(self.status_data))
+            return
+        if screen_name == "external":
+            content.update(build_external_view(self.status_data))
+            return
+        if screen_name == "skills":
+            content.update(build_skills_view(self.status_data))
             return
         if screen_name == "agents":
             content.update(build_agents_view(self.status_data))
@@ -504,10 +777,16 @@ class CadiaxTuiApp(App[None]):
             content.update(build_notify_view(self.status_data))
             return
         if screen_name == "channels":
-            content.update(build_channels_view(self.status_data))
+            content.update(build_channels_view(self.status_data, draft_targets=self.channel_draft))
             return
         if screen_name == "services":
-            content.update(build_services_view(self.status_data))
+            content.update(
+                build_services_view(
+                    self.status_data,
+                    selected_target=self.current_service_target,
+                    preview=self.current_service_preview,
+                )
+            )
             return
         if screen_name == "worker":
             content.update(build_worker_view(self.status_data))
@@ -651,7 +930,7 @@ def build_doctor_view(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_channels_view(data: dict[str, Any]) -> str:
+def build_channels_view(data: dict[str, Any], *, draft_targets: dict[str, Any] | None = None) -> str:
     telegram = data.get("telegram", {})
     dashboard = data.get("dashboard", {})
     email = data.get("email", {})
@@ -659,6 +938,11 @@ def build_channels_view(data: dict[str, Any]) -> str:
     personality = data.get("personality", {})
     preference_profile = personality.get("preference_profile", {}) if isinstance(personality, dict) else {}
     preferred_channels = preference_profile.get("preferred_channels", []) if isinstance(preference_profile, dict) else []
+    draft_targets = draft_targets or {}
+    email_latest = email.get("latest_message", {}) if isinstance(email.get("latest_message"), dict) else {}
+    whatsapp_latest = whatsapp.get("latest_message", {}) if isinstance(whatsapp.get("latest_message"), dict) else {}
+    email_target = str(draft_targets.get("email_test_target") or email_latest.get("to_address") or "-")
+    whatsapp_target = str(draft_targets.get("whatsapp_test_target") or whatsapp_latest.get("phone_number") or "-")
     lines = [
         "Channels",
         "",
@@ -676,17 +960,53 @@ def build_channels_view(data: dict[str, Any]) -> str:
         "",
         "[Email]",
         f"message_count    : {email.get('message_count', 0)}",
-        f"latest_target    : {((email.get('latest_message') or {}).get('to_address', '-') if isinstance(email.get('latest_message'), dict) else '-')}",
+        f"inbound_count    : {email.get('inbound_count', 0)}",
+        f"outbound_count   : {email.get('outbound_count', 0)}",
+        f"latest_target    : {email_latest.get('to_address', '-') or '-'}",
+        f"latest_direction : {email_latest.get('direction', '-') or '-'}",
+        f"latest_status    : {email_latest.get('status', '-') or '-'}",
+        f"latest_scope     : {email_latest.get('agent_scope', '-') or '-'}",
         "global_setup     : none (configured per dispatch/API use)",
         "",
         "[WhatsApp]",
         f"message_count    : {whatsapp.get('message_count', 0)}",
-        f"latest_target    : {((whatsapp.get('latest_message') or {}).get('phone_number', '-') if isinstance(whatsapp.get('latest_message'), dict) else '-')}",
+        f"inbound_count    : {whatsapp.get('inbound_count', 0)}",
+        f"outbound_count   : {whatsapp.get('outbound_count', 0)}",
+        f"latest_target    : {whatsapp_latest.get('phone_number', '-') or '-'}",
+        f"latest_direction : {whatsapp_latest.get('direction', '-') or '-'}",
+        f"latest_status    : {whatsapp_latest.get('status', '-') or '-'}",
+        f"latest_scope     : {whatsapp_latest.get('agent_scope', '-') or '-'}",
         "global_setup     : none (configured per dispatch/API use)",
         "",
-        "[Preference]",
-        f"preferred_channels: {', '.join(preferred_channels) if preferred_channels else '-'}",
+        "[By Scope]",
     ]
+    email_by_scope = email.get("by_scope", {})
+    whatsapp_by_scope = whatsapp.get("by_scope", {})
+    if email_by_scope:
+        for scope_name, count in sorted(email_by_scope.items()):
+            lines.append(f"- email:{scope_name} -> {count}")
+    if whatsapp_by_scope:
+        for scope_name, count in sorted(whatsapp_by_scope.items()):
+            lines.append(f"- whatsapp:{scope_name} -> {count}")
+    if not email_by_scope and not whatsapp_by_scope:
+        lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "[Dispatch Targets]",
+            f"email_target     : {email_target}",
+            f"whatsapp_target  : {whatsapp_target}",
+            "",
+            "[Preference]",
+            f"preferred_channels: {', '.join(preferred_channels) if preferred_channels else '-'}",
+            "",
+            "[Actions]",
+            "- ctrl+e         : send test email to current target",
+            "- ctrl+w         : send test WhatsApp to current target",
+            "- E              : override email dispatch target",
+            "- W              : override WhatsApp dispatch target",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -741,6 +1061,77 @@ def build_privacy_view(data: dict[str, Any]) -> str:
             )
     else:
         lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "[Actions]",
+            "- j                       : toggle quiet hours enabled",
+            "- l                       : cycle memory retention days",
+            "- f                       : toggle proactive assistance",
+            "- q                       : toggle consent requirement",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_heartbeat_view(data: dict[str, Any]) -> str:
+    personality = data.get("personality", {})
+    heartbeat = personality.get("heartbeat", {}) if isinstance(personality, dict) else {}
+    guide_preview = personality.get("heartbeat_guide_preview", "-") if isinstance(personality, dict) else "-"
+    lines = [
+        "Heartbeat",
+        "",
+        "[State]",
+        f"last_mode                 : {heartbeat.get('last_mode', '-') or '-'}",
+        f"last_summary              : {heartbeat.get('last_summary', '-') or '-'}",
+        f"last_pulse_at             : {heartbeat.get('last_pulse_at', '-') or '-'}",
+        f"last_trigger              : {heartbeat.get('last_trigger', '-') or '-'}",
+        f"last_trace_id             : {heartbeat.get('last_trace_id', '-') or '-'}",
+        f"proactive_insight_count   : {heartbeat.get('proactive_insight_count', 0)}",
+        "",
+        "[Guide Preview]",
+        str(guide_preview or "-"),
+        "",
+        "[Operator Note]",
+        "- heartbeat state is durable and shared with scheduler/status surfaces",
+        "- mutation actions will be added in a later wave",
+    ]
+    return "\n".join(lines)
+
+
+def build_proactive_view(data: dict[str, Any]) -> str:
+    personality = data.get("personality", {})
+    controls = data.get("privacy_controls", {})
+    insights = personality.get("proactive_insights", []) if isinstance(personality, dict) else []
+    lines = [
+        "Proactive Assistance",
+        "",
+        "[Summary]",
+        f"insight_count             : {personality.get('proactive_insight_count', 0)}",
+        f"insights_generated        : {personality.get('proactive_insights_generated', 0)}",
+        f"proactive_enabled         : {'yes' if controls.get('proactive_assistance_enabled') else 'no'}",
+        f"consent_required          : {'yes' if controls.get('consent_required_for_proactive') else 'no'}",
+        f"memory_retention_days     : {controls.get('memory_retention_days', '-')}",
+        "",
+        "[Insights]",
+    ]
+    if insights:
+        for item in insights[:5]:
+            lines.append(
+                f"- {item.get('confidence', '-') or '-'} | {item.get('agent_scope', '-') or '-'} | "
+                f"{item.get('summary', '-') or '-'}"
+            )
+    else:
+        lines.append("- belum ada proactive insight")
+    lines.extend(
+        [
+            "",
+            "[Actions]",
+            "- f                       : toggle proactive assistance",
+            "- ctrl+q                  : toggle consent requirement",
+            "- l                       : cycle memory retention days",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -776,8 +1167,106 @@ def build_bootstrap_view(data: dict[str, Any]) -> str:
             f"written_count             : {len(manifest.get('written', [])) if isinstance(manifest.get('written'), list) else 0}",
             f"existing_count            : {len(manifest.get('existing', [])) if isinstance(manifest.get('existing'), list) else 0}",
             "",
-            "[Action]",
+            "[Actions]",
             "- b                       : seed active runtime docs into workspace root",
+            "- ctrl+b                  : seed full template set including optional docs",
+            "- B                       : force overwrite active runtime docs",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_external_view(data: dict[str, Any]) -> str:
+    snapshot = data.get("external_assets", {})
+    approval_by_state = snapshot.get("approval_by_state", {})
+    latest = snapshot.get("latest_approval_event", {})
+    layout = snapshot.get("layout", {})
+    lines = [
+        "External Assets",
+        "",
+        "[Summary]",
+        f"asset_count               : {snapshot.get('asset_count', 0)}",
+        f"event_count               : {snapshot.get('event_count', 0)}",
+        f"incompatible_count        : {snapshot.get('incompatible_count', 0)}",
+        f"unapproved_count          : {snapshot.get('unapproved_count', 0)}",
+        f"undeclared_capability_cnt : {snapshot.get('undeclared_capability_count', 0)}",
+        f"blocked_capability_count  : {snapshot.get('blocked_capability_count', 0)}",
+        f"isolated_skill_count      : {snapshot.get('isolated_skill_count', 0)}",
+        f"approval_event_count      : {snapshot.get('approval_event_count', 0)}",
+        f"trust_policy              : {snapshot.get('trust_policy', '-') or '-'}",
+        f"allowed_capabilities      : {', '.join(snapshot.get('allowed_capabilities', [])) or '-'}",
+        "",
+        "[Approval By State]",
+    ]
+    if approval_by_state:
+        for state, count in sorted(approval_by_state.items()):
+            lines.append(f"- {state}: {count}")
+    else:
+        lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "[Layout]",
+            f"skills_dir               : {layout.get('skills_dir', '-') or '-'}",
+            f"tools_dir                : {layout.get('tools_dir', '-') or '-'}",
+            f"packages_dir             : {layout.get('packages_dir', '-') or '-'}",
+            "",
+            "[Latest Approval Event]",
+            f"asset_name               : {latest.get('asset_name', '-') or '-'}",
+            f"state                    : {latest.get('state', '-') or '-'}",
+            f"actor                    : {latest.get('actor', '-') or '-'}",
+            f"timestamp                : {latest.get('timestamp', '-') or '-'}",
+            "",
+            "[Operator Note]",
+            "- layar ini masih read-only",
+            "- mutation approve/reject/install external asset akan ditambahkan pada wave berikutnya",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_skills_view(data: dict[str, Any]) -> str:
+    snapshot = data.get("skills_audit", {})
+    categories = snapshot.get("categories", {})
+    lines = [
+        "Skill Layer Audit",
+        "",
+        "[Summary]",
+        f"category_count            : {snapshot.get('category_count', 0)}",
+        f"skill_count               : {snapshot.get('skill_count', 0)}",
+        f"skills_dir                : {snapshot.get('skills_dir', '-') or '-'}",
+        "",
+        "[Categories]",
+    ]
+    if categories:
+        for category, items in sorted(categories.items()):
+            lines.append(f"- {category}: {len(items)}")
+    else:
+        lines.append("- none")
+    lines.extend(["", "[Skills]"])
+    if categories:
+        for category, items in sorted(categories.items()):
+            lines.append(f"[{category}]")
+            for item in items[:6]:
+                lines.append(
+                    f"- {item.get('name', '-')} "
+                    f"[risk={item.get('risk_level', '-')}, idempotency={item.get('idempotency', '-')}, "
+                    f"timeout={item.get('timeout_behavior', '-')}, retry={item.get('retry_policy', '-')}]"
+                )
+                requires = item.get("requires", [])
+                side_effects = item.get("side_effects", [])
+                if requires:
+                    lines.append(f"  requires: {', '.join(requires)}")
+                if side_effects:
+                    lines.append(f"  side_effects: {', '.join(side_effects)}")
+    else:
+        lines.append("- belum ada skill terdaftar")
+    lines.extend(
+        [
+            "",
+            "[Operator Note]",
+            "- layar ini masih read-only",
+            "- mutation skill install/audit/approval akan ditambahkan pada wave berikutnya",
         ]
     )
     return "\n".join(lines)
@@ -860,11 +1349,16 @@ def build_notify_view(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_services_view(data: dict[str, Any]) -> str:
+def build_services_view(data: dict[str, Any], *, selected_target: str = "cadiax", preview: str = "") -> str:
     service_info = get_service_runtime_info()
     runtime = data.get("runtime", {})
     scheduler = data.get("scheduler", {})
     dashboard = data.get("dashboard", {})
+    supported_targets = [
+        item for item in service_info.get("supported_targets", [])
+        if isinstance(item, dict)
+    ]
+    selected = next((item for item in supported_targets if item.get("name") == selected_target), supported_targets[0] if supported_targets else {})
     lines = [
         "Services",
         "",
@@ -879,24 +1373,29 @@ def build_services_view(data: dict[str, Any]) -> str:
         "",
         "[Targets]",
     ]
-    for item in service_info.get("supported_targets", []):
-        if not isinstance(item, dict):
-            continue
+    for item in supported_targets:
         extra = ""
         if item.get("default_port") is not None:
             extra = f" port={item['default_port']}"
         elif item.get("default_interval_seconds"):
             extra = f" interval={item['default_interval_seconds']:.0f}s"
-        lines.append(f"- {item.get('name', '-')}: {item.get('description', '-')}{extra}")
-    lines.extend(["", "[Target Detail]"])
-    for item in service_info.get("supported_targets", []):
-        if not isinstance(item, dict):
-            continue
-        lines.append(f"- {item.get('name', '-')}")
-        lines.append(f"  default_steps        : {item.get('default_steps', 0)}")
-        lines.append(f"  default_interval     : {item.get('default_interval_seconds', 0)}")
-        lines.append(f"  default_host         : {item.get('default_host') or '-'}")
-        lines.append(f"  default_port         : {item.get('default_port') or '-'}")
+        marker = ">" if item.get("name") == selected_target else "-"
+        lines.append(f"{marker} {item.get('name', '-')}: {item.get('description', '-')}{extra}")
+    lines.extend(
+        [
+            "",
+            "[Selected Target]",
+            f"name                    : {selected.get('name', '-')}",
+            f"description             : {selected.get('description', '-')}",
+            f"default_steps           : {selected.get('default_steps', 0)}",
+            f"default_interval        : {selected.get('default_interval_seconds', 0)}",
+            f"default_host            : {selected.get('default_host') or '-'}",
+            f"default_port            : {selected.get('default_port') or '-'}",
+            f"show_command            : cadiax service show {selected.get('name', '-')}",
+            f"write_command           : cadiax service write {selected.get('name', '-')}",
+            f"run_command             : cadiax service run {selected.get('name', '-')}",
+        ]
+    )
     lines.extend(
         [
             "",
@@ -905,11 +1404,23 @@ def build_services_view(data: dict[str, Any]) -> str:
             f"- dashboard_enabled       : {'yes' if dashboard.get('enabled') else 'no'}",
             "- note                    : Telegram ikut service `cadiax`; bukan service utama terpisah",
             "",
+            "[Local Health Probes]",
+            "- admin-api               : http://127.0.0.1:8787/health",
+            "- conversation-api        : http://127.0.0.1:8788/health",
+            "",
             "[Actions]",
+            "- , / .                   : select previous/next service target",
+            "- S                       : preview service wrapper artifacts for selected target",
+            "- h                       : probe admin API /health",
+            "- c                       : probe conversation API /health",
             "- d                       : toggle dashboard enable/disable",
-            "- w                       : write service wrapper artifacts for `cadiax`",
+            "- w                       : write service wrapper artifacts for selected target",
         ]
     )
+    if preview.strip():
+        preview_lines = preview.strip().splitlines()[:18]
+        lines.extend(["", "[Preview]"])
+        lines.extend(preview_lines)
     return "\n".join(lines)
 
 
@@ -1262,6 +1773,52 @@ def run_scheduler_once_for_tui(*, skills_dir: Path | None = None) -> dict[str, A
     }
 
 
+def probe_admin_api_for_tui() -> dict[str, Any]:
+    """Probe the local admin API health endpoint."""
+    token = os.getenv("OTONOMASSIST_ADMIN_TOKEN", "").strip()
+    headers = {"X-Cadiax-Token": token} if token else None
+    return _probe_json_endpoint("http://127.0.0.1:8787/health", headers=headers)
+
+
+def probe_conversation_api_for_tui() -> dict[str, Any]:
+    """Probe the local conversation API health endpoint."""
+    token = os.getenv("OTONOMASSIST_CONVERSATION_TOKEN", "").strip()
+    headers = {"X-Cadiax-Conversation-Token": token} if token else None
+    return _probe_json_endpoint("http://127.0.0.1:8788/health", headers=headers)
+
+
+def _probe_json_endpoint(url: str, *, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    """Perform a small local JSON health probe for operator use."""
+    request = Request(url, headers=headers or {}, method="GET")
+    try:
+        with urlopen(request, timeout=2.0) as response:
+            status_code = int(response.status)
+            body = response.read().decode("utf-8", errors="replace")
+            return {
+                "ok": 200 <= status_code < 300,
+                "status_code": status_code,
+                "status": "ok" if 200 <= status_code < 300 else "error",
+                "body": body,
+                "url": url,
+            }
+    except HTTPError as exc:
+        return {
+            "ok": False,
+            "status_code": int(exc.code),
+            "status": "http_error",
+            "body": exc.read().decode("utf-8", errors="replace"),
+            "url": url,
+        }
+    except URLError as exc:
+        return {
+            "ok": False,
+            "status_code": 0,
+            "status": "unreachable",
+            "body": str(exc.reason),
+            "url": url,
+        }
+
+
 def _resolve_default_skills_dir(skills_dir: Path | None = None) -> Path:
     """Resolve the default skills directory for operator-triggered actions."""
     if skills_dir is not None:
@@ -1271,6 +1828,50 @@ def _resolve_default_skills_dir(skills_dir: Path | None = None) -> Path:
         return candidate
     fallback = (get_project_root() / "skills").resolve()
     return fallback
+
+
+def get_skill_audit_snapshot_for_tui(*, skills_dir: Path | None = None) -> dict[str, Any]:
+    """Return a compact skill-layer audit snapshot for the operator TUI."""
+    from cadiax.core.assistant import Assistant
+
+    resolved_skills_dir = _resolve_default_skills_dir(skills_dir)
+    assistant = Assistant(skills_dir=resolved_skills_dir)
+    assistant.initialize()
+    summary = assistant.registry.get_skill_layer_summary()
+    return {
+        "skills_dir": str(resolved_skills_dir),
+        "category_count": int(summary.get("category_count", 0) or 0),
+        "skill_count": len(assistant.registry.list_skills()),
+        "categories": summary.get("skills", {}),
+    }
+
+
+def _next_service_target(current: str) -> str:
+    names = [name for name, _ in SCREENLESS_SERVICE_TARGETS]
+    try:
+        index = names.index(current)
+    except ValueError:
+        index = 0
+    return names[(index + 1) % len(names)]
+
+
+def _prev_service_target(current: str) -> str:
+    names = [name for name, _ in SCREENLESS_SERVICE_TARGETS]
+    try:
+        index = names.index(current)
+    except ValueError:
+        index = 0
+    return names[(index - 1) % len(names)]
+
+
+SCREENLESS_SERVICE_TARGETS: list[tuple[str, str]] = [
+    ("cadiax", "Main Cadiax runtime service"),
+    ("worker", "Background runtime job processor"),
+    ("scheduler", "Autonomous scheduler cycle runner"),
+    ("admin-api", "Read-only operational admin API"),
+    ("conversation-api", "Conversational interaction API"),
+    ("dashboard", "Monitoring dashboard web service"),
+]
 
 
 class SetupInputScreen(ModalScreen[tuple[str, str] | None]):
