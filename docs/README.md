@@ -7,6 +7,8 @@
 - [Target Architecture V2](/d:/PROJECT/otonomAssist/docs/architecture/TARGET_ARCHITECTURE_V2.md)
 - [TUI Backend Control Surface](/d:/PROJECT/otonomAssist/docs/architecture/TUI_BACKEND_CONTROL_SURFACE.md)
 - [TUI CLI Coverage Matrix](/d:/PROJECT/otonomAssist/docs/architecture/TUI_CLI_COVERAGE_MATRIX.md)
+- [TUI Full Migration Plan](/d:/PROJECT/otonomAssist/docs/architecture/TUI_FULL_MIGRATION_PLAN.md)
+- [TUI Validation and Test Plan](/d:/PROJECT/otonomAssist/docs/architecture/TUI_VALIDATION_AND_TEST_PLAN.md)
 - [TUI Wave Next](/d:/PROJECT/otonomAssist/docs/architecture/TUI_WAVE_NEXT.md)
 - [TUI Operator Todo](/d:/PROJECT/otonomAssist/docs/architecture/TUI_OPERATOR_TODO.md)
 
@@ -41,6 +43,7 @@
 - [Release Notes v1.1.4](/d:/PROJECT/otonomAssist/docs/release/RELEASE_NOTES_v1.1.4.md)
 - [Release Notes v1.1.5](/d:/PROJECT/otonomAssist/docs/release/RELEASE_NOTES_v1.1.5.md)
 - [Release Notes v1.1.6](/d:/PROJECT/otonomAssist/docs/release/RELEASE_NOTES_v1.1.6.md)
+- [TUI Production Release Plan](/d:/PROJECT/otonomAssist/docs/release/TUI_PRODUCTION_RELEASE_PLAN.md)
 - [Deployment Checklist](/d:/PROJECT/otonomAssist/docs/release/DEPLOYMENT_CHECKLIST.md)
 - [Validation Matrix](/d:/PROJECT/otonomAssist/docs/release/VALIDATION_MATRIX.md)
 - [Merge Strategy Summary](/d:/PROJECT/otonomAssist/docs/release/MERGE_STRATEGY_SUMMARY.md)
