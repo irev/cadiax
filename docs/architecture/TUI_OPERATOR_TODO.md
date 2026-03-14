@@ -18,6 +18,8 @@ Backlog paling relevan setelah baseline TUI setup selesai.
 - [x] Proactive view
 - [x] Channel test dispatch untuk email/whatsapp
 - [x] Admin API dan conversation API probe dari TUI
+- [x] External audit view
+- [x] Skills audit/taxonomy view
 
 ## Berikutnya
 
@@ -33,6 +35,4 @@ Backlog paling relevan setelah baseline TUI setup selesai.
 - [ ] Bootstrap advanced action:
   - [ ] include optional templates
   - [ ] force overwrite mode
-- [ ] External audit view
-- [ ] Skills audit/taxonomy view
 - [ ] Channel parity lebih dalam untuk email/whatsapp

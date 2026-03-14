@@ -15,6 +15,7 @@ from cadiax.tui.app import (
     build_channels_view,
     build_doctor_view,
     build_events_view,
+    build_external_view,
     build_heartbeat_view,
     build_history_view,
     build_home_view,
@@ -24,6 +25,7 @@ from cadiax.tui.app import (
     build_paths_view,
     build_privacy_view,
     build_proactive_view,
+    build_skills_view,
     build_startup_view,
     build_scheduler_view,
     build_services_view,
@@ -179,6 +181,30 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
                 "existing": ["USER.md"],
             },
         },
+        "external_assets": {
+            "asset_count": 3,
+            "event_count": 2,
+            "incompatible_count": 0,
+            "unapproved_count": 1,
+            "undeclared_capability_count": 0,
+            "blocked_capability_count": 1,
+            "isolated_skill_count": 1,
+            "approval_by_state": {"approved": 1, "rejected": 1, "pending": 1},
+            "approval_event_count": 2,
+            "latest_approval_event": {
+                "asset_name": "finance-pack",
+                "state": "approved",
+                "actor": "ops",
+                "timestamp": "2026-03-14T00:00:00+00:00",
+            },
+            "trust_policy": "explicit-approval",
+            "allowed_capabilities": ["python", "http"],
+            "layout": {
+                "skills_dir": "C:/Users/test/Cadiax/workspace/skills-external",
+                "tools_dir": "C:/Users/test/Cadiax/workspace/tools-external",
+                "packages_dir": "C:/Users/test/Cadiax/workspace/packages-external",
+            },
+        },
         "agent_scopes": {
             "scope_count": 2,
             "document_path": "C:/Users/test/Cadiax/workspace/AGENTS.md",
@@ -237,6 +263,35 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
                 }
             ],
         },
+        "skills_audit": {
+            "skills_dir": "C:/Users/test/Cadiax/workspace/skills",
+            "category_count": 2,
+            "skill_count": 3,
+            "categories": {
+                "analysis": [
+                    {
+                        "name": "observe",
+                        "risk_level": "low",
+                        "idempotency": "idempotent",
+                        "timeout_behavior": "fail",
+                        "retry_policy": "none",
+                        "requires": ["python"],
+                        "side_effects": [],
+                    }
+                ],
+                "ops": [
+                    {
+                        "name": "notify",
+                        "risk_level": "medium",
+                        "idempotency": "best-effort",
+                        "timeout_behavior": "fail",
+                        "retry_policy": "retry-once",
+                        "requires": ["http"],
+                        "side_effects": ["network"],
+                    }
+                ],
+            },
+        },
     }
 
     assert "preferred_channels: telegram, email" in build_channels_view(payload)
@@ -253,8 +308,12 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "path_mode" in build_home_view(payload)
     assert "workspace_seeded_count" in build_bootstrap_view(payload)
     assert "seed active runtime docs" in build_bootstrap_view(payload)
+    assert "trust_policy" in build_external_view(payload)
+    assert "finance-pack" in build_external_view(payload)
     assert "scope_count" in build_agents_view(payload)
     assert "finance-agent" in build_agents_view(payload)
+    assert "category_count" in build_skills_view(payload)
+    assert "notify [risk=medium" in build_skills_view(payload)
     assert "delivery_batch_count" in build_notify_view(payload)
     assert "Build Alert" in build_notify_view(payload)
     assert "telegram_in_main_service" in build_services_view(payload, selected_target="conversation-api")
@@ -291,10 +350,10 @@ def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
 
     monkeypatch.setattr("cadiax.cli.run_tui", fake_run_tui)
     runner = CliRunner()
-    result = runner.invoke(main, ["tui", "--screen", "heartbeat"])
+    result = runner.invoke(main, ["tui", "--screen", "skills"])
 
     assert result.exit_code == 0
-    assert called["screen"] == "heartbeat"
+    assert called["screen"] == "skills"
 
 
 def test_cli_setup_command_dispatches_setup_tui(monkeypatch) -> None:

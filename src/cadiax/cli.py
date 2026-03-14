@@ -228,6 +228,8 @@ def paths_command(as_json: bool) -> None:
             "heartbeat",
             "proactive",
             "bootstrap",
+            "external",
+            "skills",
             "agents",
             "notify",
             "channels",

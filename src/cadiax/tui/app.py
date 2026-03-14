@@ -38,6 +38,8 @@ SCREEN_OPTIONS: list[tuple[str, str]] = [
     ("heartbeat", "Heartbeat"),
     ("proactive", "Proactive"),
     ("bootstrap", "Bootstrap"),
+    ("external", "External"),
+    ("skills", "Skills"),
     ("agents", "Agents"),
     ("notify", "Notify"),
     ("channels", "Channels"),
@@ -108,6 +110,8 @@ class CadiaxTuiApp(App[None]):
         ("f", "toggle_proactive_delivery", "Toggle Proactive"),
         ("ctrl+q", "toggle_proactive_consent", "Toggle Consent"),
         ("k", "go_bootstrap", "Bootstrap"),
+        ("ctrl+k", "go_external", "External"),
+        ("ctrl+s", "go_skills", "Skills"),
         ("g", "go_agents", "Agents"),
         ("m", "go_notify", "Notify"),
         ("4", "go_channels", "Channels"),
@@ -185,6 +189,12 @@ class CadiaxTuiApp(App[None]):
 
     def action_go_proactive(self) -> None:
         self._select_screen("proactive")
+
+    def action_go_external(self) -> None:
+        self._select_screen("external")
+
+    def action_go_skills(self) -> None:
+        self._select_screen("skills")
 
     def action_toggle_quiet_hours(self) -> None:
         if self.current_screen_name != "privacy":
@@ -628,6 +638,7 @@ class CadiaxTuiApp(App[None]):
         self.status_data["history"] = load_execution_events(limit=15)
         self.status_data["events"] = get_event_bus_snapshot(limit=20)
         self.status_data["startup"] = StartupDocumentService().get_snapshot(session_mode="main")
+        self.status_data["skills_audit"] = get_skill_audit_snapshot_for_tui()
         self._sync_setup_draft()
 
     def _select_screen(self, screen_name: str) -> None:
@@ -655,6 +666,12 @@ class CadiaxTuiApp(App[None]):
             return
         if screen_name == "bootstrap":
             content.update(build_bootstrap_view(self.status_data))
+            return
+        if screen_name == "external":
+            content.update(build_external_view(self.status_data))
+            return
+        if screen_name == "skills":
+            content.update(build_skills_view(self.status_data))
             return
         if screen_name == "agents":
             content.update(build_agents_view(self.status_data))
@@ -1016,6 +1033,102 @@ def build_bootstrap_view(data: dict[str, Any]) -> str:
             "",
             "[Action]",
             "- b                       : seed active runtime docs into workspace root",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_external_view(data: dict[str, Any]) -> str:
+    snapshot = data.get("external_assets", {})
+    approval_by_state = snapshot.get("approval_by_state", {})
+    latest = snapshot.get("latest_approval_event", {})
+    layout = snapshot.get("layout", {})
+    lines = [
+        "External Assets",
+        "",
+        "[Summary]",
+        f"asset_count               : {snapshot.get('asset_count', 0)}",
+        f"event_count               : {snapshot.get('event_count', 0)}",
+        f"incompatible_count        : {snapshot.get('incompatible_count', 0)}",
+        f"unapproved_count          : {snapshot.get('unapproved_count', 0)}",
+        f"undeclared_capability_cnt : {snapshot.get('undeclared_capability_count', 0)}",
+        f"blocked_capability_count  : {snapshot.get('blocked_capability_count', 0)}",
+        f"isolated_skill_count      : {snapshot.get('isolated_skill_count', 0)}",
+        f"approval_event_count      : {snapshot.get('approval_event_count', 0)}",
+        f"trust_policy              : {snapshot.get('trust_policy', '-') or '-'}",
+        f"allowed_capabilities      : {', '.join(snapshot.get('allowed_capabilities', [])) or '-'}",
+        "",
+        "[Approval By State]",
+    ]
+    if approval_by_state:
+        for state, count in sorted(approval_by_state.items()):
+            lines.append(f"- {state}: {count}")
+    else:
+        lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "[Layout]",
+            f"skills_dir               : {layout.get('skills_dir', '-') or '-'}",
+            f"tools_dir                : {layout.get('tools_dir', '-') or '-'}",
+            f"packages_dir             : {layout.get('packages_dir', '-') or '-'}",
+            "",
+            "[Latest Approval Event]",
+            f"asset_name               : {latest.get('asset_name', '-') or '-'}",
+            f"state                    : {latest.get('state', '-') or '-'}",
+            f"actor                    : {latest.get('actor', '-') or '-'}",
+            f"timestamp                : {latest.get('timestamp', '-') or '-'}",
+            "",
+            "[Operator Note]",
+            "- layar ini masih read-only",
+            "- mutation approve/reject/install external asset akan ditambahkan pada wave berikutnya",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_skills_view(data: dict[str, Any]) -> str:
+    snapshot = data.get("skills_audit", {})
+    categories = snapshot.get("categories", {})
+    lines = [
+        "Skill Layer Audit",
+        "",
+        "[Summary]",
+        f"category_count            : {snapshot.get('category_count', 0)}",
+        f"skill_count               : {snapshot.get('skill_count', 0)}",
+        f"skills_dir                : {snapshot.get('skills_dir', '-') or '-'}",
+        "",
+        "[Categories]",
+    ]
+    if categories:
+        for category, items in sorted(categories.items()):
+            lines.append(f"- {category}: {len(items)}")
+    else:
+        lines.append("- none")
+    lines.extend(["", "[Skills]"])
+    if categories:
+        for category, items in sorted(categories.items()):
+            lines.append(f"[{category}]")
+            for item in items[:6]:
+                lines.append(
+                    f"- {item.get('name', '-')} "
+                    f"[risk={item.get('risk_level', '-')}, idempotency={item.get('idempotency', '-')}, "
+                    f"timeout={item.get('timeout_behavior', '-')}, retry={item.get('retry_policy', '-')}]"
+                )
+                requires = item.get("requires", [])
+                side_effects = item.get("side_effects", [])
+                if requires:
+                    lines.append(f"  requires: {', '.join(requires)}")
+                if side_effects:
+                    lines.append(f"  side_effects: {', '.join(side_effects)}")
+    else:
+        lines.append("- belum ada skill terdaftar")
+    lines.extend(
+        [
+            "",
+            "[Operator Note]",
+            "- layar ini masih read-only",
+            "- mutation skill install/audit/approval akan ditambahkan pada wave berikutnya",
         ]
     )
     return "\n".join(lines)
@@ -1572,6 +1685,22 @@ def _resolve_default_skills_dir(skills_dir: Path | None = None) -> Path:
         return candidate
     fallback = (get_project_root() / "skills").resolve()
     return fallback
+
+
+def get_skill_audit_snapshot_for_tui(*, skills_dir: Path | None = None) -> dict[str, Any]:
+    """Return a compact skill-layer audit snapshot for the operator TUI."""
+    from cadiax.core.assistant import Assistant
+
+    resolved_skills_dir = _resolve_default_skills_dir(skills_dir)
+    assistant = Assistant(skills_dir=resolved_skills_dir)
+    assistant.initialize()
+    summary = assistant.registry.get_skill_layer_summary()
+    return {
+        "skills_dir": str(resolved_skills_dir),
+        "category_count": int(summary.get("category_count", 0) or 0),
+        "skill_count": len(assistant.registry.list_skills()),
+        "categories": summary.get("skills", {}),
+    }
 
 
 def _next_service_target(current: str) -> str:

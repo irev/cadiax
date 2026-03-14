@@ -11,9 +11,9 @@ Status yang dipakai:
 
 ## Ringkasan
 
-- `covered`: 18
+- `covered`: 20
 - `partial`: 5
-- `missing`: 5
+- `missing`: 3
 - `out-of-scope`: 2
 
 ## Matriks
@@ -45,8 +45,8 @@ Status yang dipakai:
 | `agents` | covered | layar `Agents` | scope registry inspection dari `AGENTS.md` sudah ada |
 | `startup` | covered | layar `Startup` | startup document inspection sudah ada |
 | `bootstrap` | covered | layar `Bootstrap` | workspace bootstrap inspection dan action seed runtime docs sudah ada |
-| `external` | missing | belum ada layar khusus | perlu audit/approval surface |
-| `skills` | missing | belum ada layar khusus | perlu taxonomy/audit surface |
+| `external` | covered | layar `External` | external asset audit, trust policy, approval state, dan layout sudah ada |
+| `skills` | covered | layar `Skills` | taxonomy/audit snapshot dari skill registry sudah ada |
 | `config` | partial | terlipat ke `Setup`, `Doctor`, `Paths` | belum ada layar `config` eksplisit |
 | `chat` | out-of-scope | tidak menjadi target utama TUI | CLI chat tetap lebih tepat untuk conversational flow |
 | `run` | out-of-scope | tidak menjadi target utama TUI | command satu-shot tetap lebih tepat di CLI |
@@ -65,8 +65,6 @@ Menutup action/operator parity yang masih paling penting setelah inspection base
 
 Menutup audit/ekstensi yang lebih advanced:
 
-- `external`
-- `skills`
 - parity lebih dalam untuk `email` dan `whatsapp`
 
 ### Priority 3
