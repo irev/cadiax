@@ -231,7 +231,10 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "finance-agent" in build_agents_view(payload)
     assert "delivery_batch_count" in build_notify_view(payload)
     assert "Build Alert" in build_notify_view(payload)
-    assert "telegram_in_main_service" in build_services_view(payload)
+    assert "telegram_in_main_service" in build_services_view(payload, selected_target="conversation-api")
+    assert "show_command            : cadiax service show conversation-api" in build_services_view(
+        payload, selected_target="conversation-api"
+    )
     assert "last_worker_run_at" in build_worker_view(payload)
     assert "last_heartbeat_mode" in build_scheduler_view(payload)
     assert "session_mode" in build_startup_view(payload)
@@ -354,16 +357,37 @@ def test_tui_service_action_writes_wrappers(monkeypatch) -> None:
     app = CadiaxTuiApp(initial_screen="services")
     app.status_data = {"dashboard": {"enabled": False}, "telegram": {"enabled": False}}
     app.current_screen_name = "services"
+    app.current_service_target = "scheduler"
     notifications: list[str] = []
     monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
     monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
     monkeypatch.setattr(app, "_reload", lambda: None)
-    monkeypatch.setattr("cadiax.tui.app.write_service_wrapper_artifacts", lambda target="cadiax": [Path("cadiax-cadiax.service")])
+    called: dict[str, str] = {}
+
+    def fake_write_service_wrapper_artifacts(target="cadiax"):
+        called["target"] = target
+        return [Path("cadiax-scheduler.service")]
+
+    monkeypatch.setattr("cadiax.tui.app.write_service_wrapper_artifacts", fake_write_service_wrapper_artifacts)
     monkeypatch.setattr("cadiax.tui.app.get_service_wrapper_output_dir", lambda: Path("C:/Cadiax/state/service-wrappers"))
 
     app.action_write_service_wrappers()
 
-    assert any("Service wrappers written: 1 files" in item for item in notifications)
+    assert called["target"] == "scheduler"
+    assert any("Service wrappers written: 1 files for scheduler" in item for item in notifications)
+
+
+def test_tui_service_target_selection_cycles(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="services")
+    app.current_screen_name = "services"
+    app.current_service_target = "cadiax"
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+
+    app.action_next_service_target()
+    assert app.current_service_target == "worker"
+
+    app.action_prev_service_target()
+    assert app.current_service_target == "cadiax"
 
 
 def test_tui_worker_and_scheduler_actions_run_one_shot(monkeypatch) -> None:

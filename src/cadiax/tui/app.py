@@ -102,7 +102,7 @@ class CadiaxTuiApp(App[None]):
         ("j", "toggle_quiet_hours", "Toggle Quiet Hours"),
         ("l", "cycle_retention_days", "Cycle Retention"),
         ("f", "toggle_proactive_delivery", "Toggle Proactive"),
-        ("q", "toggle_proactive_consent", "Toggle Consent"),
+        ("ctrl+q", "toggle_proactive_consent", "Toggle Consent"),
         ("k", "go_bootstrap", "Bootstrap"),
         ("g", "go_agents", "Agents"),
         ("m", "go_notify", "Notify"),
@@ -110,6 +110,8 @@ class CadiaxTuiApp(App[None]):
         ("ctrl+e", "send_test_email", "Send Test Email"),
         ("ctrl+w", "send_test_whatsapp", "Send Test WhatsApp"),
         ("5", "go_services", "Services"),
+        ("period", "next_service_target", "Next Service Target"),
+        ("comma", "prev_service_target", "Prev Service Target"),
         ("h", "probe_admin_api", "Probe Admin API"),
         ("c", "probe_conversation_api", "Probe Conversation API"),
         ("u", "go_worker", "Worker"),
@@ -142,6 +144,7 @@ class CadiaxTuiApp(App[None]):
         self.current_screen_name = self.initial_screen
         self.current_setup_step = 0
         self.setup_draft: dict[str, Any] = {}
+        self.current_service_target = "cadiax"
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -280,6 +283,18 @@ class CadiaxTuiApp(App[None]):
     def action_go_services(self) -> None:
         self._select_screen("services")
 
+    def action_next_service_target(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        self.current_service_target = _next_service_target(self.current_service_target)
+        self._render_screen("services")
+
+    def action_prev_service_target(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        self.current_service_target = _prev_service_target(self.current_service_target)
+        self._render_screen("services")
+
     def action_go_worker(self) -> None:
         self._select_screen("worker")
 
@@ -364,10 +379,10 @@ class CadiaxTuiApp(App[None]):
     def action_write_service_wrappers(self) -> None:
         if self.current_screen_name != "services":
             return
-        written = write_service_wrapper_artifacts(target="cadiax")
+        written = write_service_wrapper_artifacts(target=self.current_service_target)
         output_dir = get_service_wrapper_output_dir()
         self.notify(
-            f"Service wrappers written: {len(written)} files -> {output_dir}",
+            f"Service wrappers written: {len(written)} files for {self.current_service_target} -> {output_dir}",
             severity="information",
         )
         self._reload()
@@ -635,7 +650,7 @@ class CadiaxTuiApp(App[None]):
             content.update(build_channels_view(self.status_data))
             return
         if screen_name == "services":
-            content.update(build_services_view(self.status_data))
+            content.update(build_services_view(self.status_data, selected_target=self.current_service_target))
             return
         if screen_name == "worker":
             content.update(build_worker_view(self.status_data))
@@ -1006,11 +1021,16 @@ def build_notify_view(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_services_view(data: dict[str, Any]) -> str:
+def build_services_view(data: dict[str, Any], *, selected_target: str = "cadiax") -> str:
     service_info = get_service_runtime_info()
     runtime = data.get("runtime", {})
     scheduler = data.get("scheduler", {})
     dashboard = data.get("dashboard", {})
+    supported_targets = [
+        item for item in service_info.get("supported_targets", [])
+        if isinstance(item, dict)
+    ]
+    selected = next((item for item in supported_targets if item.get("name") == selected_target), supported_targets[0] if supported_targets else {})
     lines = [
         "Services",
         "",
@@ -1025,24 +1045,29 @@ def build_services_view(data: dict[str, Any]) -> str:
         "",
         "[Targets]",
     ]
-    for item in service_info.get("supported_targets", []):
-        if not isinstance(item, dict):
-            continue
+    for item in supported_targets:
         extra = ""
         if item.get("default_port") is not None:
             extra = f" port={item['default_port']}"
         elif item.get("default_interval_seconds"):
             extra = f" interval={item['default_interval_seconds']:.0f}s"
-        lines.append(f"- {item.get('name', '-')}: {item.get('description', '-')}{extra}")
-    lines.extend(["", "[Target Detail]"])
-    for item in service_info.get("supported_targets", []):
-        if not isinstance(item, dict):
-            continue
-        lines.append(f"- {item.get('name', '-')}")
-        lines.append(f"  default_steps        : {item.get('default_steps', 0)}")
-        lines.append(f"  default_interval     : {item.get('default_interval_seconds', 0)}")
-        lines.append(f"  default_host         : {item.get('default_host') or '-'}")
-        lines.append(f"  default_port         : {item.get('default_port') or '-'}")
+        marker = ">" if item.get("name") == selected_target else "-"
+        lines.append(f"{marker} {item.get('name', '-')}: {item.get('description', '-')}{extra}")
+    lines.extend(
+        [
+            "",
+            "[Selected Target]",
+            f"name                    : {selected.get('name', '-')}",
+            f"description             : {selected.get('description', '-')}",
+            f"default_steps           : {selected.get('default_steps', 0)}",
+            f"default_interval        : {selected.get('default_interval_seconds', 0)}",
+            f"default_host            : {selected.get('default_host') or '-'}",
+            f"default_port            : {selected.get('default_port') or '-'}",
+            f"show_command            : cadiax service show {selected.get('name', '-')}",
+            f"write_command           : cadiax service write {selected.get('name', '-')}",
+            f"run_command             : cadiax service run {selected.get('name', '-')}",
+        ]
+    )
     lines.extend(
         [
             "",
@@ -1056,10 +1081,11 @@ def build_services_view(data: dict[str, Any]) -> str:
             "- conversation-api        : http://127.0.0.1:8788/health",
             "",
             "[Actions]",
+            "- , / .                   : select previous/next service target",
             "- h                       : probe admin API /health",
             "- c                       : probe conversation API /health",
             "- d                       : toggle dashboard enable/disable",
-            "- w                       : write service wrapper artifacts for `cadiax`",
+            "- w                       : write service wrapper artifacts for selected target",
         ]
     )
     return "\n".join(lines)
@@ -1469,6 +1495,34 @@ def _resolve_default_skills_dir(skills_dir: Path | None = None) -> Path:
         return candidate
     fallback = (get_project_root() / "skills").resolve()
     return fallback
+
+
+def _next_service_target(current: str) -> str:
+    names = [name for name, _ in SCREENLESS_SERVICE_TARGETS]
+    try:
+        index = names.index(current)
+    except ValueError:
+        index = 0
+    return names[(index + 1) % len(names)]
+
+
+def _prev_service_target(current: str) -> str:
+    names = [name for name, _ in SCREENLESS_SERVICE_TARGETS]
+    try:
+        index = names.index(current)
+    except ValueError:
+        index = 0
+    return names[(index - 1) % len(names)]
+
+
+SCREENLESS_SERVICE_TARGETS: list[tuple[str, str]] = [
+    ("cadiax", "Main Cadiax runtime service"),
+    ("worker", "Background runtime job processor"),
+    ("scheduler", "Autonomous scheduler cycle runner"),
+    ("admin-api", "Read-only operational admin API"),
+    ("conversation-api", "Conversational interaction API"),
+    ("dashboard", "Monitoring dashboard web service"),
+]
 
 
 class SetupInputScreen(ModalScreen[tuple[str, str] | None]):
