@@ -24,7 +24,12 @@ from cadiax.core.setup_wizard import persist_env_updates
 from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
 from cadiax.interfaces.email import EmailInterfaceService
 from cadiax.interfaces.whatsapp import WhatsAppInterfaceService
-from cadiax.platform import get_service_runtime_info, get_service_wrapper_output_dir, write_service_wrapper_artifacts
+from cadiax.platform import (
+    get_service_runtime_info,
+    get_service_wrapper_output_dir,
+    render_service_wrapper_artifacts,
+    write_service_wrapper_artifacts,
+)
 from cadiax.platform.dashboard_runtime import disable_dashboard, enable_dashboard
 from cadiax.services.personality.startup_document_service import StartupDocumentService
 from cadiax.services.privacy.privacy_control_service import PrivacyControlService
@@ -122,6 +127,7 @@ class CadiaxTuiApp(App[None]):
         ("5", "go_services", "Services"),
         ("period", "next_service_target", "Next Service Target"),
         ("comma", "prev_service_target", "Prev Service Target"),
+        ("shift+s", "show_service_preview", "Show Service Preview"),
         ("h", "probe_admin_api", "Probe Admin API"),
         ("c", "probe_conversation_api", "Probe Conversation API"),
         ("u", "go_worker", "Worker"),
@@ -158,6 +164,7 @@ class CadiaxTuiApp(App[None]):
         self.setup_draft: dict[str, Any] = {}
         self.channel_draft: dict[str, Any] = {}
         self.current_service_target = "cadiax"
+        self.current_service_preview = ""
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -341,6 +348,14 @@ class CadiaxTuiApp(App[None]):
         if self.current_screen_name != "services":
             return
         self.current_service_target = _prev_service_target(self.current_service_target)
+        self.current_service_preview = ""
+        self._render_screen("services")
+
+    def action_show_service_preview(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        self.current_service_preview = render_service_wrapper_artifacts(self.current_service_target)
+        self.notify(f"Service preview loaded for {self.current_service_target}", severity="information")
         self._render_screen("services")
 
     def action_go_worker(self) -> None:
@@ -765,7 +780,13 @@ class CadiaxTuiApp(App[None]):
             content.update(build_channels_view(self.status_data, draft_targets=self.channel_draft))
             return
         if screen_name == "services":
-            content.update(build_services_view(self.status_data, selected_target=self.current_service_target))
+            content.update(
+                build_services_view(
+                    self.status_data,
+                    selected_target=self.current_service_target,
+                    preview=self.current_service_preview,
+                )
+            )
             return
         if screen_name == "worker":
             content.update(build_worker_view(self.status_data))
@@ -1328,7 +1349,7 @@ def build_notify_view(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_services_view(data: dict[str, Any], *, selected_target: str = "cadiax") -> str:
+def build_services_view(data: dict[str, Any], *, selected_target: str = "cadiax", preview: str = "") -> str:
     service_info = get_service_runtime_info()
     runtime = data.get("runtime", {})
     scheduler = data.get("scheduler", {})
@@ -1389,12 +1410,17 @@ def build_services_view(data: dict[str, Any], *, selected_target: str = "cadiax"
             "",
             "[Actions]",
             "- , / .                   : select previous/next service target",
+            "- S                       : preview service wrapper artifacts for selected target",
             "- h                       : probe admin API /health",
             "- c                       : probe conversation API /health",
             "- d                       : toggle dashboard enable/disable",
             "- w                       : write service wrapper artifacts for selected target",
         ]
     )
+    if preview.strip():
+        preview_lines = preview.strip().splitlines()[:18]
+        lines.extend(["", "[Preview]"])
+        lines.extend(preview_lines)
     return "\n".join(lines)
 
 

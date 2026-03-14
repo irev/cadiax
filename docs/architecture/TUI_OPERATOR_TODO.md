@@ -24,7 +24,7 @@ Backlog paling relevan setelah baseline TUI setup selesai.
 ## Berikutnya
 
 - [ ] Service parity lebih dalam:
-  - [ ] show target detail yang lebih kaya
+  - [x] show target detail yang lebih kaya
   - [x] action dasar untuk `worker` dan `scheduler`
   - [x] action dasar untuk `admin-api` dan `conversation-api`
 ## Setelah Itu

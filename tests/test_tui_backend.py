@@ -337,6 +337,7 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "show_command            : cadiax service show conversation-api" in build_services_view(
         payload, selected_target="conversation-api"
     )
+    assert "preview service wrapper artifacts" in build_services_view(payload, selected_target="conversation-api")
     assert "last_worker_run_at" in build_worker_view(payload)
     assert "last_heartbeat_mode" in build_scheduler_view(payload)
     assert "session_mode" in build_startup_view(payload)
@@ -535,6 +536,24 @@ def test_tui_service_target_selection_cycles(monkeypatch) -> None:
 
     app.action_prev_service_target()
     assert app.current_service_target == "cadiax"
+
+
+def test_tui_service_preview_action_loads_selected_target(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="services")
+    app.current_screen_name = "services"
+    app.current_service_target = "admin-api"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(
+        "cadiax.tui.app.render_service_wrapper_artifacts",
+        lambda target: f"Service Wrapper Artifacts: {target}\n\n[admin-api.service]\nexec ...",
+    )
+
+    app.action_show_service_preview()
+
+    assert app.current_service_preview.startswith("Service Wrapper Artifacts: admin-api")
+    assert any("Service preview loaded for admin-api" in item for item in notifications)
 
 
 def test_tui_worker_and_scheduler_actions_run_one_shot(monkeypatch) -> None:

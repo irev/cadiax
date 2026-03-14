@@ -27,7 +27,7 @@ Status yang dipakai:
 | `tui` | covered | shell utama | entrypoint operator utama |
 | `dashboard` | partial | layar `Channels`, `Services`, `Setup` | ada toggle, host/access, port, admin API URL; belum parity penuh semua subcommand dashboard |
 | `telegram` | partial | layar `Channels`, `Setup` | ada toggle, DM policy, require mention; belum parity penuh transport command |
-| `service` | partial | layar `Services` | ada target selection, wrapper write, dan probe health; belum ada `run/show/write` parity penuh |
+| `service` | partial | layar `Services` | ada target selection, wrapper preview, wrapper write, dan probe health; belum ada `run` parity penuh |
 | `api` | partial | layar `Services` | ada probe `admin-api /health`; belum ada action detail lain |
 | `conversation-api` | partial | layar `Services` | ada probe `/health`; belum ada action detail lain |
 | `jobs` | covered | layar `Jobs` | queue/runtime inspection sudah ada |
