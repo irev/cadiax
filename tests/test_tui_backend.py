@@ -18,8 +18,10 @@ from cadiax.tui.app import (
     build_jobs_view,
     build_metrics_view,
     build_paths_view,
+    build_scheduler_view,
     build_services_view,
     build_setup_view,
+    build_worker_view,
 )
 
 
@@ -27,8 +29,22 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     payload = {
         "overall": {"status": "warning"},
         "ai": {"provider": "openai", "status": "warning"},
-        "runtime": {"status": "healthy"},
-        "scheduler": {"status": "healthy"},
+        "scheduler": {
+            "status": "healthy",
+            "last_run_at": "2026-03-14T00:00:00+00:00",
+            "last_status": "idle",
+            "last_cycles": 1,
+            "last_processed": 2,
+            "last_trace_id": "sched-1",
+            "last_heartbeat_mode": "steady",
+        },
+        "runtime": {
+            "status": "healthy",
+            "last_worker_run_at": "2026-03-14T00:00:00+00:00",
+            "last_worker_status": "idle",
+            "last_worker_processed": 2,
+            "last_worker_trace_id": "work-1",
+        },
         "telegram": {"enabled": True, "status": "warning", "dm_policy": "pairing", "group_policy": "allowlist"},
         "dashboard": {"enabled": True, "host": "127.0.0.1", "port": 8795, "admin_api_url": "http://127.0.0.1:8787"},
         "storage": {
@@ -116,6 +132,8 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "missing api key" in build_doctor_view(payload)
     assert "path_mode" in build_home_view(payload)
     assert "telegram_in_main_service" in build_services_view(payload)
+    assert "last_worker_run_at" in build_worker_view(payload)
+    assert "last_heartbeat_mode" in build_scheduler_view(payload)
     assert "queued_jobs" in build_jobs_view(payload)
     assert "ai_total_tokens" in build_metrics_view(payload)
     assert "command_completed" in build_history_view(payload)

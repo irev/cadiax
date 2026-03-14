@@ -28,6 +28,8 @@ SCREEN_OPTIONS: list[tuple[str, str]] = [
     ("doctor", "Doctor"),
     ("channels", "Channels"),
     ("services", "Services"),
+    ("worker", "Worker"),
+    ("scheduler", "Scheduler"),
     ("setup", "Setup"),
     ("jobs", "Jobs"),
     ("metrics", "Metrics"),
@@ -85,6 +87,8 @@ class CadiaxTuiApp(App[None]):
         ("3", "go_doctor", "Doctor"),
         ("4", "go_channels", "Channels"),
         ("5", "go_services", "Services"),
+        ("u", "go_worker", "Worker"),
+        ("y", "go_scheduler", "Scheduler"),
         ("6", "go_setup", "Setup"),
         ("7", "go_jobs", "Jobs"),
         ("8", "go_metrics", "Metrics"),
@@ -142,6 +146,12 @@ class CadiaxTuiApp(App[None]):
 
     def action_go_services(self) -> None:
         self._select_screen("services")
+
+    def action_go_worker(self) -> None:
+        self._select_screen("worker")
+
+    def action_go_scheduler(self) -> None:
+        self._select_screen("scheduler")
 
     def action_go_setup(self) -> None:
         self._select_screen("setup")
@@ -418,6 +428,12 @@ class CadiaxTuiApp(App[None]):
         if screen_name == "services":
             content.update(build_services_view(self.status_data))
             return
+        if screen_name == "worker":
+            content.update(build_worker_view(self.status_data))
+            return
+        if screen_name == "scheduler":
+            content.update(build_scheduler_view(self.status_data))
+            return
         if screen_name == "setup":
             content.update(build_setup_view(self.status_data, step_index=self.current_setup_step, draft=self.setup_draft))
             return
@@ -487,7 +503,7 @@ def build_home_view(data: dict[str, Any]) -> str:
         "",
         "[Hints]",
         "- Tekan 1/2/3/4 untuk pindah layar",
-        "- Tekan 5/6/7/8/9/0 untuk layanan, setup, jobs, metrics, history, dan events",
+        "- Tekan 5/u/y/6/7/8/9/0 untuk services, worker, scheduler, setup, jobs, metrics, history, dan events",
         "- Saat di Setup, tekan n/p untuk pindah step",
         "- Tekan d/t untuk toggle dashboard atau Telegram pada layar terkait",
         "- Saat di Setup, tekan e/a/i/s untuk edit draft dan simpan step",
@@ -631,6 +647,46 @@ def build_services_view(data: dict[str, Any]) -> str:
             "- w                       : write service wrapper artifacts for `cadiax`",
         ]
     )
+    return "\n".join(lines)
+
+
+def build_worker_view(data: dict[str, Any]) -> str:
+    runtime = data.get("runtime", {})
+    lines = [
+        "Worker Runtime",
+        "",
+        "[Summary]",
+        f"status             : {runtime.get('status', '-')}",
+        f"last_worker_run_at : {runtime.get('last_worker_run_at', '-') or '-'}",
+        f"last_worker_status : {runtime.get('last_worker_status', '-') or '-'}",
+        f"last_processed     : {runtime.get('last_worker_processed', 0)}",
+        f"last_trace_id      : {runtime.get('last_worker_trace_id', '-') or '-'}",
+        "",
+        "[Operator Note]",
+        "- layar ini masih read-only",
+        "- action worker loop akan ditambahkan pada wave berikutnya",
+    ]
+    return "\n".join(lines)
+
+
+def build_scheduler_view(data: dict[str, Any]) -> str:
+    scheduler = data.get("scheduler", {})
+    lines = [
+        "Scheduler Runtime",
+        "",
+        "[Summary]",
+        f"status              : {scheduler.get('status', '-')}",
+        f"last_run_at         : {scheduler.get('last_run_at', '-') or '-'}",
+        f"last_status         : {scheduler.get('last_status', '-') or '-'}",
+        f"last_cycles         : {scheduler.get('last_cycles', 0)}",
+        f"last_processed      : {scheduler.get('last_processed', 0)}",
+        f"last_trace_id       : {scheduler.get('last_trace_id', '-') or '-'}",
+        f"last_heartbeat_mode : {scheduler.get('last_heartbeat_mode', '-') or '-'}",
+        "",
+        "[Operator Note]",
+        "- layar ini masih read-only",
+        "- action scheduler loop akan ditambahkan pada wave berikutnya",
+    ]
     return "\n".join(lines)
 
 

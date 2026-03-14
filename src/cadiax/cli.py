@@ -220,7 +220,7 @@ def paths_command(as_json: bool) -> None:
 @click.option(
     "--screen",
     type=click.Choice(
-        ["home", "paths", "doctor", "channels", "services", "setup", "jobs", "metrics", "history", "events"],
+        ["home", "paths", "doctor", "channels", "services", "worker", "scheduler", "setup", "jobs", "metrics", "history", "events"],
         case_sensitive=False,
     ),
     default="home",
