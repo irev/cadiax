@@ -12,7 +12,11 @@ from cadiax.tui.app import (
     CadiaxTuiApp,
     build_channels_view,
     build_doctor_view,
+    build_events_view,
+    build_history_view,
     build_home_view,
+    build_jobs_view,
+    build_metrics_view,
     build_paths_view,
     build_services_view,
     build_setup_view,
@@ -44,6 +48,62 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
             "ai_routes_total": 1,
         },
         "privacy": {"status": "healthy"},
+        "jobs": {
+            "total_jobs": 5,
+            "queued_jobs": 2,
+            "leased_jobs": 1,
+            "done_jobs": 1,
+            "failed_jobs": 1,
+            "requeued_jobs": 0,
+            "last_worker_run_at": "2026-03-14T00:00:00+00:00",
+            "last_worker_status": "healthy",
+            "last_worker_processed": 2,
+        },
+        "metrics": {
+            "summary": {
+                "events_total": 12,
+                "commands_total": 4,
+                "routes_total": 5,
+                "heuristic_routes_total": 2,
+                "ai_routes_total": 1,
+                "errors_total": 0,
+                "timeouts_total": 0,
+                "ai_requests_total": 3,
+                "ai_total_tokens": 1500,
+            },
+            "queue_depth": {
+                "runtime": {"current_depth": 3, "high_watermark": 4, "queued": 2, "leased": 1}
+            },
+            "provider_latency": {
+                "openai:gpt-4.1-mini": {
+                    "provider": "openai",
+                    "model": "gpt-4.1-mini",
+                    "avg_ms": 123,
+                    "max_ms": 150,
+                    "last_ms": 110,
+                }
+            },
+        },
+        "history": [
+            {"timestamp": "2026-03-14T00:00:00+00:00", "event_type": "command_completed", "trace_id": "abc", "status": "ok"}
+        ],
+        "events": {
+            "total_events": 8,
+            "returned_events": 3,
+            "automation_event_count": 2,
+            "policy_event_count": 1,
+            "external_event_count": 0,
+            "last_event_topic": "automation.job",
+            "topics": {"automation.job": 2, "policy.decision": 1},
+            "events": [
+                {
+                    "timestamp": "2026-03-14T00:00:00+00:00",
+                    "topic": "automation.job",
+                    "event_type": "job_enqueued",
+                    "trace_id": "abc",
+                }
+            ],
+        },
         "issues": ["missing api key"],
         "email": {"message_count": 1, "latest_message": {"to_address": "ops@example.com"}},
         "whatsapp": {"message_count": 2, "latest_message": {"phone_number": "+628123456789"}},
@@ -56,6 +116,10 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "missing api key" in build_doctor_view(payload)
     assert "path_mode" in build_home_view(payload)
     assert "telegram_in_main_service" in build_services_view(payload)
+    assert "queued_jobs" in build_jobs_view(payload)
+    assert "ai_total_tokens" in build_metrics_view(payload)
+    assert "command_completed" in build_history_view(payload)
+    assert "automation.job" in build_events_view(payload)
     provider_step = build_setup_view(payload, step_index=0, draft={"provider": "claude"})
     telegram_step = build_setup_view(payload, step_index=2, draft={"telegram_dm_policy": "owner", "telegram_require_mention": "false"})
     dashboard_step = build_setup_view(payload, step_index=3, draft={"dashboard_host": "0.0.0.0", "dashboard_port": 8800})
@@ -78,10 +142,10 @@ def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
 
     monkeypatch.setattr("cadiax.cli.run_tui", fake_run_tui)
     runner = CliRunner()
-    result = runner.invoke(main, ["tui", "--screen", "services"])
+    result = runner.invoke(main, ["tui", "--screen", "metrics"])
 
     assert result.exit_code == 0
-    assert called["screen"] == "services"
+    assert called["screen"] == "metrics"
 
 
 def test_cli_setup_command_dispatches_setup_tui(monkeypatch) -> None:

@@ -219,7 +219,10 @@ def paths_command(as_json: bool) -> None:
 @main.command("tui")
 @click.option(
     "--screen",
-    type=click.Choice(["home", "paths", "doctor", "channels", "services", "setup"], case_sensitive=False),
+    type=click.Choice(
+        ["home", "paths", "doctor", "channels", "services", "setup", "jobs", "metrics", "history", "events"],
+        case_sensitive=False,
+    ),
     default="home",
     show_default=True,
     help="Initial screen to show in the TUI.",

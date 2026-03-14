@@ -11,6 +11,10 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, OptionList, Static
 
 from cadiax.core.config_doctor import get_config_status_data
+from cadiax.core.event_bus import get_event_bus_snapshot
+from cadiax.core.execution_history import load_execution_events
+from cadiax.core.execution_metrics import get_execution_metrics_snapshot
+from cadiax.core.job_runtime import get_job_queue_summary
 from cadiax.core.path_layout import get_runtime_layout_snapshot
 from cadiax.core.setup_wizard import persist_env_updates
 from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
@@ -25,6 +29,10 @@ SCREEN_OPTIONS: list[tuple[str, str]] = [
     ("channels", "Channels"),
     ("services", "Services"),
     ("setup", "Setup"),
+    ("jobs", "Jobs"),
+    ("metrics", "Metrics"),
+    ("history", "History"),
+    ("events", "Events"),
 ]
 
 SETUP_STEPS: list[tuple[str, str]] = [
@@ -78,6 +86,10 @@ class CadiaxTuiApp(App[None]):
         ("4", "go_channels", "Channels"),
         ("5", "go_services", "Services"),
         ("6", "go_setup", "Setup"),
+        ("7", "go_jobs", "Jobs"),
+        ("8", "go_metrics", "Metrics"),
+        ("9", "go_history", "History"),
+        ("0", "go_events", "Events"),
         ("n", "next_setup_step", "Next setup step"),
         ("p", "prev_setup_step", "Previous setup step"),
         ("d", "toggle_dashboard", "Toggle Dashboard"),
@@ -133,6 +145,18 @@ class CadiaxTuiApp(App[None]):
 
     def action_go_setup(self) -> None:
         self._select_screen("setup")
+
+    def action_go_jobs(self) -> None:
+        self._select_screen("jobs")
+
+    def action_go_metrics(self) -> None:
+        self._select_screen("metrics")
+
+    def action_go_history(self) -> None:
+        self._select_screen("history")
+
+    def action_go_events(self) -> None:
+        self._select_screen("events")
 
     def action_refresh_data(self) -> None:
         self._reload()
@@ -368,6 +392,10 @@ class CadiaxTuiApp(App[None]):
 
     def _reload(self) -> None:
         self.status_data = get_config_status_data()
+        self.status_data["jobs"] = get_job_queue_summary()
+        self.status_data["metrics"] = get_execution_metrics_snapshot()
+        self.status_data["history"] = load_execution_events(limit=15)
+        self.status_data["events"] = get_event_bus_snapshot(limit=20)
         self._sync_setup_draft()
 
     def _select_screen(self, screen_name: str) -> None:
@@ -392,6 +420,18 @@ class CadiaxTuiApp(App[None]):
             return
         if screen_name == "setup":
             content.update(build_setup_view(self.status_data, step_index=self.current_setup_step, draft=self.setup_draft))
+            return
+        if screen_name == "jobs":
+            content.update(build_jobs_view(self.status_data))
+            return
+        if screen_name == "metrics":
+            content.update(build_metrics_view(self.status_data))
+            return
+        if screen_name == "history":
+            content.update(build_history_view(self.status_data))
+            return
+        if screen_name == "events":
+            content.update(build_events_view(self.status_data))
             return
         content.update(build_doctor_view(self.status_data))
 
@@ -447,7 +487,7 @@ def build_home_view(data: dict[str, Any]) -> str:
         "",
         "[Hints]",
         "- Tekan 1/2/3/4 untuk pindah layar",
-        "- Tekan 5/6 untuk layanan dan setup coverage",
+        "- Tekan 5/6/7/8/9/0 untuk layanan, setup, jobs, metrics, history, dan events",
         "- Saat di Setup, tekan n/p untuk pindah step",
         "- Tekan d/t untuk toggle dashboard atau Telegram pada layar terkait",
         "- Saat di Setup, tekan e/a/i/s untuk edit draft dan simpan step",
@@ -591,6 +631,119 @@ def build_services_view(data: dict[str, Any]) -> str:
             "- w                       : write service wrapper artifacts for `cadiax`",
         ]
     )
+    return "\n".join(lines)
+
+
+def build_jobs_view(data: dict[str, Any]) -> str:
+    summary = data.get("jobs", {})
+    lines = [
+        "Runtime Jobs",
+        "",
+        "[Summary]",
+        f"total_jobs        : {summary.get('total_jobs', 0)}",
+        f"queued_jobs       : {summary.get('queued_jobs', 0)}",
+        f"leased_jobs       : {summary.get('leased_jobs', 0)}",
+        f"done_jobs         : {summary.get('done_jobs', 0)}",
+        f"failed_jobs       : {summary.get('failed_jobs', 0)}",
+        f"requeued_jobs     : {summary.get('requeued_jobs', 0)}",
+        f"last_worker_run   : {summary.get('last_worker_run_at', '-') or '-'}",
+        f"last_worker_state : {summary.get('last_worker_status', '-') or '-'}",
+        f"last_processed    : {summary.get('last_worker_processed', 0)}",
+    ]
+    return "\n".join(lines)
+
+
+def build_metrics_view(data: dict[str, Any]) -> str:
+    metrics = data.get("metrics", {})
+    summary = metrics.get("summary", {})
+    queue_depth = metrics.get("queue_depth", {})
+    provider_latency = metrics.get("provider_latency", {})
+    lines = [
+        "Execution Metrics",
+        "",
+        "[Summary]",
+        f"events_total      : {summary.get('events_total', 0)}",
+        f"commands_total    : {summary.get('commands_total', 0)}",
+        f"routes_total      : {summary.get('routes_total', 0)}",
+        f"heuristic_routes  : {summary.get('heuristic_routes_total', 0)}",
+        f"ai_routes         : {summary.get('ai_routes_total', 0)}",
+        f"errors_total      : {summary.get('errors_total', 0)}",
+        f"timeouts_total    : {summary.get('timeouts_total', 0)}",
+        f"ai_requests_total : {summary.get('ai_requests_total', 0)}",
+        f"ai_total_tokens   : {summary.get('ai_total_tokens', 0)}",
+    ]
+    lines.extend(["", "[Queue Depth]"])
+    if queue_depth:
+        for queue_name, queue_snapshot in sorted(queue_depth.items()):
+            lines.append(
+                f"- {queue_name}: current={queue_snapshot.get('current_depth', 0)}, "
+                f"high_watermark={queue_snapshot.get('high_watermark', 0)}, "
+                f"queued={queue_snapshot.get('queued', 0)}, leased={queue_snapshot.get('leased', 0)}"
+            )
+    else:
+        lines.append("- belum ada snapshot queue depth")
+    lines.extend(["", "[Provider Latency]"])
+    if provider_latency:
+        for _, latency in sorted(provider_latency.items()):
+            lines.append(
+                f"- {latency.get('provider') or '-'} / {latency.get('model') or '-'}: "
+                f"avg_ms={latency.get('avg_ms', 0)}, max_ms={latency.get('max_ms', 0)}, last_ms={latency.get('last_ms', 0)}"
+            )
+    else:
+        lines.append("- belum ada snapshot provider latency")
+    return "\n".join(lines)
+
+
+def build_history_view(data: dict[str, Any]) -> str:
+    events = data.get("history", [])
+    lines = [
+        "Execution History",
+        "",
+        "[Summary]",
+        f"returned_events   : {len(events)}",
+    ]
+    lines.extend(["", "[Events]"])
+    if not events:
+        lines.append("- belum ada execution history")
+        return "\n".join(lines)
+    for event in events:
+        lines.append(
+            f"- {event.get('timestamp')} {event.get('event_type')} "
+            f"[trace={event.get('trace_id') or '-'}, status={event.get('status') or '-'}]"
+        )
+    return "\n".join(lines)
+
+
+def build_events_view(data: dict[str, Any]) -> str:
+    snapshot = data.get("events", {})
+    topics = snapshot.get("topics", {})
+    events = snapshot.get("events", [])
+    lines = [
+        "Internal Event Bus",
+        "",
+        "[Summary]",
+        f"total_events      : {snapshot.get('total_events', 0)}",
+        f"returned_events   : {snapshot.get('returned_events', 0)}",
+        f"automation_events : {snapshot.get('automation_event_count', 0)}",
+        f"policy_events     : {snapshot.get('policy_event_count', 0)}",
+        f"external_events   : {snapshot.get('external_event_count', 0)}",
+        f"last_event_topic  : {snapshot.get('last_event_topic', '-') or '-'}",
+    ]
+    lines.extend(["", "[Topics]"])
+    if topics:
+        for topic, count in sorted(topics.items()):
+            lines.append(f"- {topic}: {count}")
+    else:
+        lines.append("- belum ada topic")
+    lines.extend(["", "[Recent Events]"])
+    if not events:
+        lines.append("- belum ada event bus entry")
+        return "\n".join(lines)
+    for event in events[-10:]:
+        lines.append(
+            f"- {event.get('timestamp')} {event.get('topic')}::{event.get('event_type')} "
+            f"[trace={event.get('trace_id') or '-'}]"
+        )
     return "\n".join(lines)
 
 
