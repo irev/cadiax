@@ -25,6 +25,7 @@ from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
 from cadiax.platform import get_service_runtime_info, get_service_wrapper_output_dir, write_service_wrapper_artifacts
 from cadiax.platform.dashboard_runtime import disable_dashboard, enable_dashboard
 from cadiax.services.personality.startup_document_service import StartupDocumentService
+from cadiax.services.privacy.privacy_control_service import PrivacyControlService
 
 
 SCREEN_OPTIONS: list[tuple[str, str]] = [
@@ -96,6 +97,10 @@ class CadiaxTuiApp(App[None]):
         ("2", "go_paths", "Paths"),
         ("3", "go_doctor", "Doctor"),
         ("v", "go_privacy", "Privacy"),
+        ("j", "toggle_quiet_hours", "Toggle Quiet Hours"),
+        ("l", "cycle_retention_days", "Cycle Retention"),
+        ("f", "toggle_proactive_delivery", "Toggle Proactive"),
+        ("q", "toggle_proactive_consent", "Toggle Consent"),
         ("k", "go_bootstrap", "Bootstrap"),
         ("g", "go_agents", "Agents"),
         ("m", "go_notify", "Notify"),
@@ -163,6 +168,61 @@ class CadiaxTuiApp(App[None]):
 
     def action_go_privacy(self) -> None:
         self._select_screen("privacy")
+
+    def action_toggle_quiet_hours(self) -> None:
+        if self.current_screen_name != "privacy":
+            return
+        controls = self.status_data.get("privacy_controls", {})
+        quiet = controls.get("quiet_hours") or {}
+        enabled = not bool(quiet.get("enabled"))
+        start = str(quiet.get("start") or "22:00")
+        end = str(quiet.get("end") or "07:00")
+        PrivacyControlService().set_quiet_hours(start=start, end=end, enabled=enabled)
+        self.notify(f"Quiet hours {'enabled' if enabled else 'disabled'}", severity="information")
+        self._reload()
+        self._render_screen("privacy")
+
+    def action_cycle_retention_days(self) -> None:
+        if self.current_screen_name != "privacy":
+            return
+        controls = self.status_data.get("privacy_controls", {})
+        current = int(controls.get("memory_retention_days", 365) or 365)
+        options = [30, 90, 180, 365]
+        try:
+            index = options.index(current)
+        except ValueError:
+            index = len(options) - 1
+        new_value = options[(index + 1) % len(options)]
+        PrivacyControlService().set_proactive_controls(memory_retention_days=new_value)
+        self.notify(f"Memory retention set to {new_value} day(s)", severity="information")
+        self._reload()
+        self._render_screen("privacy")
+
+    def action_toggle_proactive_delivery(self) -> None:
+        if self.current_screen_name != "privacy":
+            return
+        controls = self.status_data.get("privacy_controls", {})
+        enabled = not bool(controls.get("proactive_assistance_enabled", True))
+        PrivacyControlService().set_proactive_controls(proactive_enabled=enabled)
+        self.notify(
+            f"Proactive delivery {'enabled' if enabled else 'disabled'}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("privacy")
+
+    def action_toggle_proactive_consent(self) -> None:
+        if self.current_screen_name != "privacy":
+            return
+        controls = self.status_data.get("privacy_controls", {})
+        required = not bool(controls.get("consent_required_for_proactive", True))
+        PrivacyControlService().set_proactive_controls(consent_required=required)
+        self.notify(
+            f"Proactive consent {'required' if required else 'optional'}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("privacy")
 
     def action_go_bootstrap(self) -> None:
         self._select_screen("bootstrap")
@@ -768,6 +828,16 @@ def build_privacy_view(data: dict[str, Any]) -> str:
             )
     else:
         lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "[Actions]",
+            "- j                       : toggle quiet hours enabled",
+            "- l                       : cycle memory retention days",
+            "- f                       : toggle proactive assistance",
+            "- q                       : toggle consent requirement",
+        ]
+    )
     return "\n".join(lines)
 
 

@@ -370,6 +370,50 @@ def test_tui_service_probe_actions_report_admin_and_conversation(monkeypatch) ->
     assert any("Conversation API probe: 401 http_error" in item for item in notifications)
 
 
+def test_tui_privacy_actions_update_controls(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="privacy")
+    app.status_data = {
+        "privacy_controls": {
+            "quiet_hours": {"enabled": False, "start": "22:00", "end": "07:00"},
+            "proactive_assistance_enabled": True,
+            "consent_required_for_proactive": True,
+            "memory_retention_days": 365,
+        }
+    }
+    app.current_screen_name = "privacy"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class FakePrivacyControlService:
+        def set_quiet_hours(self, **kwargs):
+            calls.append(("quiet_hours", kwargs))
+            return {}
+
+        def set_proactive_controls(self, **kwargs):
+            calls.append(("proactive", kwargs))
+            return {}
+
+    monkeypatch.setattr("cadiax.tui.app.PrivacyControlService", FakePrivacyControlService)
+
+    app.action_toggle_quiet_hours()
+    app.action_cycle_retention_days()
+    app.action_toggle_proactive_delivery()
+    app.action_toggle_proactive_consent()
+
+    assert ("quiet_hours", {"start": "22:00", "end": "07:00", "enabled": True}) in calls
+    assert ("proactive", {"memory_retention_days": 30}) in calls
+    assert ("proactive", {"proactive_enabled": False}) in calls
+    assert ("proactive", {"consent_required": False}) in calls
+    assert any("Quiet hours enabled" in item for item in notifications)
+    assert any("Memory retention set to 30 day(s)" in item for item in notifications)
+    assert any("Proactive delivery disabled" in item for item in notifications)
+    assert any("Proactive consent optional" in item for item in notifications)
+
+
 def test_tui_bootstrap_action_seeds_runtime_docs(monkeypatch) -> None:
     app = CadiaxTuiApp(initial_screen="bootstrap")
     app.status_data = {"bootstrap": {"workspace_seeded_count": 0}}
