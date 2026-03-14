@@ -8,6 +8,7 @@
 - [TUI Backend Control Surface](/d:/PROJECT/otonomAssist/docs/architecture/TUI_BACKEND_CONTROL_SURFACE.md)
 - [TUI CLI Coverage Matrix](/d:/PROJECT/otonomAssist/docs/architecture/TUI_CLI_COVERAGE_MATRIX.md)
 - [TUI Wave Next](/d:/PROJECT/otonomAssist/docs/architecture/TUI_WAVE_NEXT.md)
+- [TUI Operator Todo](/d:/PROJECT/otonomAssist/docs/architecture/TUI_OPERATOR_TODO.md)
 
 ## Specifications
 

@@ -18,6 +18,7 @@ from cadiax.tui.app import (
     build_jobs_view,
     build_metrics_view,
     build_paths_view,
+    build_startup_view,
     build_scheduler_view,
     build_services_view,
     build_setup_view,
@@ -120,6 +121,17 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
                 }
             ],
         },
+        "startup": {
+            "session_mode": "main",
+            "agent_scope": "default",
+            "scope_declared": True,
+            "request_roles": [],
+            "documents": [
+                {"name": "agents", "availability": "available", "path": "C:/Users/test/Cadiax/workspace/AGENTS.md"}
+            ],
+            "daily_notes": "Latest note",
+            "curated_memory": "Remember this",
+        },
         "issues": ["missing api key"],
         "email": {"message_count": 1, "latest_message": {"to_address": "ops@example.com"}},
         "whatsapp": {"message_count": 2, "latest_message": {"phone_number": "+628123456789"}},
@@ -134,6 +146,8 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "telegram_in_main_service" in build_services_view(payload)
     assert "last_worker_run_at" in build_worker_view(payload)
     assert "last_heartbeat_mode" in build_scheduler_view(payload)
+    assert "session_mode" in build_startup_view(payload)
+    assert "AGENTS.md" in build_startup_view(payload)
     assert "queued_jobs" in build_jobs_view(payload)
     assert "ai_total_tokens" in build_metrics_view(payload)
     assert "command_completed" in build_history_view(payload)
@@ -160,10 +174,10 @@ def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
 
     monkeypatch.setattr("cadiax.cli.run_tui", fake_run_tui)
     runner = CliRunner()
-    result = runner.invoke(main, ["tui", "--screen", "metrics"])
+    result = runner.invoke(main, ["tui", "--screen", "startup"])
 
     assert result.exit_code == 0
-    assert called["screen"] == "metrics"
+    assert called["screen"] == "startup"
 
 
 def test_cli_setup_command_dispatches_setup_tui(monkeypatch) -> None:

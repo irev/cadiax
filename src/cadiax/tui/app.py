@@ -20,6 +20,7 @@ from cadiax.core.setup_wizard import persist_env_updates
 from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
 from cadiax.platform import get_service_runtime_info, get_service_wrapper_output_dir, write_service_wrapper_artifacts
 from cadiax.platform.dashboard_runtime import disable_dashboard, enable_dashboard
+from cadiax.services.personality.startup_document_service import StartupDocumentService
 
 
 SCREEN_OPTIONS: list[tuple[str, str]] = [
@@ -30,6 +31,7 @@ SCREEN_OPTIONS: list[tuple[str, str]] = [
     ("services", "Services"),
     ("worker", "Worker"),
     ("scheduler", "Scheduler"),
+    ("startup", "Startup"),
     ("setup", "Setup"),
     ("jobs", "Jobs"),
     ("metrics", "Metrics"),
@@ -89,6 +91,7 @@ class CadiaxTuiApp(App[None]):
         ("5", "go_services", "Services"),
         ("u", "go_worker", "Worker"),
         ("y", "go_scheduler", "Scheduler"),
+        ("o", "go_startup", "Startup"),
         ("6", "go_setup", "Setup"),
         ("7", "go_jobs", "Jobs"),
         ("8", "go_metrics", "Metrics"),
@@ -152,6 +155,9 @@ class CadiaxTuiApp(App[None]):
 
     def action_go_scheduler(self) -> None:
         self._select_screen("scheduler")
+
+    def action_go_startup(self) -> None:
+        self._select_screen("startup")
 
     def action_go_setup(self) -> None:
         self._select_screen("setup")
@@ -406,6 +412,7 @@ class CadiaxTuiApp(App[None]):
         self.status_data["metrics"] = get_execution_metrics_snapshot()
         self.status_data["history"] = load_execution_events(limit=15)
         self.status_data["events"] = get_event_bus_snapshot(limit=20)
+        self.status_data["startup"] = StartupDocumentService().get_snapshot(session_mode="main")
         self._sync_setup_draft()
 
     def _select_screen(self, screen_name: str) -> None:
@@ -433,6 +440,9 @@ class CadiaxTuiApp(App[None]):
             return
         if screen_name == "scheduler":
             content.update(build_scheduler_view(self.status_data))
+            return
+        if screen_name == "startup":
+            content.update(build_startup_view(self.status_data))
             return
         if screen_name == "setup":
             content.update(build_setup_view(self.status_data, step_index=self.current_setup_step, draft=self.setup_draft))
@@ -503,7 +513,7 @@ def build_home_view(data: dict[str, Any]) -> str:
         "",
         "[Hints]",
         "- Tekan 1/2/3/4 untuk pindah layar",
-        "- Tekan 5/u/y/6/7/8/9/0 untuk services, worker, scheduler, setup, jobs, metrics, history, dan events",
+        "- Tekan 5/u/y/o/6/7/8/9/0 untuk services, worker, scheduler, startup, setup, jobs, metrics, history, dan events",
         "- Saat di Setup, tekan n/p untuk pindah step",
         "- Tekan d/t untuk toggle dashboard atau Telegram pada layar terkait",
         "- Saat di Setup, tekan e/a/i/s untuk edit draft dan simpan step",
@@ -634,6 +644,15 @@ def build_services_view(data: dict[str, Any]) -> str:
         elif item.get("default_interval_seconds"):
             extra = f" interval={item['default_interval_seconds']:.0f}s"
         lines.append(f"- {item.get('name', '-')}: {item.get('description', '-')}{extra}")
+    lines.extend(["", "[Target Detail]"])
+    for item in service_info.get("supported_targets", []):
+        if not isinstance(item, dict):
+            continue
+        lines.append(f"- {item.get('name', '-')}")
+        lines.append(f"  default_steps        : {item.get('default_steps', 0)}")
+        lines.append(f"  default_interval     : {item.get('default_interval_seconds', 0)}")
+        lines.append(f"  default_host         : {item.get('default_host') or '-'}")
+        lines.append(f"  default_port         : {item.get('default_port') or '-'}")
     lines.extend(
         [
             "",
@@ -687,6 +706,39 @@ def build_scheduler_view(data: dict[str, Any]) -> str:
         "- layar ini masih read-only",
         "- action scheduler loop akan ditambahkan pada wave berikutnya",
     ]
+    return "\n".join(lines)
+
+
+def build_startup_view(data: dict[str, Any]) -> str:
+    snapshot = data.get("startup", {})
+    documents = snapshot.get("documents", [])
+    lines = [
+        "Startup Documents",
+        "",
+        "[Summary]",
+        f"session_mode        : {snapshot.get('session_mode', '-')}",
+        f"agent_scope         : {snapshot.get('agent_scope', '-')}",
+        f"scope_declared      : {'yes' if snapshot.get('scope_declared', True) else 'no'}",
+        f"request_roles       : {', '.join(snapshot.get('request_roles', [])) or '-'}",
+    ]
+    lines.extend(["", "[Documents]"])
+    if documents:
+        for item in documents:
+            lines.append(
+                f"- {item.get('name', '-')}: {item.get('availability', '-')} ({item.get('path', '-')})"
+            )
+    else:
+        lines.append("- belum ada startup document")
+    lines.extend(
+        [
+            "",
+            "[Daily Notes]",
+            snapshot.get("daily_notes") or "- belum ada daily notes",
+            "",
+            "[Curated Memory]",
+            snapshot.get("curated_memory") or "- belum ada curated memory",
+        ]
+    )
     return "\n".join(lines)
 
 
