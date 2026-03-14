@@ -31,8 +31,8 @@ Status yang dipakai:
 | `api` | partial | layar `Services` | baru status konseptual; belum ada action detail |
 | `conversation-api` | partial | layar `Services` | baru status konseptual; belum ada action detail |
 | `jobs` | covered | layar `Jobs` | queue/runtime inspection sudah ada |
-| `worker` | covered | layar `Worker` | read-only status worker sudah ada; action runtime masih belum |
-| `scheduler` | covered | layar `Scheduler` | read-only status scheduler sudah ada; action runtime masih belum |
+| `worker` | covered | layar `Worker` | status worker dan action one-shot aman sudah ada |
+| `scheduler` | covered | layar `Scheduler` | status scheduler dan action one-shot aman sudah ada |
 | `history` | covered | layar `History` | recent execution history inspection sudah ada |
 | `events` | covered | layar `Events` | internal event bus inspection sudah ada |
 | `metrics` | covered | layar `Metrics` | execution metrics inspection sudah ada |
@@ -58,8 +58,6 @@ Status yang dipakai:
 Menutup action/operator parity yang masih paling penting setelah inspection baseline:
 
 - `service`
-- `worker`
-- `scheduler`
 - `notify`
 - `agents`
 

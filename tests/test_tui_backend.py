@@ -321,6 +321,31 @@ def test_tui_service_action_writes_wrappers(monkeypatch) -> None:
     assert any("Service wrappers written: 1 files" in item for item in notifications)
 
 
+def test_tui_worker_and_scheduler_actions_run_one_shot(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="worker")
+    app.status_data = {"runtime": {"status": "healthy"}, "scheduler": {"status": "healthy"}}
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+    monkeypatch.setattr(
+        "cadiax.tui.app.run_worker_once_for_tui",
+        lambda: {"processed": 1, "status": "active", "trace_id": "work-1"},
+    )
+    monkeypatch.setattr(
+        "cadiax.tui.app.run_scheduler_once_for_tui",
+        lambda: {"processed": 1, "status": "idle", "trace_id": "sched-1"},
+    )
+
+    app.current_screen_name = "worker"
+    app.action_run_worker_once()
+    app.current_screen_name = "scheduler"
+    app.action_run_scheduler_once()
+
+    assert any("Worker run complete: processed=1 status=active" in item for item in notifications)
+    assert any("Scheduler run complete: processed=1 status=idle" in item for item in notifications)
+
+
 def test_tui_bootstrap_action_seeds_runtime_docs(monkeypatch) -> None:
     app = CadiaxTuiApp(initial_screen="bootstrap")
     app.status_data = {"bootstrap": {"workspace_seeded_count": 0}}

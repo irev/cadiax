@@ -14,7 +14,8 @@ from cadiax.core.config_doctor import get_config_status_data
 from cadiax.core.event_bus import get_event_bus_snapshot
 from cadiax.core.execution_history import load_execution_events
 from cadiax.core.execution_metrics import get_execution_metrics_snapshot
-from cadiax.core.job_runtime import get_job_queue_summary
+from cadiax.core.job_runtime import get_job_queue_summary, process_job_queue
+from cadiax.core.path_layout import get_project_root
 from cadiax.core.path_layout import get_runtime_layout_snapshot
 from cadiax.core.setup_wizard import persist_env_updates
 from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
@@ -99,6 +100,8 @@ class CadiaxTuiApp(App[None]):
         ("5", "go_services", "Services"),
         ("u", "go_worker", "Worker"),
         ("y", "go_scheduler", "Scheduler"),
+        ("x", "run_worker_once", "Run Worker Once"),
+        ("z", "run_scheduler_once", "Run Scheduler Once"),
         ("o", "go_startup", "Startup"),
         ("6", "go_setup", "Setup"),
         ("7", "go_jobs", "Jobs"),
@@ -263,6 +266,28 @@ class CadiaxTuiApp(App[None]):
         )
         self._reload()
         self._render_screen(self.current_screen_name)
+
+    def action_run_worker_once(self) -> None:
+        if self.current_screen_name != "worker":
+            return
+        result = run_worker_once_for_tui()
+        self.notify(
+            f"Worker run complete: processed={result.get('processed', 0)} status={result.get('status', '-')}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("worker")
+
+    def action_run_scheduler_once(self) -> None:
+        if self.current_screen_name != "scheduler":
+            return
+        result = run_scheduler_once_for_tui()
+        self.notify(
+            f"Scheduler run complete: processed={result.get('processed', 0)} status={result.get('status', '-')}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("scheduler")
 
     def action_run_bootstrap_foundation(self) -> None:
         if self.current_screen_name != "bootstrap":
@@ -901,8 +926,8 @@ def build_worker_view(data: dict[str, Any]) -> str:
         f"last_trace_id      : {runtime.get('last_worker_trace_id', '-') or '-'}",
         "",
         "[Operator Note]",
-        "- layar ini masih read-only",
-        "- action worker loop akan ditambahkan pada wave berikutnya",
+        "- x                       : jalankan one-shot worker pass",
+        "- action ini menjalankan max 1 job secara aman",
     ]
     return "\n".join(lines)
 
@@ -922,8 +947,8 @@ def build_scheduler_view(data: dict[str, Any]) -> str:
         f"last_heartbeat_mode : {scheduler.get('last_heartbeat_mode', '-') or '-'}",
         "",
         "[Operator Note]",
-        "- layar ini masih read-only",
-        "- action scheduler loop akan ditambahkan pada wave berikutnya",
+        "- z                       : jalankan one-shot scheduler cycle",
+        "- action ini menjalankan 1 cycle dengan max 1 job",
     ]
     return "\n".join(lines)
 
@@ -1189,6 +1214,63 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0, draft: dict[s
 def run_tui(*, initial_screen: str = "home") -> None:
     """Start the Cadiax Textual app."""
     CadiaxTuiApp(initial_screen=initial_screen).run()
+
+
+def run_worker_once_for_tui(*, skills_dir: Path | None = None) -> dict[str, Any]:
+    """Run one conservative worker pass for the operator TUI."""
+    from cadiax.core.assistant import Assistant
+
+    resolved_skills_dir = _resolve_default_skills_dir(skills_dir)
+    assistant = Assistant(skills_dir=resolved_skills_dir)
+    assistant.initialize()
+    result = process_job_queue(
+        assistant,
+        max_jobs=1,
+        enqueue_first=True,
+        until_idle=False,
+        source="tui-worker",
+        cycle_label="tui-worker-once",
+    )
+    return {
+        "processed": int(result.get("processed", 0) or 0),
+        "status": "idle" if result.get("idle") else "active",
+        "trace_id": str(result.get("trace_id") or ""),
+    }
+
+
+def run_scheduler_once_for_tui(*, skills_dir: Path | None = None) -> dict[str, Any]:
+    """Run one conservative scheduler cycle for the operator TUI."""
+    from cadiax.core.assistant import Assistant
+    from cadiax.core.scheduler_runtime import run_scheduler
+
+    resolved_skills_dir = _resolve_default_skills_dir(skills_dir)
+    assistant = Assistant(skills_dir=resolved_skills_dir)
+    assistant.initialize()
+    result = run_scheduler(
+        assistant,
+        cycles=1,
+        interval_seconds=0.0,
+        max_jobs_per_cycle=1,
+        enqueue_first=True,
+        until_idle=False,
+        source="tui-scheduler",
+    )
+    return {
+        "processed": int(result.get("processed", 0) or 0),
+        "status": str(result.get("status") or ""),
+        "trace_id": str(result.get("trace_id") or ""),
+    }
+
+
+def _resolve_default_skills_dir(skills_dir: Path | None = None) -> Path:
+    """Resolve the default skills directory for operator-triggered actions."""
+    if skills_dir is not None:
+        return skills_dir.resolve()
+    candidate = Path("skills").resolve()
+    if candidate.exists():
+        return candidate
+    fallback = (get_project_root() / "skills").resolve()
+    return fallback
 
 
 class SetupInputScreen(ModalScreen[tuple[str, str] | None]):
