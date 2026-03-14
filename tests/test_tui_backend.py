@@ -15,6 +15,7 @@ from cadiax.tui.app import (
     build_channels_view,
     build_doctor_view,
     build_events_view,
+    build_heartbeat_view,
     build_history_view,
     build_home_view,
     build_jobs_view,
@@ -22,6 +23,7 @@ from cadiax.tui.app import (
     build_notify_view,
     build_paths_view,
     build_privacy_view,
+    build_proactive_view,
     build_startup_view,
     build_scheduler_view,
     build_services_view,
@@ -214,7 +216,27 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
             "outbound_count": 1,
             "latest_message": {"phone_number": "+628123456789", "display_name": "Budi"},
         },
-        "personality": {"preference_profile": {"preferred_channels": ["telegram", "email"]}},
+        "personality": {
+            "preference_profile": {"preferred_channels": ["telegram", "email"]},
+            "heartbeat_guide_preview": "Pulse menjaga konteks operasi.",
+            "heartbeat": {
+                "last_mode": "steady",
+                "last_summary": "Runtime idle; heartbeat menjaga konteks dan kesiapan.",
+                "last_pulse_at": "2026-03-14T00:00:00+00:00",
+                "last_trigger": "scheduler",
+                "last_trace_id": "hb-1",
+                "proactive_insight_count": 2,
+            },
+            "proactive_insight_count": 2,
+            "proactive_insights_generated": 3,
+            "proactive_insights": [
+                {
+                    "confidence": "high",
+                    "agent_scope": "finance-agent",
+                    "summary": "Review outstanding notification backlog.",
+                }
+            ],
+        },
     }
 
     assert "preferred_channels: telegram, email" in build_channels_view(payload)
@@ -224,6 +246,10 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "missing api key" in build_doctor_view(payload)
     assert "quiet_hours_enabled" in build_privacy_view(payload)
     assert "finance-agent" in build_privacy_view(payload)
+    assert "last_mode" in build_heartbeat_view(payload)
+    assert "Pulse menjaga konteks operasi." in build_heartbeat_view(payload)
+    assert "insights_generated" in build_proactive_view(payload)
+    assert "Review outstanding notification backlog." in build_proactive_view(payload)
     assert "path_mode" in build_home_view(payload)
     assert "workspace_seeded_count" in build_bootstrap_view(payload)
     assert "seed active runtime docs" in build_bootstrap_view(payload)
@@ -265,10 +291,10 @@ def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
 
     monkeypatch.setattr("cadiax.cli.run_tui", fake_run_tui)
     runner = CliRunner()
-    result = runner.invoke(main, ["tui", "--screen", "agents"])
+    result = runner.invoke(main, ["tui", "--screen", "heartbeat"])
 
     assert result.exit_code == 0
-    assert called["screen"] == "agents"
+    assert called["screen"] == "heartbeat"
 
 
 def test_cli_setup_command_dispatches_setup_tui(monkeypatch) -> None:

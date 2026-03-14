@@ -35,6 +35,8 @@ SCREEN_OPTIONS: list[tuple[str, str]] = [
     ("paths", "Paths"),
     ("doctor", "Doctor"),
     ("privacy", "Privacy"),
+    ("heartbeat", "Heartbeat"),
+    ("proactive", "Proactive"),
     ("bootstrap", "Bootstrap"),
     ("agents", "Agents"),
     ("notify", "Notify"),
@@ -99,6 +101,8 @@ class CadiaxTuiApp(App[None]):
         ("2", "go_paths", "Paths"),
         ("3", "go_doctor", "Doctor"),
         ("v", "go_privacy", "Privacy"),
+        ("shift+h", "go_heartbeat", "Heartbeat"),
+        ("shift+p", "go_proactive", "Proactive"),
         ("j", "toggle_quiet_hours", "Toggle Quiet Hours"),
         ("l", "cycle_retention_days", "Cycle Retention"),
         ("f", "toggle_proactive_delivery", "Toggle Proactive"),
@@ -175,6 +179,12 @@ class CadiaxTuiApp(App[None]):
 
     def action_go_privacy(self) -> None:
         self._select_screen("privacy")
+
+    def action_go_heartbeat(self) -> None:
+        self._select_screen("heartbeat")
+
+    def action_go_proactive(self) -> None:
+        self._select_screen("proactive")
 
     def action_toggle_quiet_hours(self) -> None:
         if self.current_screen_name != "privacy":
@@ -637,6 +647,12 @@ class CadiaxTuiApp(App[None]):
         if screen_name == "privacy":
             content.update(build_privacy_view(self.status_data))
             return
+        if screen_name == "heartbeat":
+            content.update(build_heartbeat_view(self.status_data))
+            return
+        if screen_name == "proactive":
+            content.update(build_proactive_view(self.status_data))
+            return
         if screen_name == "bootstrap":
             content.update(build_bootstrap_view(self.status_data))
             return
@@ -900,6 +916,67 @@ def build_privacy_view(data: dict[str, Any]) -> str:
             "- l                       : cycle memory retention days",
             "- f                       : toggle proactive assistance",
             "- q                       : toggle consent requirement",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_heartbeat_view(data: dict[str, Any]) -> str:
+    personality = data.get("personality", {})
+    heartbeat = personality.get("heartbeat", {}) if isinstance(personality, dict) else {}
+    guide_preview = personality.get("heartbeat_guide_preview", "-") if isinstance(personality, dict) else "-"
+    lines = [
+        "Heartbeat",
+        "",
+        "[State]",
+        f"last_mode                 : {heartbeat.get('last_mode', '-') or '-'}",
+        f"last_summary              : {heartbeat.get('last_summary', '-') or '-'}",
+        f"last_pulse_at             : {heartbeat.get('last_pulse_at', '-') or '-'}",
+        f"last_trigger              : {heartbeat.get('last_trigger', '-') or '-'}",
+        f"last_trace_id             : {heartbeat.get('last_trace_id', '-') or '-'}",
+        f"proactive_insight_count   : {heartbeat.get('proactive_insight_count', 0)}",
+        "",
+        "[Guide Preview]",
+        str(guide_preview or "-"),
+        "",
+        "[Operator Note]",
+        "- heartbeat state is durable and shared with scheduler/status surfaces",
+        "- mutation actions will be added in a later wave",
+    ]
+    return "\n".join(lines)
+
+
+def build_proactive_view(data: dict[str, Any]) -> str:
+    personality = data.get("personality", {})
+    controls = data.get("privacy_controls", {})
+    insights = personality.get("proactive_insights", []) if isinstance(personality, dict) else []
+    lines = [
+        "Proactive Assistance",
+        "",
+        "[Summary]",
+        f"insight_count             : {personality.get('proactive_insight_count', 0)}",
+        f"insights_generated        : {personality.get('proactive_insights_generated', 0)}",
+        f"proactive_enabled         : {'yes' if controls.get('proactive_assistance_enabled') else 'no'}",
+        f"consent_required          : {'yes' if controls.get('consent_required_for_proactive') else 'no'}",
+        f"memory_retention_days     : {controls.get('memory_retention_days', '-')}",
+        "",
+        "[Insights]",
+    ]
+    if insights:
+        for item in insights[:5]:
+            lines.append(
+                f"- {item.get('confidence', '-') or '-'} | {item.get('agent_scope', '-') or '-'} | "
+                f"{item.get('summary', '-') or '-'}"
+            )
+    else:
+        lines.append("- belum ada proactive insight")
+    lines.extend(
+        [
+            "",
+            "[Actions]",
+            "- f                       : toggle proactive assistance",
+            "- ctrl+q                  : toggle consent requirement",
+            "- l                       : cycle memory retention days",
         ]
     )
     return "\n".join(lines)

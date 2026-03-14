@@ -14,23 +14,25 @@ Backlog paling relevan setelah baseline TUI setup selesai.
 - [x] Bootstrap foundation action dari TUI
 - [x] Agents view
 - [x] Notify view
+- [x] Heartbeat view
+- [x] Proactive view
+- [x] Channel test dispatch untuk email/whatsapp
+- [x] Admin API dan conversation API probe dari TUI
 
 ## Berikutnya
 
 - [ ] Service parity lebih dalam:
   - [ ] show target detail yang lebih kaya
   - [x] action dasar untuk `worker` dan `scheduler`
-  - [ ] action dasar untuk `admin-api` dan `conversation-api`
+  - [x] action dasar untuk `admin-api` dan `conversation-api`
 ## Setelah Itu
 
 - [ ] Privacy mutasi aman:
-  - [ ] quiet hours edit
-  - [ ] proactive consent/retention edit
+  - [x] quiet hours edit
+  - [x] proactive consent/retention edit
 - [ ] Bootstrap advanced action:
   - [ ] include optional templates
   - [ ] force overwrite mode
 - [ ] External audit view
 - [ ] Skills audit/taxonomy view
-- [ ] Heartbeat view
-- [ ] Proactive view
 - [ ] Channel parity lebih dalam untuk email/whatsapp
