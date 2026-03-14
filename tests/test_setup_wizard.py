@@ -74,6 +74,10 @@ def _configure_temp_agent_state(tmp_path, monkeypatch):
         "LMSTUDIO_MODEL",
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
+        "CADIAX_ADMIN_TOKEN",
+        "OTONOMASSIST_ADMIN_TOKEN",
+        "CADIAX_CONVERSATION_TOKEN",
+        "OTONOMASSIST_CONVERSATION_TOKEN",
         "OTONOMASSIST_EXTERNAL_SKILL_POLICY",
     ):
         monkeypatch.delenv(name, raising=False)
