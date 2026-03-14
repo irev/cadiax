@@ -308,6 +308,8 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "path_mode" in build_home_view(payload)
     assert "workspace_seeded_count" in build_bootstrap_view(payload)
     assert "seed active runtime docs" in build_bootstrap_view(payload)
+    assert "seed full template set" in build_bootstrap_view(payload)
+    assert "force overwrite active runtime docs" in build_bootstrap_view(payload)
     assert "trust_policy" in build_external_view(payload)
     assert "finance-pack" in build_external_view(payload)
     assert "scope_count" in build_agents_view(payload)
@@ -584,6 +586,32 @@ def test_tui_bootstrap_action_seeds_runtime_docs(monkeypatch) -> None:
     app.action_run_bootstrap_foundation()
 
     assert any("Foundation bootstrap written=6 existing=0" in item for item in notifications)
+
+
+def test_tui_bootstrap_advanced_actions_seed_optional_and_force(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="bootstrap")
+    app.status_data = {"bootstrap": {"workspace_seeded_count": 0}}
+    app.current_screen_name = "bootstrap"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    calls: list[dict[str, object]] = []
+
+    def fake_ensure_workspace_skeleton(**kwargs):
+        calls.append(kwargs)
+        return {"written_count": 13 if not kwargs.get("runtime_docs_only", True) else 6, "existing_count": 0}
+
+    monkeypatch.setattr("cadiax.tui.app.ensure_workspace_skeleton", fake_ensure_workspace_skeleton)
+
+    app.action_run_bootstrap_optional()
+    app.action_run_bootstrap_force()
+
+    assert {"force": False, "only_if_workspace_empty": False, "runtime_docs_only": False} in calls
+    assert {"force": True, "only_if_workspace_empty": False, "runtime_docs_only": True} in calls
+    assert any("Foundation optional bootstrap written=13 existing=0" in item for item in notifications)
+    assert any("Foundation force bootstrap written=6 existing=0" in item for item in notifications)
 
 
 def test_tui_setup_actions_edit_and_save_provider_and_workspace(tmp_path, monkeypatch) -> None:

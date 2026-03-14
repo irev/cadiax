@@ -141,6 +141,8 @@ class CadiaxTuiApp(App[None]):
         ("i", "input_setup_field", "Input Setup Field"),
         ("s", "save_setup_step", "Save Setup Step"),
         ("b", "run_bootstrap_foundation", "Bootstrap Foundation"),
+        ("ctrl+b", "run_bootstrap_optional", "Bootstrap Optional"),
+        ("shift+b", "run_bootstrap_force", "Bootstrap Force"),
         ("w", "write_service_wrappers", "Write Service Wrappers"),
         ("r", "refresh_data", "Refresh"),
     ]
@@ -462,6 +464,38 @@ class CadiaxTuiApp(App[None]):
         )
         self.notify(
             "Foundation bootstrap written="
+            f"{result.get('written_count', 0)} existing={result.get('existing_count', 0)}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("bootstrap")
+
+    def action_run_bootstrap_optional(self) -> None:
+        if self.current_screen_name != "bootstrap":
+            return
+        result = ensure_workspace_skeleton(
+            force=False,
+            only_if_workspace_empty=False,
+            runtime_docs_only=False,
+        )
+        self.notify(
+            "Foundation optional bootstrap written="
+            f"{result.get('written_count', 0)} existing={result.get('existing_count', 0)}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("bootstrap")
+
+    def action_run_bootstrap_force(self) -> None:
+        if self.current_screen_name != "bootstrap":
+            return
+        result = ensure_workspace_skeleton(
+            force=True,
+            only_if_workspace_empty=False,
+            runtime_docs_only=True,
+        )
+        self.notify(
+            "Foundation force bootstrap written="
             f"{result.get('written_count', 0)} existing={result.get('existing_count', 0)}",
             severity="information",
         )
@@ -1031,8 +1065,10 @@ def build_bootstrap_view(data: dict[str, Any]) -> str:
             f"written_count             : {len(manifest.get('written', [])) if isinstance(manifest.get('written'), list) else 0}",
             f"existing_count            : {len(manifest.get('existing', [])) if isinstance(manifest.get('existing'), list) else 0}",
             "",
-            "[Action]",
+            "[Actions]",
             "- b                       : seed active runtime docs into workspace root",
+            "- ctrl+b                  : seed full template set including optional docs",
+            "- B                       : force overwrite active runtime docs",
         ]
     )
     return "\n".join(lines)
