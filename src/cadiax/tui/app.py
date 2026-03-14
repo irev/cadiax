@@ -699,7 +699,8 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0, draft: dict[s
                 "[Current Boundary]",
                 "- TUI sudah punya wizard step-by-step view",
                 "- mutasi cepat yang sudah ada: toggle Telegram dan dashboard",
-                "- `cadiax setup` tetap jadi jalur write penuh sampai phase T2",
+                "- `cadiax setup` sekarang membuka TUI setup sebagai jalur konfigurasi utama",
+                "- `cadiax setup --classic` tetap tersedia untuk wizard prompt lama",
             ]
         )
     return "\n".join(lines)

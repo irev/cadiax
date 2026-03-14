@@ -194,7 +194,7 @@ def test_cli_setup_wizard_persists_env_and_encrypted_secrets(tmp_path, monkeypat
     )
 
     runner = CliRunner()
-    result = runner.invoke(main, ["setup"])
+    result = runner.invoke(main, ["setup", "--classic"])
 
     assert result.exit_code == 0
     assert "Setup selesai." in result.output
@@ -253,7 +253,7 @@ def test_cli_setup_wizard_defaults_to_native_config_file(tmp_path, monkeypatch):
     monkeypatch.setattr(setup_wizard.click, "confirm", lambda *args, **kwargs: next(confirm_answers))
 
     runner = CliRunner()
-    result = runner.invoke(main, ["setup"])
+    result = runner.invoke(main, ["setup", "--classic"])
 
     assert result.exit_code == 0
     assert f"- file env: {env_file}" in result.output
@@ -283,7 +283,7 @@ def test_cli_setup_wizard_marks_telegram_disabled_when_skipped(tmp_path, monkeyp
     monkeypatch.setattr(setup_wizard.click, "confirm", lambda *args, **kwargs: next(confirm_answers))
 
     runner = CliRunner()
-    result = runner.invoke(main, ["setup"])
+    result = runner.invoke(main, ["setup", "--classic"])
 
     assert result.exit_code == 0
     assert "TELEGRAM_ENABLED=false" in env_file.read_text(encoding="utf-8")
@@ -311,7 +311,7 @@ def test_cli_setup_wizard_persists_dashboard_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(setup_wizard.click, "confirm", lambda *args, **kwargs: next(confirm_answers))
 
     runner = CliRunner()
-    result = runner.invoke(main, ["setup"])
+    result = runner.invoke(main, ["setup", "--classic"])
 
     assert result.exit_code == 0
     assert "- dashboard_enabled: true" in result.output
@@ -2849,3 +2849,4 @@ def test_assistant_and_cli_expose_skill_layer_audit(tmp_path, monkeypatch):
 
     assert cli_result.exit_code == 0
     assert "Skill Layer Audit" in cli_result.output
+

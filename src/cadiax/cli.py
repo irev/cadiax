@@ -79,7 +79,7 @@ def _run_interactive(service: ConversationService) -> None:
     click.echo(f"Cadiax v{__version__}")
     click.echo("Type 'help' for available commands, 'exit' to quit.")
     if should_recommend_setup():
-        click.echo("Konfigurasi awal belum lengkap. Jalankan `cadiax setup` untuk wizard interaktif.")
+        click.echo("Konfigurasi awal belum lengkap. Jalankan `cadiax setup` untuk membuka TUI setup.")
     click.echo("")
 
     while True:
@@ -122,7 +122,7 @@ def _run_interactive(service: ConversationService) -> None:
 @click.option(
     "--setup",
     is_flag=True,
-    help="Compatibility alias for `cadiax setup`",
+    help="Compatibility alias for `cadiax setup` (opens the setup TUI)",
 )
 @click.option(
     "--doctor",
@@ -143,7 +143,7 @@ def main(
     refresh_runtime_paths()
     refresh_secure_storage_paths()
     if setup:
-        click.echo(run_setup_wizard())
+        run_tui(initial_screen="setup")
         return
     if doctor:
         click.echo(get_config_status_report())
@@ -162,8 +162,18 @@ def main(
 
 
 @main.command("setup")
-def setup_command() -> None:
-    """Run interactive first-run/reconfigure setup wizard."""
+@click.option("--classic", is_flag=True, help="Run the classic prompt-based setup wizard instead of the TUI.")
+def setup_command(classic: bool) -> None:
+    """Open the setup control surface (TUI by default)."""
+    if classic:
+        click.echo(run_setup_wizard())
+        return
+    run_tui(initial_screen="setup")
+
+
+@main.command("setup-wizard", hidden=True)
+def setup_wizard_command() -> None:
+    """Run the classic prompt-based setup wizard."""
     click.echo(run_setup_wizard())
 
 

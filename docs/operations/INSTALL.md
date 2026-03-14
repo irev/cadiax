@@ -169,13 +169,19 @@ Untuk Windows PowerShell, Anda juga bisa menonaktifkan profile shim:
   - `TOOLS.md`
   - `HEARTBEAT.md`
 - opsional menjalankan `cadiax dashboard install`
-- menjalankan `cadiax setup` kecuali diminta skip
+- menjalankan `cadiax setup` (TUI setup) kecuali diminta skip
 
-Saat `cadiax setup` dijalankan dari installer, wizard awal juga akan menawarkan konfigurasi monitoring dashboard:
+Saat `cadiax setup` dijalankan dari installer, TUI setup awal juga akan menawarkan konfigurasi monitoring dashboard:
 - aktif atau tidak
 - access mode `local` atau `public`
 - port dashboard
 - `admin API URL` yang dipakai dashboard
+
+Jika Anda membutuhkan wizard prompt lama untuk reconfigure non-TUI, gunakan:
+
+```bash
+cadiax setup --classic
+```
 
 Dokumen bootstrap aktif selalu disalin ke `workspace root`, bukan ke `.cadiax/`.
 Setelah setup selesai, dokumen inilah yang benar-benar dibaca Cadiax untuk startup context, identity, soul, scope, dan heartbeat behavior.

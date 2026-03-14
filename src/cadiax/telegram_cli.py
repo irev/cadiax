@@ -27,7 +27,7 @@ def run_telegram_transport(skills_dir: Path) -> None:
     """Run Telegram long polling for Cadiax."""
     if not telegram_is_enabled():
         raise click.ClickException(
-            "Telegram sedang nonaktif. Aktifkan lewat `cadiax setup` atau set TELEGRAM_ENABLED=true."
+            "Telegram sedang nonaktif. Aktifkan lewat `cadiax setup` (TUI) atau set TELEGRAM_ENABLED=true."
         )
     assistant = Assistant(skills_dir=skills_dir)
     assistant.initialize()

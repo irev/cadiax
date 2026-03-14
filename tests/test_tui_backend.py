@@ -84,6 +84,20 @@ def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
     assert called["screen"] == "services"
 
 
+def test_cli_setup_command_dispatches_setup_tui(monkeypatch) -> None:
+    called: dict[str, str] = {}
+
+    def fake_run_tui(*, initial_screen: str = "home") -> None:
+        called["screen"] = initial_screen
+
+    monkeypatch.setattr("cadiax.cli.run_tui", fake_run_tui)
+    runner = CliRunner()
+    result = runner.invoke(main, ["setup"])
+
+    assert result.exit_code == 0
+    assert called["screen"] == "setup"
+
+
 def test_tui_toggle_actions_update_dashboard_and_telegram(tmp_path, monkeypatch) -> None:
     env_file = tmp_path / "config.env"
     state_dir = tmp_path / ".cadiax"

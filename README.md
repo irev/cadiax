@@ -50,6 +50,9 @@ cadiax status
 cadiax paths
 ```
 
+`cadiax setup` sekarang membuka TUI setup sebagai jalur konfigurasi utama.
+Jika Anda membutuhkan wizard prompt lama, gunakan `cadiax setup --classic`.
+
 Gunakan `cadiax paths` untuk memeriksa mode runtime aktif:
 - `project mode`: saat Anda menjalankan Cadiax dari checkout repo/source
 - `user install mode`: saat Anda menjalankan Cadiax dari layout native OS hasil installer
@@ -82,7 +85,7 @@ Installer Cadiax akan:
     - state: `~/.local/state/cadiax/`
     - workspace: `~/cadiax/workspace/`
 - men-seed dokumen workspace aktif ke workspace root
-- menjalankan `cadiax setup` kecuali diminta skip
+- menjalankan `cadiax setup` (TUI setup) kecuali diminta skip
 - mendaftarkan shim user-level agar command `cadiax` lebih mudah dipakai
 
 ## Highlights
@@ -126,7 +129,7 @@ Cadiax sekarang sudah mencakup:
 - memory dan lessons yang dibaca ulang otomatis
 - planner, executor, dan runner untuk loop semi-otonom
 - penyimpanan kredensial lokal yang terpisah dari konteks belajar
-- setup wizard interaktif untuk first-run dan reconfigure
+- TUI setup interaktif untuk first-run dan reconfigure
 - doctor/status read-only untuk audit konfigurasi
 - structured result + universal formatter lintas skill inti
 - secret storage lintas-OS untuk menjaga service utama tetap portable
@@ -415,7 +418,7 @@ CLI utama sekarang mendukung subcommand resmi:
 - `cadiax external reject <name>`
 - `cadiax skills audit`
 
-`cadiax setup` menjalankan wizard konfigurasi interaktif untuk initial install atau reconfigure setelah install. Wizard ini meminta konfirmasi eksplisit untuk pilihan sensitif seperti provider, mode akses workspace, dan penyimpanan credential. Setup juga memastikan dokumen workspace aktif tetap tersedia pada `workspace root` yang dipilih user.
+`cadiax setup` membuka TUI konfigurasi interaktif untuk initial install atau reconfigure setelah install. TUI ini menjadi surface setup utama untuk provider, workspace, Telegram, dashboard, dan pemeriksaan runtime. Jika Anda tetap membutuhkan wizard prompt lama, gunakan `cadiax setup --classic`. Setup juga memastikan dokumen workspace aktif tetap tersedia pada `workspace root` yang dipilih user.
 
 `cadiax status` dan `cadiax doctor` menampilkan audit konfigurasi read-only: provider aktif, credential tersedia atau tidak, workspace guard, dan status Telegram. Report sekarang juga memberi level `healthy`, `warning`, atau `critical` agar hasil audit lebih cepat dibaca. Di dalam assistant, audit yang sama juga tersedia lewat command `doctor` atau `config status`.
 
