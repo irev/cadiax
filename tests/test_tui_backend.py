@@ -346,6 +346,30 @@ def test_tui_worker_and_scheduler_actions_run_one_shot(monkeypatch) -> None:
     assert any("Scheduler run complete: processed=1 status=idle" in item for item in notifications)
 
 
+def test_tui_service_probe_actions_report_admin_and_conversation(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="services")
+    app.status_data = {"dashboard": {"enabled": False}, "telegram": {"enabled": False}}
+    app.current_screen_name = "services"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+    monkeypatch.setattr(
+        "cadiax.tui.app.probe_admin_api_for_tui",
+        lambda: {"ok": True, "status_code": 200, "status": "ok"},
+    )
+    monkeypatch.setattr(
+        "cadiax.tui.app.probe_conversation_api_for_tui",
+        lambda: {"ok": False, "status_code": 401, "status": "http_error"},
+    )
+
+    app.action_probe_admin_api()
+    app.action_probe_conversation_api()
+
+    assert any("Admin API probe: 200 ok" in item for item in notifications)
+    assert any("Conversation API probe: 401 http_error" in item for item in notifications)
+
+
 def test_tui_bootstrap_action_seeds_runtime_docs(monkeypatch) -> None:
     app = CadiaxTuiApp(initial_screen="bootstrap")
     app.status_data = {"bootstrap": {"workspace_seeded_count": 0}}

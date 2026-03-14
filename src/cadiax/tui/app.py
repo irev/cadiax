@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from typing import Any
 
 from textual.app import App, ComposeResult
@@ -98,6 +101,8 @@ class CadiaxTuiApp(App[None]):
         ("m", "go_notify", "Notify"),
         ("4", "go_channels", "Channels"),
         ("5", "go_services", "Services"),
+        ("h", "probe_admin_api", "Probe Admin API"),
+        ("c", "probe_conversation_api", "Probe Conversation API"),
         ("u", "go_worker", "Worker"),
         ("y", "go_scheduler", "Scheduler"),
         ("x", "run_worker_once", "Run Worker Once"),
@@ -266,6 +271,28 @@ class CadiaxTuiApp(App[None]):
         )
         self._reload()
         self._render_screen(self.current_screen_name)
+
+    def action_probe_admin_api(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        result = probe_admin_api_for_tui()
+        self.notify(
+            f"Admin API probe: {result.get('status_code', 'error')} {result.get('status', '-')}",
+            severity="information" if result.get("ok") else "warning",
+        )
+        self._reload()
+        self._render_screen("services")
+
+    def action_probe_conversation_api(self) -> None:
+        if self.current_screen_name != "services":
+            return
+        result = probe_conversation_api_for_tui()
+        self.notify(
+            f"Conversation API probe: {result.get('status_code', 'error')} {result.get('status', '-')}",
+            severity="information" if result.get("ok") else "warning",
+        )
+        self._reload()
+        self._render_screen("services")
 
     def action_run_worker_once(self) -> None:
         if self.current_screen_name != "worker":
@@ -905,7 +932,13 @@ def build_services_view(data: dict[str, Any]) -> str:
             f"- dashboard_enabled       : {'yes' if dashboard.get('enabled') else 'no'}",
             "- note                    : Telegram ikut service `cadiax`; bukan service utama terpisah",
             "",
+            "[Local Health Probes]",
+            "- admin-api               : http://127.0.0.1:8787/health",
+            "- conversation-api        : http://127.0.0.1:8788/health",
+            "",
             "[Actions]",
+            "- h                       : probe admin API /health",
+            "- c                       : probe conversation API /health",
             "- d                       : toggle dashboard enable/disable",
             "- w                       : write service wrapper artifacts for `cadiax`",
         ]
@@ -1260,6 +1293,52 @@ def run_scheduler_once_for_tui(*, skills_dir: Path | None = None) -> dict[str, A
         "status": str(result.get("status") or ""),
         "trace_id": str(result.get("trace_id") or ""),
     }
+
+
+def probe_admin_api_for_tui() -> dict[str, Any]:
+    """Probe the local admin API health endpoint."""
+    token = os.getenv("OTONOMASSIST_ADMIN_TOKEN", "").strip()
+    headers = {"X-Cadiax-Token": token} if token else None
+    return _probe_json_endpoint("http://127.0.0.1:8787/health", headers=headers)
+
+
+def probe_conversation_api_for_tui() -> dict[str, Any]:
+    """Probe the local conversation API health endpoint."""
+    token = os.getenv("OTONOMASSIST_CONVERSATION_TOKEN", "").strip()
+    headers = {"X-Cadiax-Conversation-Token": token} if token else None
+    return _probe_json_endpoint("http://127.0.0.1:8788/health", headers=headers)
+
+
+def _probe_json_endpoint(url: str, *, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    """Perform a small local JSON health probe for operator use."""
+    request = Request(url, headers=headers or {}, method="GET")
+    try:
+        with urlopen(request, timeout=2.0) as response:
+            status_code = int(response.status)
+            body = response.read().decode("utf-8", errors="replace")
+            return {
+                "ok": 200 <= status_code < 300,
+                "status_code": status_code,
+                "status": "ok" if 200 <= status_code < 300 else "error",
+                "body": body,
+                "url": url,
+            }
+    except HTTPError as exc:
+        return {
+            "ok": False,
+            "status_code": int(exc.code),
+            "status": "http_error",
+            "body": exc.read().decode("utf-8", errors="replace"),
+            "url": url,
+        }
+    except URLError as exc:
+        return {
+            "ok": False,
+            "status_code": 0,
+            "status": "unreachable",
+            "body": str(exc.reason),
+            "url": url,
+        }
 
 
 def _resolve_default_skills_dir(skills_dir: Path | None = None) -> Path:
