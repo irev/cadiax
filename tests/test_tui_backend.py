@@ -202,12 +202,23 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
             },
         },
         "issues": ["missing api key"],
-        "email": {"message_count": 1, "latest_message": {"to_address": "ops@example.com"}},
-        "whatsapp": {"message_count": 2, "latest_message": {"phone_number": "+628123456789"}},
+        "email": {
+            "message_count": 1,
+            "inbound_count": 0,
+            "outbound_count": 1,
+            "latest_message": {"to_address": "ops@example.com"},
+        },
+        "whatsapp": {
+            "message_count": 2,
+            "inbound_count": 1,
+            "outbound_count": 1,
+            "latest_message": {"phone_number": "+628123456789", "display_name": "Budi"},
+        },
         "personality": {"preference_profile": {"preferred_channels": ["telegram", "email"]}},
     }
 
     assert "preferred_channels: telegram, email" in build_channels_view(payload)
+    assert "ctrl+e" in build_channels_view(payload)
     assert "global_setup     : none" in build_channels_view(payload)
     assert "command_on_path" in build_paths_view(payload)
     assert "missing api key" in build_doctor_view(payload)
@@ -303,6 +314,40 @@ def test_tui_toggle_actions_update_dashboard_and_telegram(tmp_path, monkeypatch)
     assert load_dashboard_state()["enabled"] is True
     assert any("Telegram enabled" in item for item in notifications)
     assert any("Dashboard enabled" in item for item in notifications)
+
+
+def test_tui_channel_actions_dispatch_test_email_and_whatsapp(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="channels")
+    app.status_data = {
+        "email": {
+            "latest_message": {"to_address": "ops@example.com"},
+        },
+        "whatsapp": {
+            "latest_message": {"phone_number": "+628123456789", "display_name": "Budi"},
+        },
+    }
+    app.current_screen_name = "channels"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    class FakeEmailService:
+        def send(self, **kwargs):
+            return {"to_address": kwargs["to_address"]}
+
+    class FakeWhatsAppService:
+        def send(self, **kwargs):
+            return {"phone_number": kwargs["phone_number"]}
+
+    monkeypatch.setattr("cadiax.tui.app.EmailInterfaceService", FakeEmailService)
+    monkeypatch.setattr("cadiax.tui.app.WhatsAppInterfaceService", FakeWhatsAppService)
+
+    app.action_send_test_email()
+    app.action_send_test_whatsapp()
+
+    assert any("Email test queued to ops@example.com" in item for item in notifications)
+    assert any("WhatsApp test queued to +628123456789" in item for item in notifications)
 
 
 def test_tui_service_action_writes_wrappers(monkeypatch) -> None:

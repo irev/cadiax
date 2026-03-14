@@ -22,6 +22,8 @@ from cadiax.core.path_layout import get_project_root
 from cadiax.core.path_layout import get_runtime_layout_snapshot
 from cadiax.core.setup_wizard import persist_env_updates
 from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
+from cadiax.interfaces.email import EmailInterfaceService
+from cadiax.interfaces.whatsapp import WhatsAppInterfaceService
 from cadiax.platform import get_service_runtime_info, get_service_wrapper_output_dir, write_service_wrapper_artifacts
 from cadiax.platform.dashboard_runtime import disable_dashboard, enable_dashboard
 from cadiax.services.personality.startup_document_service import StartupDocumentService
@@ -105,6 +107,8 @@ class CadiaxTuiApp(App[None]):
         ("g", "go_agents", "Agents"),
         ("m", "go_notify", "Notify"),
         ("4", "go_channels", "Channels"),
+        ("ctrl+e", "send_test_email", "Send Test Email"),
+        ("ctrl+w", "send_test_whatsapp", "Send Test WhatsApp"),
         ("5", "go_services", "Services"),
         ("h", "probe_admin_api", "Probe Admin API"),
         ("c", "probe_conversation_api", "Probe Conversation API"),
@@ -235,6 +239,43 @@ class CadiaxTuiApp(App[None]):
 
     def action_go_channels(self) -> None:
         self._select_screen("channels")
+
+    def action_send_test_email(self) -> None:
+        if self.current_screen_name != "channels":
+            return
+        latest = self.status_data.get("email", {}).get("latest_message", {})
+        target = str(latest.get("to_address") or "").strip() if isinstance(latest, dict) else ""
+        if not target:
+            self.notify("Belum ada target email terakhir untuk test dispatch", severity="warning")
+            return
+        payload = EmailInterfaceService().send(
+            to_address=target,
+            subject="Cadiax TUI Test",
+            body="Test dispatch from Cadiax TUI",
+            metadata={"source": "tui", "test_dispatch": True},
+        )
+        self.notify(f"Email test queued to {payload.get('to_address', '-')}", severity="information")
+        self._reload()
+        self._render_screen("channels")
+
+    def action_send_test_whatsapp(self) -> None:
+        if self.current_screen_name != "channels":
+            return
+        latest = self.status_data.get("whatsapp", {}).get("latest_message", {})
+        target = str(latest.get("phone_number") or "").strip() if isinstance(latest, dict) else ""
+        display_name = str(latest.get("display_name") or "").strip() if isinstance(latest, dict) else ""
+        if not target:
+            self.notify("Belum ada target WhatsApp terakhir untuk test dispatch", severity="warning")
+            return
+        payload = WhatsAppInterfaceService().send(
+            phone_number=target,
+            display_name=display_name,
+            body="Test dispatch from Cadiax TUI",
+            metadata={"source": "tui", "test_dispatch": True},
+        )
+        self.notify(f"WhatsApp test queued to {payload.get('phone_number', '-')}", severity="information")
+        self._reload()
+        self._render_screen("channels")
 
     def action_go_services(self) -> None:
         self._select_screen("services")
@@ -763,16 +804,24 @@ def build_channels_view(data: dict[str, Any]) -> str:
         "",
         "[Email]",
         f"message_count    : {email.get('message_count', 0)}",
+        f"inbound_count    : {email.get('inbound_count', 0)}",
+        f"outbound_count   : {email.get('outbound_count', 0)}",
         f"latest_target    : {((email.get('latest_message') or {}).get('to_address', '-') if isinstance(email.get('latest_message'), dict) else '-')}",
         "global_setup     : none (configured per dispatch/API use)",
         "",
         "[WhatsApp]",
         f"message_count    : {whatsapp.get('message_count', 0)}",
+        f"inbound_count    : {whatsapp.get('inbound_count', 0)}",
+        f"outbound_count   : {whatsapp.get('outbound_count', 0)}",
         f"latest_target    : {((whatsapp.get('latest_message') or {}).get('phone_number', '-') if isinstance(whatsapp.get('latest_message'), dict) else '-')}",
         "global_setup     : none (configured per dispatch/API use)",
         "",
         "[Preference]",
         f"preferred_channels: {', '.join(preferred_channels) if preferred_channels else '-'}",
+        "",
+        "[Actions]",
+        "- ctrl+e         : send test email to latest known target",
+        "- ctrl+w         : send test WhatsApp to latest known target",
     ]
     return "\n".join(lines)
 
