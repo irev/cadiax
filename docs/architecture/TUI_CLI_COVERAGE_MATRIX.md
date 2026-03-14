@@ -11,8 +11,8 @@ Status yang dipakai:
 
 ## Ringkasan
 
-- `covered`: 14
-- `partial`: 9
+- `covered`: 16
+- `partial`: 7
 - `missing`: 5
 - `out-of-scope`: 2
 
@@ -39,10 +39,10 @@ Status yang dipakai:
 | `heartbeat` | partial | terlihat lewat doctor/status | belum ada layar heartbeat khusus |
 | `proactive` | partial | terlihat lewat doctor/status | belum ada layar proactive khusus |
 | `privacy` | covered | layar `Privacy` | redaction, quiet hours, retention, scoped controls sudah bisa diinspeksi |
-| `notify` | missing | belum ada layar khusus | perlu action/operator notification surface |
+| `notify` | covered | layar `Notify` | snapshot history, by-channel, by-scope, latest notification sudah ada |
 | `email` | partial | layar `Channels` | baru snapshot status; belum ada global config form atau action |
 | `whatsapp` | partial | layar `Channels` | baru snapshot status; belum ada global config form atau action |
-| `agents` | partial | tercermin via setup/docs boundary | belum ada layar scope registry khusus |
+| `agents` | covered | layar `Agents` | scope registry inspection dari `AGENTS.md` sudah ada |
 | `startup` | covered | layar `Startup` | startup document inspection sudah ada |
 | `bootstrap` | covered | layar `Bootstrap` | workspace bootstrap inspection dan action seed runtime docs sudah ada |
 | `external` | missing | belum ada layar khusus | perlu audit/approval surface |

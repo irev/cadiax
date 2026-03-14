@@ -12,6 +12,8 @@ Backlog paling relevan setelah baseline TUI setup selesai.
 - [x] Privacy inspection view
 - [x] Bootstrap inspection view
 - [x] Bootstrap foundation action dari TUI
+- [x] Agents view
+- [x] Notify view
 
 ## Berikutnya
 
@@ -19,9 +21,6 @@ Backlog paling relevan setelah baseline TUI setup selesai.
   - [ ] show target detail yang lebih kaya
   - [ ] action dasar untuk `worker` dan `scheduler`
   - [ ] action dasar untuk `admin-api` dan `conversation-api`
-- [ ] Agents view
-- [ ] Notify view
-
 ## Setelah Itu
 
 - [ ] Privacy mutasi aman:

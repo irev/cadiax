@@ -9,6 +9,7 @@ import cadiax.core.setup_wizard as setup_wizard
 from cadiax.cli import main
 from cadiax.platform.dashboard_runtime import load_dashboard_state
 from cadiax.tui.app import (
+    build_agents_view,
     build_bootstrap_view,
     CadiaxTuiApp,
     build_channels_view,
@@ -18,6 +19,7 @@ from cadiax.tui.app import (
     build_home_view,
     build_jobs_view,
     build_metrics_view,
+    build_notify_view,
     build_paths_view,
     build_privacy_view,
     build_startup_view,
@@ -175,6 +177,30 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
                 "existing": ["USER.md"],
             },
         },
+        "agent_scopes": {
+            "scope_count": 2,
+            "document_path": "C:/Users/test/Cadiax/workspace/AGENTS.md",
+            "scopes": [
+                {"scope": "default", "description": "Runtime utama", "allowed_roles": []},
+                {"scope": "finance-agent", "description": "Analisis keuangan", "allowed_roles": ["finance"]},
+            ],
+        },
+        "notifications": {
+            "notification_count": 2,
+            "total_notification_count": 3,
+            "delivery_batch_count": 1,
+            "filter_agent_scope": "",
+            "filter_roles": [],
+            "by_channel": {"email": 1, "internal": 1},
+            "by_scope": {"default": 1, "finance-agent": 1},
+            "latest_notification": {
+                "channel": "email",
+                "title": "Build Alert",
+                "target": "ops@example.com",
+                "status": "queued",
+                "agent_scope": "finance-agent",
+            },
+        },
         "issues": ["missing api key"],
         "email": {"message_count": 1, "latest_message": {"to_address": "ops@example.com"}},
         "whatsapp": {"message_count": 2, "latest_message": {"phone_number": "+628123456789"}},
@@ -190,6 +216,10 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "path_mode" in build_home_view(payload)
     assert "workspace_seeded_count" in build_bootstrap_view(payload)
     assert "seed active runtime docs" in build_bootstrap_view(payload)
+    assert "scope_count" in build_agents_view(payload)
+    assert "finance-agent" in build_agents_view(payload)
+    assert "delivery_batch_count" in build_notify_view(payload)
+    assert "Build Alert" in build_notify_view(payload)
     assert "telegram_in_main_service" in build_services_view(payload)
     assert "last_worker_run_at" in build_worker_view(payload)
     assert "last_heartbeat_mode" in build_scheduler_view(payload)
@@ -221,10 +251,10 @@ def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
 
     monkeypatch.setattr("cadiax.cli.run_tui", fake_run_tui)
     runner = CliRunner()
-    result = runner.invoke(main, ["tui", "--screen", "privacy"])
+    result = runner.invoke(main, ["tui", "--screen", "agents"])
 
     assert result.exit_code == 0
-    assert called["screen"] == "privacy"
+    assert called["screen"] == "agents"
 
 
 def test_cli_setup_command_dispatches_setup_tui(monkeypatch) -> None:

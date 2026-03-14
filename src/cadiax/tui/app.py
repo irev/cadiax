@@ -29,6 +29,8 @@ SCREEN_OPTIONS: list[tuple[str, str]] = [
     ("doctor", "Doctor"),
     ("privacy", "Privacy"),
     ("bootstrap", "Bootstrap"),
+    ("agents", "Agents"),
+    ("notify", "Notify"),
     ("channels", "Channels"),
     ("services", "Services"),
     ("worker", "Worker"),
@@ -91,6 +93,8 @@ class CadiaxTuiApp(App[None]):
         ("3", "go_doctor", "Doctor"),
         ("v", "go_privacy", "Privacy"),
         ("k", "go_bootstrap", "Bootstrap"),
+        ("g", "go_agents", "Agents"),
+        ("m", "go_notify", "Notify"),
         ("4", "go_channels", "Channels"),
         ("5", "go_services", "Services"),
         ("u", "go_worker", "Worker"),
@@ -154,6 +158,12 @@ class CadiaxTuiApp(App[None]):
 
     def action_go_bootstrap(self) -> None:
         self._select_screen("bootstrap")
+
+    def action_go_agents(self) -> None:
+        self._select_screen("agents")
+
+    def action_go_notify(self) -> None:
+        self._select_screen("notify")
 
     def action_go_channels(self) -> None:
         self._select_screen("channels")
@@ -462,6 +472,12 @@ class CadiaxTuiApp(App[None]):
         if screen_name == "bootstrap":
             content.update(build_bootstrap_view(self.status_data))
             return
+        if screen_name == "agents":
+            content.update(build_agents_view(self.status_data))
+            return
+        if screen_name == "notify":
+            content.update(build_notify_view(self.status_data))
+            return
         if screen_name == "channels":
             content.update(build_channels_view(self.status_data))
             return
@@ -737,6 +753,83 @@ def build_bootstrap_view(data: dict[str, Any]) -> str:
             "",
             "[Action]",
             "- b                       : seed active runtime docs into workspace root",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_agents_view(data: dict[str, Any]) -> str:
+    snapshot = data.get("agent_scopes", {})
+    scopes = snapshot.get("scopes", [])
+    lines = [
+        "Agent Scope Registry",
+        "",
+        "[Summary]",
+        f"scope_count               : {snapshot.get('scope_count', 0)}",
+        f"document_path             : {snapshot.get('document_path', '-')}",
+        "",
+        "[Scopes]",
+    ]
+    if scopes:
+        for item in scopes:
+            lines.append(
+                f"- {item.get('scope', '-')}: {item.get('description', '-') or '-'} "
+                f"(roles: {', '.join(item.get('allowed_roles', [])) or '-'})"
+            )
+    else:
+        lines.append("- belum ada scope yang terdaftar")
+    lines.extend(
+        [
+            "",
+            "[Operator Note]",
+            "- layar ini masih read-only",
+            "- mutasi scope tetap melalui workspace AGENTS.md untuk saat ini",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def build_notify_view(data: dict[str, Any]) -> str:
+    snapshot = data.get("notifications", {})
+    latest = snapshot.get("latest_notification", {})
+    by_channel = snapshot.get("by_channel", {})
+    by_scope = snapshot.get("by_scope", {})
+    lines = [
+        "Notifications",
+        "",
+        "[Summary]",
+        f"notification_count        : {snapshot.get('notification_count', 0)}",
+        f"total_notification_count  : {snapshot.get('total_notification_count', 0)}",
+        f"delivery_batch_count      : {snapshot.get('delivery_batch_count', 0)}",
+        f"filter_scope              : {snapshot.get('filter_agent_scope') or '-'}",
+        f"filter_roles              : {', '.join(snapshot.get('filter_roles', [])) or '-'}",
+        "",
+        "[Latest Notification]",
+        f"channel                   : {latest.get('channel', '-') or '-'}",
+        f"title                     : {latest.get('title', '-') or '-'}",
+        f"target                    : {latest.get('target', '-') or '-'}",
+        f"status                    : {latest.get('status', '-') or '-'}",
+        f"agent_scope               : {latest.get('agent_scope', '-') or '-'}",
+        "",
+        "[By Channel]",
+    ]
+    if by_channel:
+        for channel, count in sorted(by_channel.items()):
+            lines.append(f"- {channel}: {count}")
+    else:
+        lines.append("- none")
+    lines.extend(["", "[By Scope]"])
+    if by_scope:
+        for scope_name, count in sorted(by_scope.items()):
+            lines.append(f"- {scope_name}: {count}")
+    else:
+        lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "[Operator Note]",
+            "- layar ini masih read-only",
+            "- action dispatch notification dari TUI akan ditambahkan pada wave berikutnya",
         ]
     )
     return "\n".join(lines)

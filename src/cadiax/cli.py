@@ -226,6 +226,8 @@ def paths_command(as_json: bool) -> None:
             "doctor",
             "privacy",
             "bootstrap",
+            "agents",
+            "notify",
             "channels",
             "services",
             "worker",
