@@ -27,6 +27,8 @@ SCREEN_OPTIONS: list[tuple[str, str]] = [
     ("home", "Home"),
     ("paths", "Paths"),
     ("doctor", "Doctor"),
+    ("privacy", "Privacy"),
+    ("bootstrap", "Bootstrap"),
     ("channels", "Channels"),
     ("services", "Services"),
     ("worker", "Worker"),
@@ -87,6 +89,8 @@ class CadiaxTuiApp(App[None]):
         ("1", "go_home", "Home"),
         ("2", "go_paths", "Paths"),
         ("3", "go_doctor", "Doctor"),
+        ("v", "go_privacy", "Privacy"),
+        ("k", "go_bootstrap", "Bootstrap"),
         ("4", "go_channels", "Channels"),
         ("5", "go_services", "Services"),
         ("u", "go_worker", "Worker"),
@@ -105,6 +109,7 @@ class CadiaxTuiApp(App[None]):
         ("a", "alternate_setup_field", "Alternate Setup Field"),
         ("i", "input_setup_field", "Input Setup Field"),
         ("s", "save_setup_step", "Save Setup Step"),
+        ("b", "run_bootstrap_foundation", "Bootstrap Foundation"),
         ("w", "write_service_wrappers", "Write Service Wrappers"),
         ("r", "refresh_data", "Refresh"),
     ]
@@ -143,6 +148,12 @@ class CadiaxTuiApp(App[None]):
 
     def action_go_doctor(self) -> None:
         self._select_screen("doctor")
+
+    def action_go_privacy(self) -> None:
+        self._select_screen("privacy")
+
+    def action_go_bootstrap(self) -> None:
+        self._select_screen("bootstrap")
 
     def action_go_channels(self) -> None:
         self._select_screen("channels")
@@ -242,6 +253,22 @@ class CadiaxTuiApp(App[None]):
         )
         self._reload()
         self._render_screen(self.current_screen_name)
+
+    def action_run_bootstrap_foundation(self) -> None:
+        if self.current_screen_name != "bootstrap":
+            return
+        result = ensure_workspace_skeleton(
+            force=False,
+            only_if_workspace_empty=False,
+            runtime_docs_only=True,
+        )
+        self.notify(
+            "Foundation bootstrap written="
+            f"{result.get('written_count', 0)} existing={result.get('existing_count', 0)}",
+            severity="information",
+        )
+        self._reload()
+        self._render_screen("bootstrap")
 
     def action_cycle_setup_field(self) -> None:
         if self.current_screen_name != "setup":
@@ -429,6 +456,12 @@ class CadiaxTuiApp(App[None]):
         if screen_name == "paths":
             content.update(build_paths_view(self.status_data))
             return
+        if screen_name == "privacy":
+            content.update(build_privacy_view(self.status_data))
+            return
+        if screen_name == "bootstrap":
+            content.update(build_bootstrap_view(self.status_data))
+            return
         if screen_name == "channels":
             content.update(build_channels_view(self.status_data))
             return
@@ -613,6 +646,99 @@ def build_channels_view(data: dict[str, Any]) -> str:
         "[Preference]",
         f"preferred_channels: {', '.join(preferred_channels) if preferred_channels else '-'}",
     ]
+    return "\n".join(lines)
+
+
+def build_privacy_view(data: dict[str, Any]) -> str:
+    privacy = data.get("privacy", {})
+    controls = data.get("privacy_controls", {})
+    retention = controls.get("retention_candidates", {})
+    scoped_controls = controls.get("scoped_controls", {})
+    lines = [
+        "Privacy Controls",
+        "",
+        "[Redaction]",
+        f"status                    : {privacy.get('status', '-')}",
+        f"redaction_enabled         : {'yes' if privacy.get('redaction_enabled') else 'no'}",
+        f"replacement_label         : {privacy.get('replacement_label', '-')}",
+        f"pattern_count             : {privacy.get('pattern_count', 0)}",
+        "",
+        "[Governance]",
+        f"quiet_hours_enabled       : {'yes' if (controls.get('quiet_hours') or {}).get('enabled') else 'no'}",
+        f"quiet_hours_window        : {((controls.get('quiet_hours') or {}).get('start') or '-')} -> {((controls.get('quiet_hours') or {}).get('end') or '-')}",
+        f"quiet_hours_active        : {'yes' if controls.get('quiet_hours_active') else 'no'}",
+        f"proactive_enabled         : {'yes' if controls.get('proactive_assistance_enabled') else 'no'}",
+        f"consent_required          : {'yes' if controls.get('consent_required_for_proactive') else 'no'}",
+        f"memory_retention_days     : {controls.get('memory_retention_days', '-')}",
+        f"scope_count               : {controls.get('scope_count', 0)}",
+        f"filter_scope              : {controls.get('filter_agent_scope') or '-'}",
+        f"filter_roles              : {', '.join(controls.get('filter_roles', [])) or '-'}",
+        "",
+        "[Data Counts]",
+        f"memory_entries            : {controls.get('memory_entry_count', 0)}",
+        f"memory_summaries          : {controls.get('memory_summary_count', 0)}",
+        f"notifications             : {controls.get('notification_count', 0)}",
+        f"email_messages            : {controls.get('email_count', 0)}",
+        f"whatsapp_messages         : {controls.get('whatsapp_count', 0)}",
+        f"identity_count            : {controls.get('identity_count', 0)}",
+        f"session_count             : {controls.get('session_count', 0)}",
+        "",
+        "[Retention Candidates]",
+    ]
+    if retention:
+        for key, value in sorted(retention.items()):
+            lines.append(f"- {key}: {value}")
+    else:
+        lines.append("- none")
+    lines.extend(["", "[Scoped Controls]"])
+    if scoped_controls:
+        for scope_name, payload in sorted(scoped_controls.items()):
+            lines.append(
+                f"- {scope_name}: proactive={'yes' if payload.get('proactive_assistance_enabled', True) else 'no'}, "
+                f"consent={'yes' if payload.get('consent_required_for_proactive', True) else 'no'}, "
+                f"roles={', '.join(payload.get('allowed_roles', [])) or '-'}"
+            )
+    else:
+        lines.append("- none")
+    return "\n".join(lines)
+
+
+def build_bootstrap_view(data: dict[str, Any]) -> str:
+    bootstrap = data.get("bootstrap", {})
+    manifest = bootstrap.get("manifest", {})
+    seeded_files = bootstrap.get("workspace_seeded_files", [])
+    lines = [
+        "Workspace Bootstrap",
+        "",
+        "[Summary]",
+        f"bundled_template_dir      : {bootstrap.get('bundled_template_dir', '-')}",
+        f"template_count            : {bootstrap.get('template_count', 0)}",
+        f"active_runtime_templates  : {bootstrap.get('active_runtime_template_count', 0)}",
+        f"workspace_seeded_count    : {bootstrap.get('workspace_seeded_count', 0)}",
+        f"manifest_file             : {bootstrap.get('manifest_file', '-')}",
+        "",
+        "[Seeded Files]",
+    ]
+    if seeded_files:
+        for name in seeded_files:
+            lines.append(f"- {name}")
+    else:
+        lines.append("- belum ada file workspace yang diseed")
+    lines.extend(
+        [
+            "",
+            "[Last Manifest]",
+            f"source                    : {manifest.get('source', '-')}",
+            f"runtime_docs_only         : {'yes' if manifest.get('runtime_docs_only', True) else 'no'}",
+            f"seeded_at                 : {manifest.get('seeded_at', '-')}",
+            f"workspace_root            : {manifest.get('workspace_root', '-')}",
+            f"written_count             : {len(manifest.get('written', [])) if isinstance(manifest.get('written'), list) else 0}",
+            f"existing_count            : {len(manifest.get('existing', [])) if isinstance(manifest.get('existing'), list) else 0}",
+            "",
+            "[Action]",
+            "- b                       : seed active runtime docs into workspace root",
+        ]
+    )
     return "\n".join(lines)
 
 

@@ -11,9 +11,9 @@ Status yang dipakai:
 
 ## Ringkasan
 
-- `covered`: 6
-- `partial`: 10
-- `missing`: 12
+- `covered`: 14
+- `partial`: 9
+- `missing`: 5
 - `out-of-scope`: 2
 
 ## Matriks
@@ -30,21 +30,21 @@ Status yang dipakai:
 | `service` | partial | layar `Services` | ada status ringkas dan `write service wrappers`; belum ada `run/show/write` parity penuh |
 | `api` | partial | layar `Services` | baru status konseptual; belum ada action detail |
 | `conversation-api` | partial | layar `Services` | baru status konseptual; belum ada action detail |
-| `jobs` | missing | belum ada layar khusus | target berikutnya untuk queue/runtime operations |
-| `worker` | missing | belum ada layar khusus | perlu action runtime dasar |
-| `scheduler` | missing | belum ada layar khusus | perlu control dan status scheduling |
-| `history` | missing | belum ada layar khusus | perlu surface observability |
-| `events` | missing | belum ada layar khusus | perlu surface observability |
-| `metrics` | missing | belum ada layar khusus | perlu surface observability |
+| `jobs` | covered | layar `Jobs` | queue/runtime inspection sudah ada |
+| `worker` | covered | layar `Worker` | read-only status worker sudah ada; action runtime masih belum |
+| `scheduler` | covered | layar `Scheduler` | read-only status scheduler sudah ada; action runtime masih belum |
+| `history` | covered | layar `History` | recent execution history inspection sudah ada |
+| `events` | covered | layar `Events` | internal event bus inspection sudah ada |
+| `metrics` | covered | layar `Metrics` | execution metrics inspection sudah ada |
 | `heartbeat` | partial | terlihat lewat doctor/status | belum ada layar heartbeat khusus |
 | `proactive` | partial | terlihat lewat doctor/status | belum ada layar proactive khusus |
-| `privacy` | partial | terlihat lewat doctor/status | belum ada control/privacy view khusus |
+| `privacy` | covered | layar `Privacy` | redaction, quiet hours, retention, scoped controls sudah bisa diinspeksi |
 | `notify` | missing | belum ada layar khusus | perlu action/operator notification surface |
 | `email` | partial | layar `Channels` | baru snapshot status; belum ada global config form atau action |
 | `whatsapp` | partial | layar `Channels` | baru snapshot status; belum ada global config form atau action |
 | `agents` | partial | tercermin via setup/docs boundary | belum ada layar scope registry khusus |
-| `startup` | missing | belum ada layar khusus | perlu startup document inspection |
-| `bootstrap` | missing | belum ada layar khusus | perlu workspace bootstrap operator view |
+| `startup` | covered | layar `Startup` | startup document inspection sudah ada |
+| `bootstrap` | covered | layar `Bootstrap` | workspace bootstrap inspection dan action seed runtime docs sudah ada |
 | `external` | missing | belum ada layar khusus | perlu audit/approval surface |
 | `skills` | missing | belum ada layar khusus | perlu taxonomy/audit surface |
 | `config` | partial | terlipat ke `Setup`, `Doctor`, `Paths` | belum ada layar `config` eksplisit |
@@ -55,27 +55,15 @@ Status yang dipakai:
 
 ### Priority 1
 
-Menutup gap operator/runtime yang paling penting setelah setup baseline:
+Menutup action/operator parity yang masih paling penting setelah inspection baseline:
 
-- `jobs`
+- `service`
 - `worker`
 - `scheduler`
-- `service`
-- `metrics`
-- `history`
-- `events`
-
-### Priority 2
-
-Menutup governance dan channel/operator surface:
-
-- `privacy`
 - `notify`
 - `agents`
-- `startup`
-- `bootstrap`
 
-### Priority 3
+### Priority 2
 
 Menutup audit/ekstensi yang lebih advanced:
 
@@ -84,6 +72,14 @@ Menutup audit/ekstensi yang lebih advanced:
 - `heartbeat`
 - `proactive`
 - parity lebih dalam untuk `email` dan `whatsapp`
+
+### Priority 3
+
+Merapikan mutasi aman dan host smoke:
+
+- action privacy yang aman
+- action bootstrap optional templates
+- interactive smoke test Windows/Linux
 
 ## Boundary yang Sengaja Dipertahankan
 
@@ -95,7 +91,8 @@ Menutup audit/ekstensi yang lebih advanced:
 
 Wave TUI berikutnya layak disebut `operator baseline complete` jika minimal:
 
-- `jobs`, `worker`, `scheduler`, `metrics`, `history`, dan `events` punya layar TUI khusus
 - `service` punya parity action dasar yang jelas
-- `privacy` dan `startup` punya inspection surface
+- `worker` dan `scheduler` punya action operator yang aman
+- `privacy`, `startup`, dan `bootstrap` sudah punya inspection surface
+- `notify` dan `agents` sudah punya layar khusus
 - `Channels` tidak lagi hanya snapshot, tetapi punya action operator yang relevan dan aman

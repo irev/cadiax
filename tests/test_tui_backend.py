@@ -9,6 +9,7 @@ import cadiax.core.setup_wizard as setup_wizard
 from cadiax.cli import main
 from cadiax.platform.dashboard_runtime import load_dashboard_state
 from cadiax.tui.app import (
+    build_bootstrap_view,
     CadiaxTuiApp,
     build_channels_view,
     build_doctor_view,
@@ -18,6 +19,7 @@ from cadiax.tui.app import (
     build_jobs_view,
     build_metrics_view,
     build_paths_view,
+    build_privacy_view,
     build_startup_view,
     build_scheduler_view,
     build_services_view,
@@ -65,6 +67,31 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
             "ai_routes_total": 1,
         },
         "privacy": {"status": "healthy"},
+        "privacy_controls": {
+            "quiet_hours": {"enabled": True, "start": "21:30", "end": "06:30"},
+            "quiet_hours_active": False,
+            "consent_required_for_proactive": True,
+            "proactive_assistance_enabled": True,
+            "memory_retention_days": 365,
+            "scope_count": 1,
+            "memory_entry_count": 3,
+            "memory_summary_count": 1,
+            "notification_count": 2,
+            "email_count": 1,
+            "whatsapp_count": 2,
+            "identity_count": 1,
+            "session_count": 1,
+            "filter_agent_scope": "",
+            "filter_roles": [],
+            "retention_candidates": {"memory_entries": 1, "notifications": 0},
+            "scoped_controls": {
+                "finance-agent": {
+                    "proactive_assistance_enabled": False,
+                    "consent_required_for_proactive": True,
+                    "allowed_roles": ["finance"],
+                }
+            },
+        },
         "jobs": {
             "total_jobs": 5,
             "queued_jobs": 2,
@@ -132,6 +159,22 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
             "daily_notes": "Latest note",
             "curated_memory": "Remember this",
         },
+        "bootstrap": {
+            "bundled_template_dir": "C:/Users/test/AppData/Local/Cadiax/app/bootstrap_assets/foundation/official",
+            "template_count": 13,
+            "active_runtime_template_count": 6,
+            "workspace_seeded_count": 6,
+            "workspace_seeded_files": ["AGENTS.md", "SOUL.md"],
+            "manifest_file": "C:/Users/test/AppData/Local/Cadiax/state/bootstrap_manifest.json",
+            "manifest": {
+                "source": "official-foundation-templates",
+                "runtime_docs_only": True,
+                "seeded_at": "2026-03-14T00:00:00+00:00",
+                "workspace_root": "C:/Users/test/Cadiax/workspace",
+                "written": ["AGENTS.md", "SOUL.md"],
+                "existing": ["USER.md"],
+            },
+        },
         "issues": ["missing api key"],
         "email": {"message_count": 1, "latest_message": {"to_address": "ops@example.com"}},
         "whatsapp": {"message_count": 2, "latest_message": {"phone_number": "+628123456789"}},
@@ -142,7 +185,11 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "global_setup     : none" in build_channels_view(payload)
     assert "command_on_path" in build_paths_view(payload)
     assert "missing api key" in build_doctor_view(payload)
+    assert "quiet_hours_enabled" in build_privacy_view(payload)
+    assert "finance-agent" in build_privacy_view(payload)
     assert "path_mode" in build_home_view(payload)
+    assert "workspace_seeded_count" in build_bootstrap_view(payload)
+    assert "seed active runtime docs" in build_bootstrap_view(payload)
     assert "telegram_in_main_service" in build_services_view(payload)
     assert "last_worker_run_at" in build_worker_view(payload)
     assert "last_heartbeat_mode" in build_scheduler_view(payload)
@@ -174,10 +221,10 @@ def test_cli_tui_command_dispatches_selected_screen(monkeypatch) -> None:
 
     monkeypatch.setattr("cadiax.cli.run_tui", fake_run_tui)
     runner = CliRunner()
-    result = runner.invoke(main, ["tui", "--screen", "startup"])
+    result = runner.invoke(main, ["tui", "--screen", "privacy"])
 
     assert result.exit_code == 0
-    assert called["screen"] == "startup"
+    assert called["screen"] == "privacy"
 
 
 def test_cli_setup_command_dispatches_setup_tui(monkeypatch) -> None:
@@ -242,6 +289,24 @@ def test_tui_service_action_writes_wrappers(monkeypatch) -> None:
     app.action_write_service_wrappers()
 
     assert any("Service wrappers written: 1 files" in item for item in notifications)
+
+
+def test_tui_bootstrap_action_seeds_runtime_docs(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="bootstrap")
+    app.status_data = {"bootstrap": {"workspace_seeded_count": 0}}
+    app.current_screen_name = "bootstrap"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+    monkeypatch.setattr(
+        "cadiax.tui.app.ensure_workspace_skeleton",
+        lambda **kwargs: {"written_count": 6, "existing_count": 0},
+    )
+
+    app.action_run_bootstrap_foundation()
+
+    assert any("Foundation bootstrap written=6 existing=0" in item for item in notifications)
 
 
 def test_tui_setup_actions_edit_and_save_provider_and_workspace(tmp_path, monkeypatch) -> None:

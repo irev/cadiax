@@ -39,12 +39,36 @@ Deliverables:
 4. layar `Agents`
 5. layar `Notify`
 
+Status:
+
+- `Privacy`: selesai
+- `Startup`: selesai
+- `Bootstrap`: selesai
+- `Agents`: berikutnya
+- `Notify`: berikutnya
+
 ## Wave N+3
 
 Fokus:
 
+- service/operator mutations
+- governance parity lanjutan
 - extension surfaces
-- deeper channel parity
+
+Deliverables:
+
+1. layar `Agents`
+2. layar `Notify`
+3. action aman untuk `Worker` / `Scheduler`
+4. action service dasar untuk `admin-api` / `conversation-api`
+5. extended `Channels` for `email` / `whatsapp`
+
+## Wave N+4
+
+Fokus:
+
+- extension surfaces
+- deeper audit/runtime parity
 
 Deliverables:
 
@@ -52,4 +76,4 @@ Deliverables:
 2. layar `Skills`
 3. layar `Heartbeat`
 4. layar `Proactive`
-5. extended `Channels` for `email` / `whatsapp`
+5. privacy/bootstrap advanced actions
