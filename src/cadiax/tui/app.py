@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, VerticalScroll
-from textual.widgets import Footer, Header, OptionList, Static
+from textual.screen import ModalScreen
+from textual.widgets import Footer, Header, Input, OptionList, Static
 
 from cadiax.core.config_doctor import get_config_status_data
 from cadiax.core.path_layout import get_runtime_layout_snapshot
 from cadiax.core.setup_wizard import persist_env_updates
+from cadiax.core.workspace_bootstrap import ensure_workspace_skeleton
 from cadiax.platform import get_service_runtime_info, get_service_wrapper_output_dir, write_service_wrapper_artifacts
 from cadiax.platform.dashboard_runtime import disable_dashboard, enable_dashboard
 
@@ -81,6 +84,7 @@ class CadiaxTuiApp(App[None]):
         ("t", "toggle_telegram", "Toggle Telegram"),
         ("e", "cycle_setup_field", "Edit Setup Field"),
         ("a", "alternate_setup_field", "Alternate Setup Field"),
+        ("i", "input_setup_field", "Input Setup Field"),
         ("s", "save_setup_step", "Save Setup Step"),
         ("w", "write_service_wrappers", "Write Service Wrappers"),
         ("r", "refresh_data", "Refresh"),
@@ -260,21 +264,53 @@ class CadiaxTuiApp(App[None]):
             persist_env_updates({"AI_PROVIDER": str(self.setup_draft.get("provider") or "openai")})
             self.notify("Provider saved", severity="information")
         elif step_key == "workspace":
-            persist_env_updates({"OTONOMASSIST_WORKSPACE_ACCESS": str(self.setup_draft.get("workspace_access") or "ro")})
+            workspace_root = str(
+                self.setup_draft.get("workspace_root")
+                or self.status_data.get("workspace", {}).get("root")
+                or ""
+            ).strip()
+            if not workspace_root:
+                self.notify("Workspace root belum diisi", severity="warning")
+                return
+            persist_env_updates(
+                {
+                    "OTONOMASSIST_WORKSPACE_ROOT": workspace_root,
+                    "OTONOMASSIST_WORKSPACE_ACCESS": str(self.setup_draft.get("workspace_access") or "ro"),
+                }
+            )
+            ensure_workspace_skeleton(
+                only_if_workspace_empty=False,
+                runtime_docs_only=True,
+                workspace_root=Path(workspace_root).expanduser().resolve(),
+            )
             self.notify("Workspace access saved", severity="information")
         elif step_key == "dashboard":
             host = str(self.setup_draft.get("dashboard_host") or "127.0.0.1")
             port = int(self.setup_draft.get("dashboard_port") or 8795)
+            admin_api_url = str(
+                self.setup_draft.get("dashboard_admin_api_url")
+                or self.status_data.get("dashboard", {}).get("admin_api_url")
+                or "http://127.0.0.1:8787"
+            ).strip()
+            if not admin_api_url:
+                self.notify("Dashboard admin API URL belum diisi", severity="warning")
+                return
             dashboard = self.status_data.get("dashboard", {})
             if bool(dashboard.get("enabled")):
                 enable_dashboard(
                     host=host,
                     port=port,
-                    admin_api_url=str(dashboard.get("admin_api_url") or "http://127.0.0.1:8787"),
+                    admin_api_url=admin_api_url,
                     install=False,
                     build=False,
                 )
-            persist_env_updates({"DASHBOARD_HOST": host, "DASHBOARD_PORT": str(port)})
+            persist_env_updates(
+                {
+                    "DASHBOARD_HOST": host,
+                    "DASHBOARD_PORT": str(port),
+                    "DASHBOARD_ADMIN_API_URL": admin_api_url,
+                }
+            )
             self.notify("Dashboard access saved", severity="information")
         elif step_key == "telegram":
             persist_env_updates(
@@ -288,6 +324,46 @@ class CadiaxTuiApp(App[None]):
             self.notify("No writable field on this step yet", severity="warning")
             return
         self._reload()
+        self._render_screen("setup")
+
+    def action_input_setup_field(self) -> None:
+        if self.current_screen_name != "setup":
+            return
+        step_key = SETUP_STEPS[self.current_setup_step][0]
+        if step_key == "workspace":
+            self.push_screen(
+                SetupInputScreen(
+                    title="Workspace root",
+                    field_name="workspace_root",
+                    value=str(self.setup_draft.get("workspace_root") or self.status_data.get("workspace", {}).get("root") or ""),
+                ),
+                self._handle_setup_input,
+            )
+            return
+        if step_key == "dashboard":
+            self.push_screen(
+                SetupInputScreen(
+                    title="Dashboard admin API URL",
+                    field_name="dashboard_admin_api_url",
+                    value=str(
+                        self.setup_draft.get("dashboard_admin_api_url")
+                        or self.status_data.get("dashboard", {}).get("admin_api_url")
+                        or "http://127.0.0.1:8787"
+                    ),
+                ),
+                self._handle_setup_input,
+            )
+
+    def _handle_setup_input(self, result: tuple[str, str] | None) -> None:
+        if not result:
+            return
+        field_name, value = result
+        cleaned = value.strip()
+        if field_name == "dashboard_admin_api_url" and not cleaned:
+            self.notify("Dashboard admin API URL tidak boleh kosong", severity="warning")
+            return
+        self.setup_draft[field_name] = cleaned
+        self.notify(f"{field_name} draft updated", severity="information")
         self._render_screen("setup")
 
     def _reload(self) -> None:
@@ -325,9 +401,11 @@ class CadiaxTuiApp(App[None]):
         dashboard = self.status_data.get("dashboard", {})
         self.setup_draft = {
             "provider": str(ai.get("provider") or "openai"),
+            "workspace_root": str(workspace.get("root") or ""),
             "workspace_access": str(workspace.get("access") or "ro"),
             "dashboard_host": str(dashboard.get("host") or "127.0.0.1"),
             "dashboard_port": int(dashboard.get("port") or 8795),
+            "dashboard_admin_api_url": str(dashboard.get("admin_api_url") or "http://127.0.0.1:8787"),
             "telegram_dm_policy": str(self.status_data.get("telegram", {}).get("dm_policy") or "pairing"),
             "telegram_require_mention": "true"
             if bool(self.status_data.get("telegram", {}).get("require_mention", True))
@@ -372,7 +450,7 @@ def build_home_view(data: dict[str, Any]) -> str:
         "- Tekan 5/6 untuk layanan dan setup coverage",
         "- Saat di Setup, tekan n/p untuk pindah step",
         "- Tekan d/t untuk toggle dashboard atau Telegram pada layar terkait",
-        "- Saat di Setup, tekan e/a/s untuk edit draft dan simpan step",
+        "- Saat di Setup, tekan e/a/i/s untuk edit draft dan simpan step",
         "- Tekan r untuk refresh snapshot",
         "- Tekan q untuk keluar",
     ]
@@ -557,12 +635,13 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0, draft: dict[s
             [
                 "[Workspace]",
                 f"- workspace_root         : {workspace.get('root', '-')}",
+                f"- workspace_root_draft   : {draft.get('workspace_root') or workspace.get('root', '-')}",
                 f"- workspace_access       : {workspace.get('access', '-')}",
                 f"- workspace_access_draft : {draft.get('workspace_access') or workspace.get('access', '-')}",
                 f"- root_exists            : {'yes' if workspace.get('root_exists') else 'no'}",
                 "- setup global           : yes",
                 "- mutable via wizard     : root, access mode, runtime docs bootstrap",
-                "- quick action           : tekan a untuk toggle access, s untuk save",
+                "- quick action           : tekan i untuk edit root, a untuk toggle access, s untuk save",
             ]
         )
     elif step_key == "telegram":
@@ -590,9 +669,10 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0, draft: dict[s
                 f"- port                   : {dashboard.get('port', '-')}",
                 f"- port_draft             : {draft.get('dashboard_port') or dashboard.get('port', '-')}",
                 f"- admin_api_url          : {dashboard.get('admin_api_url', '-')}",
+                f"- admin_api_url_draft    : {draft.get('dashboard_admin_api_url') or dashboard.get('admin_api_url', '-')}",
                 "- setup global           : yes",
                 "- mutable via wizard     : enable/disable, access mode, port, admin API URL",
-                "- quick action           : tekan d untuk toggle enabled, e/a untuk access/port, s untuk save",
+                "- quick action           : tekan d untuk toggle enabled, e/a untuk access/port, i untuk edit admin API URL, s untuk save",
             ]
         )
     elif step_key == "interfaces":
@@ -628,3 +708,48 @@ def build_setup_view(data: dict[str, Any], *, step_index: int = 0, draft: dict[s
 def run_tui(*, initial_screen: str = "home") -> None:
     """Start the Cadiax Textual app."""
     CadiaxTuiApp(initial_screen=initial_screen).run()
+
+
+class SetupInputScreen(ModalScreen[tuple[str, str] | None]):
+    """Simple modal input for editable setup fields."""
+
+    CSS = """
+    SetupInputScreen {
+        align: center middle;
+    }
+
+    #setup-input-dialog {
+        width: 80;
+        height: auto;
+        border: round $accent;
+        padding: 1 2;
+        background: $surface;
+    }
+
+    #setup-input-value {
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(self, *, title: str, field_name: str, value: str) -> None:
+        super().__init__()
+        self.title = title
+        self.field_name = field_name
+        self.value = value
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="setup-input-dialog"):
+            yield Static(self.title)
+            yield Static("Tekan Enter untuk simpan atau Esc untuk batal.")
+            yield Input(value=self.value, id="setup-input-value")
+
+    def on_mount(self) -> None:
+        self.query_one("#setup-input-value", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss((self.field_name, event.value))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)

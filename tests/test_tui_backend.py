@@ -158,20 +158,52 @@ def test_tui_setup_actions_edit_and_save_provider_and_workspace(tmp_path, monkey
     monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
     monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
     monkeypatch.setattr(app, "_reload", lambda: None)
+    monkeypatch.setattr("cadiax.tui.app.ensure_workspace_skeleton", lambda **kwargs: {"written_count": 0, "existing_count": 0})
 
     app.current_setup_step = 0
     app.action_cycle_setup_field()
     app.action_save_setup_step()
 
     app.current_setup_step = 1
+    app._handle_setup_input(("workspace_root", str(tmp_path / "workspace-new")))
     app.action_alternate_setup_field()
     app.action_save_setup_step()
 
     env_text = env_file.read_text(encoding="utf-8")
     assert "AI_PROVIDER=claude" in env_text
+    assert f"OTONOMASSIST_WORKSPACE_ROOT={tmp_path / 'workspace-new'}" in env_text
     assert "OTONOMASSIST_WORKSPACE_ACCESS=rw" in env_text
     assert any("Provider saved" in item for item in notifications)
     assert any("Workspace access saved" in item for item in notifications)
+
+
+def test_tui_setup_rejects_empty_workspace_root(tmp_path, monkeypatch) -> None:
+    env_file = tmp_path / "config.env"
+    state_dir = tmp_path / ".cadiax"
+    monkeypatch.setenv("CADIAX_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("OTONOMASSIST_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("CADIAX_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("OTONOMASSIST_STATE_DIR", str(state_dir))
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    monkeypatch.setattr(agent_context, "DATA_DIR", state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    env_file.write_text("", encoding="utf-8")
+
+    app = CadiaxTuiApp(initial_screen="setup")
+    app.status_data = {"workspace": {"root": "", "access": "ro"}}
+    app._sync_setup_draft()
+    app.current_screen_name = "setup"
+    app.current_setup_step = 1
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    app._handle_setup_input(("workspace_root", "   "))
+    app.action_save_setup_step()
+
+    assert env_file.read_text(encoding="utf-8") == ""
+    assert any("Workspace root belum diisi" in item for item in notifications)
 
 
 def test_tui_setup_actions_edit_and_save_telegram_and_dashboard(tmp_path, monkeypatch) -> None:
@@ -220,6 +252,7 @@ def test_tui_setup_actions_edit_and_save_telegram_and_dashboard(tmp_path, monkey
     app.current_setup_step = 3
     app.action_cycle_setup_field()
     app.action_alternate_setup_field()
+    app._handle_setup_input(("dashboard_admin_api_url", "http://127.0.0.1:9999"))
     app.action_save_setup_step()
 
     env_text = env_file.read_text(encoding="utf-8")
@@ -227,5 +260,36 @@ def test_tui_setup_actions_edit_and_save_telegram_and_dashboard(tmp_path, monkey
     assert "TELEGRAM_REQUIRE_MENTION=false" in env_text
     assert "DASHBOARD_HOST=0.0.0.0" in env_text
     assert "DASHBOARD_PORT=8796" in env_text
+    assert "DASHBOARD_ADMIN_API_URL=http://127.0.0.1:9999" in env_text
     assert any("Telegram settings saved" in item for item in notifications)
     assert any("Dashboard access saved" in item for item in notifications)
+
+
+def test_tui_setup_rejects_empty_dashboard_admin_api_url(tmp_path, monkeypatch) -> None:
+    env_file = tmp_path / "config.env"
+    state_dir = tmp_path / ".cadiax"
+    monkeypatch.setenv("CADIAX_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("OTONOMASSIST_CONFIG_FILE", str(env_file))
+    monkeypatch.setenv("CADIAX_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("OTONOMASSIST_STATE_DIR", str(state_dir))
+    monkeypatch.setattr(setup_wizard, "ENV_FILE", env_file)
+    monkeypatch.setattr(agent_context, "DATA_DIR", state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    env_file.write_text("DASHBOARD_ADMIN_API_URL=http://127.0.0.1:8787\n", encoding="utf-8")
+
+    app = CadiaxTuiApp(initial_screen="setup")
+    app.status_data = {
+        "dashboard": {"enabled": True, "host": "127.0.0.1", "port": 8795, "admin_api_url": "http://127.0.0.1:8787"}
+    }
+    app._sync_setup_draft()
+    app.current_screen_name = "setup"
+    app.current_setup_step = 3
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: None)
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    app._handle_setup_input(("dashboard_admin_api_url", "   "))
+
+    assert "DASHBOARD_ADMIN_API_URL=http://127.0.0.1:8787" in env_file.read_text(encoding="utf-8")
+    assert any("Dashboard admin API URL tidak boleh kosong" in item for item in notifications)
