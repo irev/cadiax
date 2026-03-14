@@ -40,8 +40,8 @@ Status yang dipakai:
 | `proactive` | covered | layar `Proactive` | insight snapshot dan governance ringkas sudah ada |
 | `privacy` | covered | layar `Privacy` | redaction, quiet hours, retention, scoped controls sudah bisa diinspeksi |
 | `notify` | covered | layar `Notify` | snapshot history, by-channel, by-scope, latest notification sudah ada |
-| `email` | partial | layar `Channels` | ada snapshot status dan test dispatch ke target terakhir; belum ada global config form |
-| `whatsapp` | partial | layar `Channels` | ada snapshot status dan test dispatch ke target terakhir; belum ada global config form |
+| `email` | partial | layar `Channels` | ada snapshot status, by-scope view, dan test dispatch ke current/override target; belum ada global config form |
+| `whatsapp` | partial | layar `Channels` | ada snapshot status, by-scope view, dan test dispatch ke current/override target; belum ada global config form |
 | `agents` | covered | layar `Agents` | scope registry inspection dari `AGENTS.md` sudah ada |
 | `startup` | covered | layar `Startup` | startup document inspection sudah ada |
 | `bootstrap` | covered | layar `Bootstrap` | workspace bootstrap inspection dan action seed runtime docs sudah ada |
@@ -62,12 +62,6 @@ Menutup action/operator parity yang masih paling penting setelah inspection base
 - `agents`
 
 ### Priority 2
-
-Menutup audit/ekstensi yang lebih advanced:
-
-- parity lebih dalam untuk `email` dan `whatsapp`
-
-### Priority 3
 
 Merapikan mutasi aman dan host smoke:
 

@@ -35,4 +35,4 @@ Backlog paling relevan setelah baseline TUI setup selesai.
 - [ ] Bootstrap advanced action:
   - [x] include optional templates
   - [x] force overwrite mode
-- [ ] Channel parity lebih dalam untuk email/whatsapp
+- [x] Channel parity lebih dalam untuk email/whatsapp

@@ -234,13 +234,26 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
             "message_count": 1,
             "inbound_count": 0,
             "outbound_count": 1,
-            "latest_message": {"to_address": "ops@example.com"},
+            "latest_message": {
+                "to_address": "ops@example.com",
+                "direction": "outbound",
+                "status": "queued",
+                "agent_scope": "finance-agent",
+            },
+            "by_scope": {"finance-agent": 1},
         },
         "whatsapp": {
             "message_count": 2,
             "inbound_count": 1,
             "outbound_count": 1,
-            "latest_message": {"phone_number": "+628123456789", "display_name": "Budi"},
+            "latest_message": {
+                "phone_number": "+628123456789",
+                "display_name": "Budi",
+                "direction": "inbound",
+                "status": "ok",
+                "agent_scope": "default",
+            },
+            "by_scope": {"default": 2},
         },
         "personality": {
             "preference_profile": {"preferred_channels": ["telegram", "email"]},
@@ -297,6 +310,8 @@ def test_tui_view_builders_cover_channels_and_runtime_snapshot() -> None:
     assert "preferred_channels: telegram, email" in build_channels_view(payload)
     assert "ctrl+e" in build_channels_view(payload)
     assert "global_setup     : none" in build_channels_view(payload)
+    assert "latest_direction : outbound" in build_channels_view(payload)
+    assert "email:finance-agent -> 1" in build_channels_view(payload)
     assert "command_on_path" in build_paths_view(payload)
     assert "missing api key" in build_doctor_view(payload)
     assert "quiet_hours_enabled" in build_privacy_view(payload)
@@ -438,6 +453,51 @@ def test_tui_channel_actions_dispatch_test_email_and_whatsapp(monkeypatch) -> No
 
     assert any("Email test queued to ops@example.com" in item for item in notifications)
     assert any("WhatsApp test queued to +628123456789" in item for item in notifications)
+
+
+def test_tui_channel_target_override_updates_view_and_dispatch(monkeypatch) -> None:
+    app = CadiaxTuiApp(initial_screen="channels")
+    app.status_data = {
+        "email": {
+            "latest_message": {"to_address": "ops@example.com"},
+        },
+        "whatsapp": {
+            "latest_message": {"phone_number": "+628123456789", "display_name": "Budi"},
+        },
+        "personality": {"preference_profile": {"preferred_channels": ["email", "whatsapp"]}},
+    }
+    app.current_screen_name = "channels"
+    notifications: list[str] = []
+    monkeypatch.setattr(app, "notify", lambda message, **kwargs: notifications.append(str(message)))
+    monkeypatch.setattr(app, "_reload", lambda: None)
+
+    rendered: list[str] = []
+    monkeypatch.setattr(app, "_render_screen", lambda screen_name: rendered.append(screen_name))
+
+    class FakeEmailService:
+        def send(self, **kwargs):
+            return {"to_address": kwargs["to_address"]}
+
+    class FakeWhatsAppService:
+        def send(self, **kwargs):
+            return {"phone_number": kwargs["phone_number"]}
+
+    monkeypatch.setattr("cadiax.tui.app.EmailInterfaceService", FakeEmailService)
+    monkeypatch.setattr("cadiax.tui.app.WhatsAppInterfaceService", FakeWhatsAppService)
+
+    app._handle_setup_input(("email_test_target", "custom@example.com"))
+    app._handle_setup_input(("whatsapp_test_target", "+620000000000"))
+
+    assert app.channel_draft["email_test_target"] == "custom@example.com"
+    assert app.channel_draft["whatsapp_test_target"] == "+620000000000"
+    assert "email_target     : custom@example.com" in build_channels_view(app.status_data, draft_targets=app.channel_draft)
+    assert "whatsapp_target  : +620000000000" in build_channels_view(app.status_data, draft_targets=app.channel_draft)
+
+    app.action_send_test_email()
+    app.action_send_test_whatsapp()
+
+    assert any("Email test queued to custom@example.com" in item for item in notifications)
+    assert any("WhatsApp test queued to +620000000000" in item for item in notifications)
 
 
 def test_tui_service_action_writes_wrappers(monkeypatch) -> None:

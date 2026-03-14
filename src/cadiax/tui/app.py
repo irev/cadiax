@@ -117,6 +117,8 @@ class CadiaxTuiApp(App[None]):
         ("4", "go_channels", "Channels"),
         ("ctrl+e", "send_test_email", "Send Test Email"),
         ("ctrl+w", "send_test_whatsapp", "Send Test WhatsApp"),
+        ("shift+e", "input_email_target", "Edit Email Target"),
+        ("shift+w", "input_whatsapp_target", "Edit WhatsApp Target"),
         ("5", "go_services", "Services"),
         ("period", "next_service_target", "Next Service Target"),
         ("comma", "prev_service_target", "Prev Service Target"),
@@ -154,6 +156,7 @@ class CadiaxTuiApp(App[None]):
         self.current_screen_name = self.initial_screen
         self.current_setup_step = 0
         self.setup_draft: dict[str, Any] = {}
+        self.channel_draft: dict[str, Any] = {}
         self.current_service_target = "cadiax"
 
     def compose(self) -> ComposeResult:
@@ -268,8 +271,7 @@ class CadiaxTuiApp(App[None]):
     def action_send_test_email(self) -> None:
         if self.current_screen_name != "channels":
             return
-        latest = self.status_data.get("email", {}).get("latest_message", {})
-        target = str(latest.get("to_address") or "").strip() if isinstance(latest, dict) else ""
+        target = self._resolve_email_target()
         if not target:
             self.notify("Belum ada target email terakhir untuk test dispatch", severity="warning")
             return
@@ -287,7 +289,7 @@ class CadiaxTuiApp(App[None]):
         if self.current_screen_name != "channels":
             return
         latest = self.status_data.get("whatsapp", {}).get("latest_message", {})
-        target = str(latest.get("phone_number") or "").strip() if isinstance(latest, dict) else ""
+        target = self._resolve_whatsapp_target()
         display_name = str(latest.get("display_name") or "").strip() if isinstance(latest, dict) else ""
         if not target:
             self.notify("Belum ada target WhatsApp terakhir untuk test dispatch", severity="warning")
@@ -301,6 +303,30 @@ class CadiaxTuiApp(App[None]):
         self.notify(f"WhatsApp test queued to {payload.get('phone_number', '-')}", severity="information")
         self._reload()
         self._render_screen("channels")
+
+    def action_input_email_target(self) -> None:
+        if self.current_screen_name != "channels":
+            return
+        self.push_screen(
+            SetupInputScreen(
+                title="Email dispatch target",
+                field_name="email_test_target",
+                value=self._resolve_email_target(),
+            ),
+            self._handle_setup_input,
+        )
+
+    def action_input_whatsapp_target(self) -> None:
+        if self.current_screen_name != "channels":
+            return
+        self.push_screen(
+            SetupInputScreen(
+                title="WhatsApp dispatch target",
+                field_name="whatsapp_test_target",
+                value=self._resolve_whatsapp_target(),
+            ),
+            self._handle_setup_input,
+        )
 
     def action_go_services(self) -> None:
         self._select_screen("services")
@@ -658,6 +684,14 @@ class CadiaxTuiApp(App[None]):
             return
         field_name, value = result
         cleaned = value.strip()
+        if field_name in {"email_test_target", "whatsapp_test_target"}:
+            if not cleaned:
+                self.notify(f"{field_name} tidak boleh kosong", severity="warning")
+                return
+            self.channel_draft[field_name] = cleaned
+            self.notify(f"{field_name} updated", severity="information")
+            self._render_screen(self.current_screen_name)
+            return
         if field_name == "dashboard_admin_api_url" and not cleaned:
             self.notify("Dashboard admin API URL tidak boleh kosong", severity="warning")
             return
@@ -674,6 +708,20 @@ class CadiaxTuiApp(App[None]):
         self.status_data["startup"] = StartupDocumentService().get_snapshot(session_mode="main")
         self.status_data["skills_audit"] = get_skill_audit_snapshot_for_tui()
         self._sync_setup_draft()
+
+    def _resolve_email_target(self) -> str:
+        draft = str(self.channel_draft.get("email_test_target") or "").strip()
+        if draft:
+            return draft
+        latest = self.status_data.get("email", {}).get("latest_message", {})
+        return str((latest.get("to_address") if isinstance(latest, dict) else "") or "").strip()
+
+    def _resolve_whatsapp_target(self) -> str:
+        draft = str(self.channel_draft.get("whatsapp_test_target") or "").strip()
+        if draft:
+            return draft
+        latest = self.status_data.get("whatsapp", {}).get("latest_message", {})
+        return str((latest.get("phone_number") if isinstance(latest, dict) else "") or "").strip()
 
     def _select_screen(self, screen_name: str) -> None:
         nav = self.query_one("#nav", OptionList)
@@ -714,7 +762,7 @@ class CadiaxTuiApp(App[None]):
             content.update(build_notify_view(self.status_data))
             return
         if screen_name == "channels":
-            content.update(build_channels_view(self.status_data))
+            content.update(build_channels_view(self.status_data, draft_targets=self.channel_draft))
             return
         if screen_name == "services":
             content.update(build_services_view(self.status_data, selected_target=self.current_service_target))
@@ -861,7 +909,7 @@ def build_doctor_view(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_channels_view(data: dict[str, Any]) -> str:
+def build_channels_view(data: dict[str, Any], *, draft_targets: dict[str, Any] | None = None) -> str:
     telegram = data.get("telegram", {})
     dashboard = data.get("dashboard", {})
     email = data.get("email", {})
@@ -869,6 +917,11 @@ def build_channels_view(data: dict[str, Any]) -> str:
     personality = data.get("personality", {})
     preference_profile = personality.get("preference_profile", {}) if isinstance(personality, dict) else {}
     preferred_channels = preference_profile.get("preferred_channels", []) if isinstance(preference_profile, dict) else []
+    draft_targets = draft_targets or {}
+    email_latest = email.get("latest_message", {}) if isinstance(email.get("latest_message"), dict) else {}
+    whatsapp_latest = whatsapp.get("latest_message", {}) if isinstance(whatsapp.get("latest_message"), dict) else {}
+    email_target = str(draft_targets.get("email_test_target") or email_latest.get("to_address") or "-")
+    whatsapp_target = str(draft_targets.get("whatsapp_test_target") or whatsapp_latest.get("phone_number") or "-")
     lines = [
         "Channels",
         "",
@@ -888,23 +941,51 @@ def build_channels_view(data: dict[str, Any]) -> str:
         f"message_count    : {email.get('message_count', 0)}",
         f"inbound_count    : {email.get('inbound_count', 0)}",
         f"outbound_count   : {email.get('outbound_count', 0)}",
-        f"latest_target    : {((email.get('latest_message') or {}).get('to_address', '-') if isinstance(email.get('latest_message'), dict) else '-')}",
+        f"latest_target    : {email_latest.get('to_address', '-') or '-'}",
+        f"latest_direction : {email_latest.get('direction', '-') or '-'}",
+        f"latest_status    : {email_latest.get('status', '-') or '-'}",
+        f"latest_scope     : {email_latest.get('agent_scope', '-') or '-'}",
         "global_setup     : none (configured per dispatch/API use)",
         "",
         "[WhatsApp]",
         f"message_count    : {whatsapp.get('message_count', 0)}",
         f"inbound_count    : {whatsapp.get('inbound_count', 0)}",
         f"outbound_count   : {whatsapp.get('outbound_count', 0)}",
-        f"latest_target    : {((whatsapp.get('latest_message') or {}).get('phone_number', '-') if isinstance(whatsapp.get('latest_message'), dict) else '-')}",
+        f"latest_target    : {whatsapp_latest.get('phone_number', '-') or '-'}",
+        f"latest_direction : {whatsapp_latest.get('direction', '-') or '-'}",
+        f"latest_status    : {whatsapp_latest.get('status', '-') or '-'}",
+        f"latest_scope     : {whatsapp_latest.get('agent_scope', '-') or '-'}",
         "global_setup     : none (configured per dispatch/API use)",
         "",
-        "[Preference]",
-        f"preferred_channels: {', '.join(preferred_channels) if preferred_channels else '-'}",
-        "",
-        "[Actions]",
-        "- ctrl+e         : send test email to latest known target",
-        "- ctrl+w         : send test WhatsApp to latest known target",
+        "[By Scope]",
     ]
+    email_by_scope = email.get("by_scope", {})
+    whatsapp_by_scope = whatsapp.get("by_scope", {})
+    if email_by_scope:
+        for scope_name, count in sorted(email_by_scope.items()):
+            lines.append(f"- email:{scope_name} -> {count}")
+    if whatsapp_by_scope:
+        for scope_name, count in sorted(whatsapp_by_scope.items()):
+            lines.append(f"- whatsapp:{scope_name} -> {count}")
+    if not email_by_scope and not whatsapp_by_scope:
+        lines.append("- none")
+    lines.extend(
+        [
+            "",
+            "[Dispatch Targets]",
+            f"email_target     : {email_target}",
+            f"whatsapp_target  : {whatsapp_target}",
+            "",
+            "[Preference]",
+            f"preferred_channels: {', '.join(preferred_channels) if preferred_channels else '-'}",
+            "",
+            "[Actions]",
+            "- ctrl+e         : send test email to current target",
+            "- ctrl+w         : send test WhatsApp to current target",
+            "- E              : override email dispatch target",
+            "- W              : override WhatsApp dispatch target",
+        ]
+    )
     return "\n".join(lines)
 
 
